@@ -11,7 +11,7 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ModalBuilder,  
-  TextInputBuilder,
+  TextInputBuilder, 
   TextInputStyle,
   PermissionsBitField,
   ButtonBuilder,
