@@ -11,7 +11,7 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ModalBuilder,  
-  TextInputBuilder, 
+  TextInputBuilder,
   TextInputStyle,
   PermissionsBitField,
   ButtonBuilder,
@@ -6745,7 +6745,8 @@ client.on(Events.MessageCreate, async (message) => {
       const channel = message.channel;
 
       // Pattern: +rep @user [action] [amount] [server]
-      const repPattern = /^\+rep\s+<@!?(\d+)>\s+\S+\s+\S+\s+.+$/i;
+      // Akceptuje zarówno @nazwa jak i <@ID> format
+      const repPattern = /^\+rep\s+(@[a-zA-Z0-9_]+|<@!?(\d+)>)\s+\S+\s+\S+\s+.+$/i;
       const isValidRep = repPattern.test(message.content.trim());
       
       console.log(`[+rep] Pattern validation: ${isValidRep} for message: "${message.content}"`);
@@ -9953,6 +9954,35 @@ console.log("🟢 FULL MONITORING MODE aktywowany - heartbeat co 5min, alerty b�
 console.log("[DEBUG] Próba połączenia z Discord...");
 console.log("[DEBUG] BOT_TOKEN exists:", !!process.env.BOT_TOKEN);
 console.log("[DEBUG] BOT_TOKEN length:", process.env.BOT_TOKEN?.length || 0);
+
+// Test WebSocket połączenia
+console.log("[WS_TEST] Testuję połączenie WebSocket z Discord...");
+try {
+  const WebSocket = require('ws');
+  const ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
+  
+  const wsTimeout = setTimeout(() => {
+    console.error("[WS_TEST] WebSocket timeout - Render.com blokuje połączenia!");
+    ws.terminate();
+  }, 10000);
+  
+  ws.on('open', () => {
+    console.log("[WS_TEST] WebSocket połączony pomyślnie!");
+    clearTimeout(wsTimeout);
+    ws.close();
+  });
+  
+  ws.on('error', (err) => {
+    console.error("[WS_TEST] WebSocket error:", err.message);
+    clearTimeout(wsTimeout);
+  });
+  
+  ws.on('close', () => {
+    console.log("[WS_TEST] WebSocket zamknięty");
+  });
+} catch (err) {
+  console.error("[WS_TEST] Błąd tworzenia WebSocket:", err.message);
+}
 
 // Prosta funkcja retry
 async function loginWithRetry(maxRetries = 3) {
