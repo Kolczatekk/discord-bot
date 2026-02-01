@@ -6744,7 +6744,7 @@ client.on(Events.MessageCreate, async (message) => {
 
       const channel = message.channel;
 
-      // Usunięto walidację wzorca - każda wiadomość +rep jest akceptowana
+      // Prosta walidacja - każda wiadomość zaczynająca się od +rep jest akceptowana
       const messageContent = message.content.trim();
       const isValidRep = messageContent.toLowerCase().startsWith('+rep');
       
