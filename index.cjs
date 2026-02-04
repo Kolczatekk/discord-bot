@@ -6728,9 +6728,14 @@ client.on(Events.MessageCreate, async (message) => {
       if (lastRepTs && now - lastRepTs < COOLDOWN_MS) {
         const remaining = COOLDOWN_MS - (now - lastRepTs);
         await message.delete().catch(() => null);
-        message.author.send({
-          content: `> \`❌\` × Możesz wystawić następnego legit-repa za \`${humanizeMs(remaining)}\``,
-        }).catch(() => null);
+        const cooldownEmbed = new EmbedBuilder()
+          .setColor(COLOR_BLUE)
+          .setDescription(
+            "🛒 New Shop × Legit-checki\n" +
+            "`🛑` Stop!\n\n" +
+            `\`❌\` × Możesz wystawić następnego legit-repa za \`${humanizeMs(remaining)}\`!`
+          );
+        message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
         return;
       }
 
