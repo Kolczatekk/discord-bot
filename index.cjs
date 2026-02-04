@@ -5890,27 +5890,10 @@ async function handleModalSubmit(interaction) {
         "oczekiwana_waluta",
       );
 
-      // extract numeric (pozwól na zapisy typu 50zł / 50 zł / 50,5zł)
+      // extract numeric (pozwól na zapisy typu 50zł / 50 zł / 50,5zł), bez blokady liter
       const kwotaMatch = kwotaRaw.match(/(\d+(?:[\.,]\d+)?)/);
-      const kwotaNum = kwotaMatch ? parseFloat(kwotaMatch[1].replace(',', '.')) : NaN;
-
-      if (Number.isNaN(kwotaNum) || kwotaNum <= 0) {
-        await interaction.reply({
-          content: "> `❌` × **Nieprawidłowa** kwota — wpisz proszę liczbę, np. `50zł` lub `50`.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      // if too large (arbitrary safeguard)
-      if (kwotaNum > 100000) {
-        await interaction.reply({
-          content:
-            "❌ Podana kwota jest zbyt wysoka. Jeśli to pomyłka, wpisz poprawną kwotę (np. `40zł`).",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
+      let kwotaNum = kwotaMatch ? parseFloat(kwotaMatch[1].replace(',', '.')) : 0;
+      if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
 
       // routing to categories: treat >100 as 100-200+ (user requested)
       if (kwotaNum <= 20) {
