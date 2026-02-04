@@ -42,6 +42,7 @@ const opinieChannels = new Map();
 const ticketCounter = new Map();
 const fourMonthBlockList = new Map(); // guildId -> Set(userId)
 const ticketCategories = new Map();
+const legitRepCooldown = new Map(); // userId -> timestamp ostatniego poprawnego +rep
 const dropChannels = new Map(); // <-- mapa kanałów gdzie można używać /drop
 const sprawdzZaproszeniaCooldowns = new Map(); // userId -> lastTs
 const inviteTotalJoined = new Map(); // guild -> userId -> liczba wszystkich dołączeń
@@ -6718,35 +6719,63 @@ client.on(Events.MessageCreate, async (message) => {
       if (message.content.trim().startsWith("/")) return;
 
       const channel = message.channel;
-
-      // Prosta walidacja - każda wiadomość zaczynająca się od +rep jest akceptowana
       const messageContent = message.content.trim();
-      const isValidRep = messageContent.toLowerCase().startsWith('+rep');
-      
-      console.log(`[+rep] Otrzymano wiadomość: "${messageContent}"`);
+      const now = Date.now();
+      const COOLDOWN_MS = 15 * 60 * 1000; // 15 minut
+
+      // Cooldown dla autora (15 min po poprawnym +rep)
+      const lastRepTs = legitRepCooldown.get(message.author.id);
+      if (lastRepTs && now - lastRepTs < COOLDOWN_MS) {
+        const remaining = COOLDOWN_MS - (now - lastRepTs);
+        await message.delete().catch(() => null);
+        message.author.send({
+          content: `> \`❌\` × Możesz wystawić następnego legit-repa za \`${humanizeMs(remaining)}\``,
+        }).catch(() => null);
+        return;
+      }
+
+      // Wzorzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]
+      const mentionPattern = /<@!?\d+>/;
+      const repPattern = /^\+rep\s+<@!?\d+>\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
+      const hasMention = mentionPattern.test(messageContent);
+      const isValidRep = repPattern.test(messageContent);
+
+      console.log(`[+rep] Otrzymano wiadomość: "${messageContent}" | hasMention=${hasMention} | valid=${isValidRep}`);
+
+      if (!hasMention) {
+        try {
+          await message.delete();
+          const warningEmbed = new EmbedBuilder()
+            .setColor(COLOR_RED)
+            .setDescription(`• \`❗\` Oznacz poprawnie sprzedawcę!`);
+          const warnMsg = await channel.send({ embeds: [warningEmbed] });
+          setTimeout(() => warnMsg.delete().catch(() => null), 8000);
+        } catch (err) {
+          console.error("Błąd usuwania nieoznaczonego legit-rep:", err);
+        }
+        return;
+      }
 
       if (!isValidRep) {
-        // Delete invalid message and send warning
         try {
           await message.delete();
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
             .setDescription(
-              `• \`❗\` __**Stosuj się do wzoru legit checka!**__`,
+              `• \`❗\` __**Stosuj się do wzoru legit checka!**__\n+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]`,
             );
-          const warningMsg = await channel.send({
-            content: `<@${message.author.id}>`,
-            embeds: [warningEmbed],
-          });
-          setTimeout(() => warningMsg.delete().catch(() => { }), 2000);
-        } catch (delErr) {
-          console.error("Błąd usuwania nieprawidłowej wiadomości:", delErr);
+
+          const warnMsg = await channel.send({ embeds: [warningEmbed] });
+          setTimeout(() => warnMsg.delete().catch(() => null), 8000);
+        } catch (err) {
+          console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
         }
         return;
       }
 
-      // Valid +rep message - increment counter
+      // Valid +rep message - increment counter + cooldown
       legitRepCount++;
+      legitRepCooldown.set(message.author.id, now);
       console.log(`+rep otrzymany! Licznik: ${legitRepCount}`);
 
       // Sprawdź czy istnieje ticket oczekujący na +rep od tego użytkownika
@@ -6760,10 +6789,10 @@ client.on(Events.MessageCreate, async (message) => {
           if (ticketData.awaitingRep && ticketData.userId === senderId) {
             // Sprawdź czy w wiadomości +rep jest nick osoby która użyła komendy
             const expectedUsername = ticketData.commandUsername;
-            const messageContent = message.content.trim();
+            const msgContent = message.content.trim();
             
             // Sprawdź czy wiadomość zawiera oczekiwany nick
-            if (messageContent.includes(`@${expectedUsername}`)) {
+            if (msgContent.includes(`@${expectedUsername}`)) {
               console.log(`Znaleziono ticket ${channelId} - twórca ticketu ${senderId} wysłał +rep z nickiem ${expectedUsername}`);
               
               // Pobierz kanał ticketu
@@ -6771,25 +6800,17 @@ client.on(Events.MessageCreate, async (message) => {
               if (ticketChannel) {
                 // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
                 try {
-                  const closeMessage = await ticketChannel.send({
+                  await ticketChannel.send({
                     content: `✅ **Otrzymano +rep!** Ticket zostanie zamknięty za **5 sekund**...`
                   });
-                  
-                  // Zamknij ticket po 5 sekundach
                   setTimeout(async () => {
                     try {
-                      // Spróbuj zamknąć kanał
                       await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                      
-                      // Usuń z mapy oczekujących ticketów
                       pendingTicketClose.delete(channelId);
                       ticketOwners.delete(channelId);
-                      
                       console.log(`Ticket ${channelId} został zamknięty po otrzymaniu +rep`);
                     } catch (closeErr) {
                       console.error(`Błąd zamykania ticketu ${channelId}:`, closeErr);
-                      
-                      // Jeśli nie udało się zamknąć kanału, wyślij wiadomość o błędzie
                       try {
                         await ticketChannel.send({
                           content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
@@ -6799,13 +6820,12 @@ client.on(Events.MessageCreate, async (message) => {
                       }
                     }
                   }, 5000);
-                  
                 } catch (msgErr) {
                   console.error("Błąd wysyłania wiadomości o zamknięciu ticketu:", msgErr);
                 }
               }
-              
-              break; // Znaleziono ticket, nie trzeba dalej szukać
+
+              break; // znaleziono pasujący ticket
             }
           }
         }
@@ -6830,9 +6850,7 @@ client.on(Events.MessageCreate, async (message) => {
       const prevId = repLastInfoMessage.get(channel.id);
       if (prevId) {
         try {
-          const prevMsg = await channel.messages
-            .fetch(prevId)
-            .catch(() => null);
+          const prevMsg = await channel.messages.fetch(prevId).catch(() => null);
           if (prevMsg && prevMsg.deletable) {
             await prevMsg.delete().catch(() => null);
           }
@@ -10055,3 +10073,4 @@ app.get('/health', (req, res) => {
 });
 
 app.listen(3000);
+s
