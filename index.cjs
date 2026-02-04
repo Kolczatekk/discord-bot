@@ -6754,7 +6754,7 @@ client.on(Events.MessageCreate, async (message) => {
           await message.delete();
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
-            .setDescription(`• \`❗\` × __Stosuj się do wzoru legit checka!__`);
+            .setDescription(`• \`❗\` × __**Stosuj się do wzoru legit checka!**__`);
           const warnMsg = await channel.send({ embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
