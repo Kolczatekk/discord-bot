@@ -6731,7 +6731,9 @@ client.on(Events.MessageCreate, async (message) => {
         const cooldownEmbed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(
-            "🛒 New Shop × Legit-checki\n" +
+          "```\n" +
+          "🛒 New Shop × LEGIT CHECK\n" +
+          "```\n" +
             "`🛑` Stop!\n\n" +
             `\`❌\` × Możesz wystawić następnego legit-repa za \`${humanizeMs(remaining)}\`!`
           );
@@ -6752,7 +6754,7 @@ client.on(Events.MessageCreate, async (message) => {
           await message.delete();
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
-            .setDescription(`• \`❗\` Oznacz poprawnie sprzedawcę!`);
+            .setDescription(`• \`❗\` × __Stosuj się do wzoru legit checka!__`);
           const warnMsg = await channel.send({ embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
@@ -6767,7 +6769,7 @@ client.on(Events.MessageCreate, async (message) => {
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
             .setDescription(
-              `• \`❗\` __**Stosuj się do wzoru legit checka!**__\n+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]`,
+              `• \`❗\` × __**Stosuj się do wzoru legit checka!**__`,
             );
 
           const warnMsg = await channel.send({ embeds: [warningEmbed] });
