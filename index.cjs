@@ -520,7 +520,7 @@ async function saveStateToSupabase(data) {
 async function handleWezwijCommand(interaction) {
   const channel = interaction.channel;
 
-  if (!channel || channel.type !== ChannelType.GuildText) {
+  if (!channel || channel.type !== ChannelType.GuildText || !isTicketChannel(channel)) {
     await interaction.reply({
       content: "> `❌` × Użyj tej komendy na kanale ticketu.",
       flags: [MessageFlags.Ephemeral],
@@ -1406,7 +1406,7 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("wezwij")
-    .setDescription("Wezwij właściciela ticketu (DM z powiadomieniem)")
+    .setDescription("Wezwij osobe (sprzedawca)")
     .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
@@ -3299,6 +3299,19 @@ async function handleSlashCommand(interaction) {
   const { commandName } = interaction;
 
   switch (commandName) {
+    default: {
+      // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
+      const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
+      const SELLER_ROLE_ID = "1350786945944391733";
+      const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+      if (!isSeller && !publicCommands.has(commandName)) {
+        await interaction.reply({
+          content: "> `❌` × Nie masz uprawnień do tej komendy.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+    }
     case "drop":
       await handleDropCommand(interaction);
       break;
@@ -4499,90 +4512,34 @@ async function handleTicketZakonczCommand(interaction) {
     return;
   }
 
-  // Stwórz embed instrukcji w zależności od typu
-  let embed;
   const legitRepChannelId = "1449840030947217529";
-  
-  // Przygotuj wiadomość +rep
-  let repMessage;
-  switch (typ.toLowerCase()) {
-    case "zakup":
-      repMessage = `+rep @${interaction.user.username} sprzedał ${ile} ${serwer}`;
-      break;
-    case "sprzedaż":
-      repMessage = `+rep @${interaction.user.username} kupił ${ile} ${serwer}`;
-      break;
-    case "wręczył nagrodę":
-      repMessage = `+rep @${interaction.user.username} wręczył nagrodę ${ile} ${serwer}`;
-      break;
-  }
+  const repMessage = `+rep @${interaction.user.username} ${typ.toLowerCase() === "sprzedaż" ? "kupił" : typ.toLowerCase() === "zakup" ? "sprzedał" : "wręczył nagrodę"} ${ile} ${serwer}`;
 
-  switch (typ.toLowerCase()) {
-    case "zakup":
-      embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE) // 🔵 niebieski
-        .setTitle("😎 DZIĘKUJEMY ZA ZAKUP W NASZYM SKLEPIE! ❤️")
-        .setDescription(
-          `Aby zakończyć ticket, wyślij poniższą wiadomość na kanał\n<#${legitRepChannelId}>\n\n` +
-          `\`\`\`\n${repMessage}\n\`\`\``
-        )
-        .setImage("attachment://standard_5.gif");
-      break;
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setTitle("✅ New Shop × WYSTAW LEGIT CHECKA")
+    .setDescription(
+      "💎 × Dziękujemy za korzystanie z naszych usług!\n" +
+      `${""}
+` +
+      `✅ × Prosimy o wystawienie legit checka na: <#${legitRepChannelId}>\n` +
+      `📋 × Wzór do skopiowania znajduje się poniżej.`
+    )
+    .addFields({
+      name: "📋 × Wzór do skopiowania:",
+      value: `\`\`\`\n${repMessage}\n\`\`\``
+    })
+    .addFields({
+      name: "❗ × Ważne",
+      value: "Twój ticket zostanie zamknięty po wystawieniu legit checka!"
+    })
+    .setImage("attachment://standard_5.gif");
 
-    case "sprzedaż":
-      embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE) // 🔵 niebieski
-        .setTitle("💪 DZIĘKUJEMY ZA SPRZEDAŻ W NASZYM SKLEPIE! ❤️")
-        .setDescription(
-          `Aby zamknąć ten ticket wyślij wiadomość +rep na kanał \n<#${legitRepChannelId}>\n\n` +
-          `\`\`\`\n${repMessage}\n\`\`\``
-        )
-        .setImage("attachment://standard_5.gif");
-      break;
-
-    case "wręczył nagrodę":
-      embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE) // 🔵 niebieski
-        .setTitle("💰 NAGRODA ZOSTAŁA NADANA ❤️")
-        .setDescription(
-          `Aby zakończyć ticket, wyślij poniższą wiadomość na kanał\n<#${legitRepChannelId}>\n\n` +
-          `\`\`\`\n${repMessage}\n\`\`\``
-        )
-        .setImage("attachment://standard_5.gif");
-      
-      // Dodaj informację o brakujących zaproszeniach dla typu "wręczył nagrodę"
-      try {
-        const guildId = interaction.guildId;
-        const gMap = inviteCounts.get(guildId) || new Map();
-        const userInvites = gMap.get(ticketOwnerId) || 0;
-        const requiredInvites = 10; // zakładam 10 zaproszeń na nagrodę
-        const missing = Math.max(0, requiredInvites - userInvites);
-        
-        if (missing > 0) {
-          embed.addFields({
-            name: "ℹ️ Informacja o zaproszeniach",
-            value: `Brakuje ci **${missing}** zaproszeń, aby otrzymać kolejną nagrodę 50k$.`
-          });
-        }
-      } catch (e) {
-        console.error("Błąd sprawdzania zaproszeń:", e);
-      }
-      break;
-
-    default:
-      await interaction.followUp({
-        content: "> `❌` × **Nieprawidłowy** typ. Wybierz: **zakup**, **sprzedaż** lub **wręczył nagrodę**.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-  }
-
-  // Wyślij jedną wiadomość z pingiem, embedem i +rep w obu miejscach
   const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
   const gifAttachment = new AttachmentBuilder(gifPath, { name: "standard_5.gif" });
-  
+
   await interaction.reply({
-    content: `<@${ticketOwnerId}>\n\n\`\`\`\n${repMessage}\n\`\`\``,
+    content: `<@${ticketOwnerId}>\n${repMessage}`,
     embeds: [embed],
     files: [gifAttachment]
   });
@@ -4593,6 +4550,7 @@ async function handleTicketZakonczCommand(interaction) {
     commandUserId: interaction.user.id, // osoba która użyła komendy
     commandUsername: interaction.user.username, // nick osoby która użyła komendy
     awaitingRep: true,
+    legitRepChannelId,
     ts: Date.now()
   });
 
@@ -6820,7 +6778,6 @@ client.on(Events.MessageCreate, async (message) => {
             `<a:arrow:1469026659645522181> **__Stop!__**\n` +
             `<a:arrow:1469026659645522181> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
           )
-          .setFooter({ text: "LIMIT LEGIT REPA" })
           .setTimestamp();
         message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
         return;
@@ -6876,19 +6833,23 @@ client.on(Events.MessageCreate, async (message) => {
         console.log(`[+rep] Sprawdzam tickety oczekujące na +rep od użytkownika ${senderId}`);
         
         // Przeszukaj wszystkie tickety oczekujące na +rep
-        for (const [channelId, ticketData] of pendingTicketClose.entries()) {
-          console.log(`[+rep] Sprawdzam ticket ${channelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
-          if (ticketData.awaitingRep && ticketData.userId === senderId) {
+        for (const [ticketChannelId, ticketData] of pendingTicketClose.entries()) {
+          console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
+          if (
+            ticketData.awaitingRep &&
+            ticketData.userId === senderId &&
+            channel.id === ticketData.legitRepChannelId
+          ) {
             // Sprawdź czy w wiadomości +rep jest nick osoby która użyła komendy
             const expectedUsername = ticketData.commandUsername;
             const msgContent = message.content.trim();
             
             // Sprawdź czy wiadomość zawiera oczekiwany nick
             if (msgContent.includes(`@${expectedUsername}`)) {
-              console.log(`Znaleziono ticket ${channelId} - twórca ticketu ${senderId} wysłał +rep z nickiem ${expectedUsername}`);
+              console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep z nickiem ${expectedUsername}`);
               
               // Pobierz kanał ticketu
-              const ticketChannel = await client.channels.fetch(channelId).catch(() => null);
+              const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
                 // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
                 try {
@@ -6898,11 +6859,11 @@ client.on(Events.MessageCreate, async (message) => {
                   setTimeout(async () => {
                     try {
                       await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                      pendingTicketClose.delete(channelId);
-                      ticketOwners.delete(channelId);
-                      console.log(`Ticket ${channelId} został zamknięty po otrzymaniu +rep`);
+                      pendingTicketClose.delete(ticketChannelId);
+                      ticketOwners.delete(ticketChannelId);
+                      console.log(`Ticket ${ticketChannelId} został zamknięty po otrzymaniu +rep`);
                     } catch (closeErr) {
-                      console.error(`Błąd zamykania ticketu ${channelId}:`, closeErr);
+                      console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
                       try {
                         await ticketChannel.send({
                           content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
