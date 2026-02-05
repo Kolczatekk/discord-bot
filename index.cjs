@@ -9932,6 +9932,46 @@ async function checkBotStatus() {
   };
 }
 
+// Szybka weryfikacja tokena przed logowaniem (REST /users/@me)
+async function validateBotToken() {
+  return new Promise((resolve) => {
+    try {
+      const req = https.request({
+        method: 'GET',
+        hostname: 'discord.com',
+        path: '/api/v10/users/@me',
+        headers: {
+          Authorization: `Bot ${process.env.BOT_TOKEN}`,
+        },
+      }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => {
+          console.log(`[TOKEN_CHECK] status=${res.statusCode}`);
+          if (body) console.log(`[TOKEN_CHECK] body=${body.slice(0, 200)}`);
+          resolve(res.statusCode);
+        });
+      });
+
+      req.on('error', (err) => {
+        console.error('[TOKEN_CHECK] error:', err.message);
+        resolve(null);
+      });
+
+      req.setTimeout(5000, () => {
+        console.error('[TOKEN_CHECK] timeout');
+        req.destroy();
+        resolve(null);
+      });
+
+      req.end();
+    } catch (err) {
+      console.error('[TOKEN_CHECK] unexpected error:', err.message);
+      resolve(null);
+    }
+  });
+}
+
 // 8. Komenda statusu (opcjonalnie - można dodać do slash commands)
 async function sendStatusReport(channel) {
   const status = await checkBotStatus();
@@ -10059,7 +10099,7 @@ async function loginWithRetry(maxRetries = 5) {
 }
 
 // Start login
-loginWithRetry();
+validateBotToken().finally(() => loginWithRetry());
 
 const express = require('express');
 const app = express();
