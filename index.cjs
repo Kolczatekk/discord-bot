@@ -1369,6 +1369,12 @@ const commands = [
           { name: "wszystko", value: "all" }
         ),
     )
+    .addUserOption((option) =>
+      option
+        .setName("kto")
+        .setDescription("Użytkownik do resetu (domyślnie Ty)")
+        .setRequired(false)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // NEW helper admin commands for claiming/unclaiming
@@ -7670,31 +7676,33 @@ async function handleZresetujCzasCommand(interaction) {
 
   try {
     const what = interaction.options.getString("co");
+    const targetUser = interaction.options.getUser("kto") || interaction.user;
+    const targetId = targetUser.id;
     const targets = [];
     if (what === "drop" || what === "all") {
       targets.push("/drop");
-      dropCooldowns.clear();
+      dropCooldowns.delete(targetId);
     }
     if (what === "opinia" || what === "all") {
       targets.push("/opinia");
-      opinionCooldowns.clear();
+      opinionCooldowns.delete(targetId);
     }
     if (what === "zaproszenia" || what === "all") {
       targets.push("/sprawdz-zaproszenia");
-      sprawdzZaproszeniaCooldowns.clear();
+      sprawdzZaproszeniaCooldowns.delete(targetId);
     }
     if (what === "rep" || what === "all") {
       targets.push("+rep");
-      legitRepCooldown.clear();
+      legitRepCooldown.delete(targetId);
     }
 
-    infoCooldowns.clear(); // zawsze resetuj wewnętrzne info
+    infoCooldowns.delete(targetId); // reset internal info cooldown for target
 
     await interaction.reply({
-      content: `✅ Zresetowano czas oczekiwania dla: ${targets.join(', ') || 'brak'}.`,
+      content: `✅ Zresetowano czas oczekiwania (${targets.join(', ') || 'brak'}) dla <@${targetId}>.`,
       flags: [MessageFlags.Ephemeral],
     });
-    console.log(`[zco] ${interaction.user.tag} zresetował cooldowny: ${targets.join(', ')}`);
+    console.log(`[zco] ${interaction.user.tag} zresetował cooldowny: ${targets.join(', ')} dla ${targetUser.tag}`);
   } catch (err) {
     console.error("[zco] Błąd:", err);
     await interaction.reply({
