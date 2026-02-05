@@ -1195,6 +1195,13 @@ const commands = [
           { name: "Inny powód", value: "Inny powód" }
         )
     )
+    .addStringOption((option) =>
+      option
+        .setName("powod_custom")
+        .setDescription("Własny powód zamknięcia")
+        .setRequired(false)
+        .setMaxLength(200)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("legit-rep-ustaw")
@@ -2692,7 +2699,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "odbior-nagrody";
       ticketTypeLabel = "NAGRODA ZA ZAPROSZENIA";
-      formInfo = `> ➖ × **Kod:** \`${enteredCode}\`\n> ➖ × **Nagroda:** \`${codeData.reward || "Brak"}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.reward || "Brak"}\``;
       break;
     }
     case "modal_konkurs_odbior": {
@@ -2701,7 +2708,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "konkurs-nagrody";
       ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> ➖ × **Informacje:** \`${info}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -2710,7 +2717,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "INNE";
-      formInfo = `> ➖ × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -2805,9 +2812,9 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## 🛒 NEW SHOP × ${ticketTypeLabel}\n\n` +
         `### ・ 👤 × Informacje o kliencie:\n` +
-        `> ➖ **× Ping:** <@${user.id}>\n` +
-        `> ➖ **× Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> ➖ **× ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> **× Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> **× ID:** \`${user.id}\`\n` +
         `### ・ 📋 × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -3923,7 +3930,11 @@ async function handleSendMessageCommand(interaction) {
 
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
-    const content = contentRaw.replace(/:arrow:/gi, '<a:arrowwhite:1469100658606211233>');
+    const arrowEmoji =
+      interaction.guild?.emojis?.cache?.get("1469100658606211233")
+        ? '<a:arrowwhite:1469100658606211233>'
+        : '➡️';
+    const content = contentRaw.replace(/:arrow:/gi, arrowEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
@@ -4568,8 +4579,9 @@ async function handleTicketZakonczCommand(interaction) {
       "✅ New Shop × WYSTAW LEGIT CHECK\n" +
       "```\n" +
       `${arrowEmoji} **${thankLine}**\n\n` +
-      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał** <#${legitRepChannelId}>\n\n` +
-      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
+      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
+      `📋 **Wzór do skopiowania:**\n\`${repMessage}\`\n\n` +
+      `${arrowEmoji} **Po wysłaniu +rep, ticket zostanie automatycznie zamknięty.**`,
     )
     .setImage("attachment://standard_5.gif");
 
@@ -4640,7 +4652,9 @@ async function handleZamknijZPowodemCommand(interaction) {
   }
 
   // Pobierz powód
-  const powod = interaction.options.getString("powod");
+  const powodPreset = interaction.options.getString("powod");
+  const powodCustom = (interaction.options.getString("powod_custom") || "").trim();
+  const powod = powodCustom || powodPreset;
 
   // Pobierz właściciela ticketu
   const ticketData = ticketOwners.get(channel.id);
@@ -4663,7 +4677,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         "```\n" +
         "🎫 New Shop × TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **twój ticket został zamknięty z powodu:**\n${powod}`
+        `${arrowEmoji} **twój ticket został zamknięty z powodu:**\n> **${powod}**`
       )
       .setTimestamp();
 
@@ -6024,10 +6038,10 @@ async function handleModalSubmit(interaction) {
       ticketTopic = `Zakup na serwerze: ${serwer}`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
 
-      formInfo = `> \`➖\` × **Serwer:** \`${serwer}\`\n` +
-        `> \`➖\` × **Kwota:** \`${kwotaNum}zł\`\n` +
-        `> \`➖\` × **Metoda płatności:** \`${platnosc}\`\n` +
-        `> \`➖\` × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${platnosc}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
       break;
     }
     case "modal_sprzedaz": {
@@ -6038,7 +6052,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
       ticketTypeLabel = "SPRZEDAŻ";
-      formInfo = `> \`➖\` × **Co chce sprzedać:** \`${co}\`\n> \`➖\` × **Serwer:** \`${serwer}\`\n> \`➖\` × **Oczekiwana kwota:** \`${ile}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${co}\`\n> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n> <a:arrowwhite:1469100658606211233> × **Oczekiwana kwota:** \`${ile}\``;
       break;
     }
     case "modal_odbior": {
@@ -6124,10 +6138,10 @@ async function handleModalSubmit(interaction) {
         ? Math.floor(codeData.expiresAt / 1000)
         : null;
       const expiryLine = expiryTs
-        ? `\n> \`➖\` × **Kod wygasa za:** <t:${expiryTs}:R>`
+        ? `\n> <a:arrowwhite:1469100658606211233> × **Kod wygasa za:** <t:${expiryTs}:R>`
         : "";
 
-      const formInfo = `> \`➖\` × **Kod:** \`${enteredCode}\`\n> \`➖\` × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
+      const formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
 
       try {
         let parentToUse = categoryId;
@@ -6175,9 +6189,9 @@ async function handleModalSubmit(interaction) {
           .setDescription(
             `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> \`➖\` **× Ping:** <@${user.id}>\n` +
-            `> \`➖\` × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-            `> \`➖\` × **ID:** \`${user.id}\`\n` +
+            `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+            `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+            `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
             `### ・ \`📋\` × Informacje z formularza:\n` +
             `${formInfo}`,
           )
@@ -6398,9 +6412,9 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> \`➖\` **× Ping:** <@${user.id}>\n` +
-        `> \`➖\` × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> \`➖\` × **ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -6922,9 +6936,10 @@ client.on(Events.MessageCreate, async (message) => {
               if (ticketChannel) {
                 // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
                 try {
-                  await ticketChannel.send({
-                    content: `> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**`
-                  });
+                  const noticeEmbed = new EmbedBuilder()
+                    .setColor(COLOR_BLUE)
+                    .setDescription("> `ℹ️` × **Ticket zostanie zamknięty w ciągu 5 sekund...**");
+                  await ticketChannel.send({ embeds: [noticeEmbed] });
                   setTimeout(async () => {
                     try {
                       await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
@@ -6958,9 +6973,10 @@ client.on(Events.MessageCreate, async (message) => {
             const ticketChannel = await client.channels.fetch(chId).catch(() => null);
             if (!ticketChannel) continue;
             try {
-              await ticketChannel.send({
-                content: `> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**`
-              });
+              const noticeEmbed = new EmbedBuilder()
+                .setColor(COLOR_BLUE)
+                .setDescription("> `ℹ️` × **Ticket zostanie zamknięty w ciągu 5 sekund...**");
+              await ticketChannel.send({ embeds: [noticeEmbed] });
               setTimeout(async () => {
                 try {
                   await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
