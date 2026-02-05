@@ -3897,7 +3897,7 @@ async function handleSendMessageCommand(interaction) {
 
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
-    const content = contentRaw.replace(/:arrow:/gi, '<a:arrow:1469026659645522181>');
+    const content = contentRaw.replace(/:arrowx:/gi, '<a:arrow:1469026659645522181>');
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
