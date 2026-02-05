@@ -3896,7 +3896,8 @@ async function handleSendMessageCommand(interaction) {
   });
 
   collector.on("collect", async (msg) => {
-    const content = (msg.content || "").trim();
+    const contentRaw = (msg.content || "").trim();
+    const content = contentRaw.replace(/:arrow:/gi, '<a:arrow:1469026659645522181>');
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
@@ -4521,7 +4522,7 @@ async function handleTicketZakonczCommand(interaction) {
 
   const legitRepChannelId = "1449840030947217529";
   const arrowEmoji = '<a:arrow:1469026659645522181>';
-  const repMessage = `+rep <@${interaction.user.id}> ${typ.toLowerCase() === "sprzedaż" ? "kupił" : typ.toLowerCase() === "zakup" ? "sprzedał" : "wręczył nagrodę"} ${ile} ${serwer}`;
+  const repMessage = `+rep @${interaction.user.username} ${typ.toLowerCase() === "sprzedaż" ? "kupił" : typ.toLowerCase() === "zakup" ? "sprzedał" : "wręczył nagrodę"} ${ile} ${serwer}`;
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
@@ -4538,13 +4539,19 @@ async function handleTicketZakonczCommand(interaction) {
   const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
   const gifAttachment = new AttachmentBuilder(gifPath, { name: "standard_5.gif" });
 
-  // Wyślij embed (bez +rep) jako pierwszą wiadomość, a wzór +rep jako drugą w tej samej sekundzie
+  // Ephemeral potwierdzenie dla sprzedawcy
   await interaction.reply({
+    content: "`✅` × Poprawnie użyto komendy ticket zakończ.",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  // Wyślij embed jako zwykłą wiadomość (bez reply) i zaraz pod nim wzór +rep
+  await interaction.channel.send({
     embeds: [embed],
     files: [gifAttachment]
   });
 
-  await interaction.followUp({
+  await interaction.channel.send({
     content: repMessage,
   });
 
@@ -6798,8 +6805,8 @@ client.on(Events.MessageCreate, async (message) => {
       }
 
       // Wzorzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]
-      const mentionPattern = /<@!?\d+>/;
-      const repPattern = /^\+rep\s+<@!?\d+>\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
+      const mentionPattern = /<@!?\d+>|@\S+/;
+      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
       const hasMention = mentionPattern.test(messageContent);
       const isValidRep = repPattern.test(messageContent);
 
