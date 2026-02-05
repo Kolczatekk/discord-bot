@@ -9833,12 +9833,20 @@ setInterval(async () => {
   const webhookUrl = process.env.UPTIME_WEBHOOK;
   if (!webhookUrl) return;
 
+  const monitorUrl = process.env.MONITOR_HTTP_URL || process.env.RENDER_EXTERNAL_URL;
+  if (!monitorUrl) {
+    console.warn('[MONITOR_HTTP] Pomijam — brak MONITOR_HTTP_URL/RENDER_EXTERNAL_URL');
+    return;
+  }
+
   try {
     const startTime = Date.now();
-    
+    const parsed = new URL(monitorUrl);
+
     const options = {
-      hostname: 'bot-discord-hixl.onrender.com',
-      path: '/',
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      path: parsed.pathname || '/',
       method: 'GET'
     };
 
@@ -9983,31 +9991,48 @@ try {
   console.error("[WS_TEST] Błąd tworzenia WebSocket:", err.message);
 }
 
-// Prosta funkcja retry
-async function loginWithRetry(maxRetries = 3) {
+// Prosta funkcja retry z backoffem i obsługą 429 + diagnostyka
+async function loginWithRetry(maxRetries = 5) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      console.log(`[LOGIN] Próba ${i + 1}/${maxRetries}...`);
-      
-      // Dodaj timeout do login
-      const loginPromise = client.login(process.env.BOT_TOKEN);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Login timeout po 20 sekundach')), 20000);
-      });
-      
-      await Promise.race([loginPromise, timeoutPromise]);
+      const attempt = i + 1;
+      console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
+
+      const slowLoginWarning = setTimeout(() => {
+        console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
+      }, 30000);
+
+      const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
+
+      await Promise.race([client.login(process.env.BOT_TOKEN), hardTimeout]);
+
+      clearTimeout(slowLoginWarning);
+
       console.log("[LOGIN] Sukces! Bot połączony z Discord.");
       return;
     } catch (err) {
-      console.error(`[LOGIN] Błąd próby ${i + 1}:`, err.message);
+      const is429 = err?.code === 429 || /429/.test(err?.message || "");
+      const retryAfterHeader = Number(err?.data?.retry_after || err?.retry_after || 0) * 1000;
+      const backoff = is429 ? Math.max(retryAfterHeader, 30000) : 10000 * (i + 1);
+
+      console.error(`[LOGIN] Błąd próby ${i + 1}:`, err?.message || err);
+      if (err?.code) console.error(`[LOGIN] err.code=${err.code}`);
+      if (err?.status) console.error(`[LOGIN] err.status=${err.status}`);
+      if (err?.data?.retry_after) console.error(`[LOGIN] retry_after=${err.data.retry_after}`);
+
+      if (err?.name === 'DiscordAPIError' && err?.rawError) {
+        console.error('[LOGIN] rawError:', err.rawError);
+      }
+
       if (i < maxRetries - 1) {
-        console.log(`[LOGIN] Czekam 10 sekund przed kolejną próbą...`);
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log(`[LOGIN] Czekam ${Math.round(backoff / 1000)}s przed kolejną próbą...`);
+        await new Promise(resolve => setTimeout(resolve, backoff));
       }
     }
   }
+
   console.error("[LOGIN] Wszystkie próby nieudane!");
-  
+
   // Sprawdź połączenie sieciowe
   console.log("[NETWORK] Sprawdzam połączenie z Discord API...");
   try {
@@ -10079,4 +10104,7 @@ app.get('/health', (req, res) => {
   res.status(isHealthy ? 200 : 503).json(status, null, 2);
 });
 
-app.listen(3000);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`[HTTP] Status endpoint nasłuchuje na porcie ${PORT}`);
+});
