@@ -4542,7 +4542,7 @@ async function handleTicketZakonczCommand(interaction) {
       "✅ New Shop × WYSTAW LEGIT CHECK\n" +
       "```\n" +
       `${arrowEmoji} **${thankLine}**\n\n` +
-      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał** (<#${legitRepChannelId}>)\n\n` +
+      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał** <#${legitRepChannelId}>\n\n` +
       `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
     )
     .setImage("attachment://standard_5.gif");
