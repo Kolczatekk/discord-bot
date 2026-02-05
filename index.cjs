@@ -449,6 +449,7 @@ function buildPersistentStateData() {
 
   const data = {
     legitRepCount,
+    legitRepCooldown: Object.fromEntries(legitRepCooldown),
     ticketCounter: Object.fromEntries(ticketCounter),
     ticketOwners: Object.fromEntries(ticketOwners),
     inviteCounts: mapOfMapsToPlainObject(inviteCounts),
@@ -666,6 +667,14 @@ async function loadPersistentState() {
       if (typeof botStateData.legitRepCount === "number") {
         legitRepCount = botStateData.legitRepCount;
       }
+
+    if (botStateData.legitRepCooldown && typeof botStateData.legitRepCooldown === "object") {
+      for (const [userId, ts] of Object.entries(botStateData.legitRepCooldown)) {
+        if (typeof ts === "number") {
+          legitRepCooldown.set(userId, ts);
+        }
+      }
+    }
 
     if (botStateData.ticketCounter && typeof botStateData.ticketCounter === "object") {
       for (const [guildId, value] of Object.entries(botStateData.ticketCounter)) {
@@ -6806,10 +6815,10 @@ client.on(Events.MessageCreate, async (message) => {
           .setColor(COLOR_BLUE)
           .setDescription(
             "```\n" +
-            "🚨 New Shop × LEGIT CHECK\n" +
+            "❗ New Shop × LEGIT CHECK\n" +
             "```\n" +
             `<a:arrow:1469026659645522181> **__Stop!__**\n` +
-            `<a:arrow:1469026659645522181> × Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
+            `<a:arrow:1469026659645522181> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
           )
           .setFooter({ text: "LIMIT LEGIT REPA" })
           .setTimestamp();
