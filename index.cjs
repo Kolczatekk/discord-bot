@@ -1268,11 +1268,6 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("opinia")
-    .setDescription("Wystaw opinię")
-    .setDefaultMemberPermissions(null)
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("opinia")
     .setDescription("Podziel sie opinią o naszym sklepie!")
     .addIntegerOption((option) =>
       option
