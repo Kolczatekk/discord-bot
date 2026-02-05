@@ -6805,12 +6805,14 @@ client.on(Events.MessageCreate, async (message) => {
         const cooldownEmbed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(
-          "```\n" +
-          "🛒 New Shop × LEGIT CHECK\n" +
-          "```\n" +
-            "`🛑` Stop!\n\n" +
-            `\`❌\` × Możesz wystawić następnego legit-repa za \`${humanizeMs(remaining)}\`!`
-          );
+            "```\n" +
+            "🚨 New Shop × LEGIT CHECK\n" +
+            "```\n" +
+            `<a:arrow:1469026659645522181> **__Stop!__**\n` +
+            `<a:arrow:1469026659645522181> × Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
+          )
+          .setFooter({ text: "LIMIT LEGIT REPA" })
+          .setTimestamp();
         message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
         return;
       }
