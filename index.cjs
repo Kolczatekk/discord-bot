@@ -527,8 +527,9 @@ async function handleWezwijCommand(interaction) {
     return;
   }
 
-  // Sprawdź uprawnienia (admin/sprzedawca)
-  if (!isAdminOrSeller(interaction.member)) {
+  // Sprawdź uprawnienia: tylko sprzedawca
+  const SELLER_ROLE_ID = "1350786945944391733";
+  if (!interaction.member?.roles?.cache?.has(SELLER_ROLE_ID)) {
     await interaction.reply({
       content: "> `❌` × Brak uprawnień do użycia tej komendy.",
       flags: [MessageFlags.Ephemeral],
@@ -548,7 +549,8 @@ async function handleWezwijCommand(interaction) {
   }
 
   const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
-  const arrowEmoji = '<:arrow:1469026659645522181>';
+  // użyj formatu animowanego (a:...) jeśli emoji jest GIFem
+  const arrowEmoji = '<a:arrow:1469026659645522181>';
 
   try {
     const user = await client.users.fetch(ownerId);
