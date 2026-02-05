@@ -1181,7 +1181,19 @@ const commands = [
     .setDescription("Zamknij ticket z powodem (tylko właściciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
-      option.setName("powod").setDescription("Powód zamknięcia").setRequired(true)
+      option
+        .setName("powod")
+        .setDescription("Powód zamknięcia")
+        .setRequired(true)
+        .addChoices(
+          { name: "Brak odpowiedzi", value: "Brak odpowiedzi" },
+          { name: "Fake ticket", value: "Fake ticket" },
+          { name: "Próba oszustwa", value: "Próba oszustwa" },
+          { name: "Brak kultury", value: "Brak kultury" },
+          { name: "Spam", value: "Spam" },
+          { name: "Zamówienie zrealizowane", value: "Zamówienie zrealizowane" },
+          { name: "Inny powód", value: "Inny powód" }
+        )
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -4630,21 +4642,27 @@ async function handleZamknijZPowodemCommand(interaction) {
 
   try {
     // Wyślij embed do właściciela ticketu
+    const arrowEmoji = '<a:arrow:1469026659645522181>';
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("**TICKET ZOSTAŁ ZAMKNIĘTY**")
-      .setDescription(`\`powód:\` **${powod}**`)
+      .setDescription(
+        "```\n" +
+        "🎫 New Shop × TICKETY\n" +
+        "```\n" +
+        `${arrowEmoji} **twój ticket został zamknięty** z **__powodu:__** \`${powod}\``
+      )
       .setTimestamp();
 
     // Wyślij DM do właściciela ticketu
     const ticketOwner = await client.users.fetch(ticketOwnerId).catch(() => null);
     if (ticketOwner) {
-      await ticketOwner.send({ embeds: [embed] });
+      await ticketOwner.send({ embeds: [embed] }).catch(() => null);
     }
 
-    // Wyślij potwierdzenie na kanał
+    // Wyślij potwierdzenie na kanał (publicznie)
     await interaction.reply({
-      content: "✅ **Ticket został zamknięty!** Właściciel otrzymał powód w wiadomości prywatnej."
+      content: `> \`✅\` × Ticket zamknięty z powodem: **${powod}**`,
+      flags: [MessageFlags.Ephemeral],
     });
 
     // Zamknij ticket po 2 sekundach
