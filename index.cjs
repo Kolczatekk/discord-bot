@@ -3897,7 +3897,7 @@ async function handleSendMessageCommand(interaction) {
 
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
-    const content = contentRaw.replace(/:arrowx:/gi, '<a:arrow:1469026659645522181>');
+    const content = contentRaw.replace(/:arrow:/gi, '<a:arrow:1469026659645522181>');
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
@@ -4522,7 +4522,18 @@ async function handleTicketZakonczCommand(interaction) {
 
   const legitRepChannelId = "1449840030947217529";
   const arrowEmoji = '<a:arrow:1469026659645522181>';
-  const repMessage = `+rep @${interaction.user.username} ${typ.toLowerCase() === "sprzedaż" ? "kupił" : typ.toLowerCase() === "zakup" ? "sprzedał" : "wręczył nagrodę"} ${ile} ${serwer}`;
+  let thankLine = "Dziękujemy za zakup w naszym sklepie";
+  let repVerb = "sprzedał";
+  const typLower = typ.toLowerCase();
+  if (typLower === "sprzedaż") {
+    thankLine = "Dziękujemy za sprzedaż w naszym sklepie";
+    repVerb = "kupił";
+  } else if (typLower === "wręczył nagrodę") {
+    thankLine = "Nagroda została nadana";
+    repVerb = "wręczył nagrodę";
+  }
+
+  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${ile} ${serwer}`;
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
@@ -4530,7 +4541,7 @@ async function handleTicketZakonczCommand(interaction) {
       "```\n" +
       "✅ New Shop × WYSTAW LEGIT CHECK\n" +
       "```\n" +
-      `${arrowEmoji} **Dziękujemy za zakup w naszym sklepie**\n\n` +
+      `${arrowEmoji} **${thankLine}**\n\n` +
       `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał** (<#${legitRepChannelId}>)\n\n` +
       `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
     )
@@ -4545,7 +4556,9 @@ async function handleTicketZakonczCommand(interaction) {
     flags: [MessageFlags.Ephemeral],
   });
 
-  // Wyślij embed jako zwykłą wiadomość (bez reply) i zaraz pod nim wzór +rep
+  // Wyślij ping właściciela + embed + wzór (bez reply na slash)
+  await interaction.channel.send({ content: `<@${ticketOwnerId}>` });
+
   await interaction.channel.send({
     embeds: [embed],
     files: [gifAttachment]
@@ -6904,6 +6917,37 @@ client.on(Events.MessageCreate, async (message) => {
 
               break; // znaleziono pasujący ticket
             }
+          }
+        }
+
+        // Fallback: jeśli użytkownik ma otwarty ticket (ticketOwners), zamknij po +rep niezależnie od pendingTicketClose
+        for (const [chId, tData] of ticketOwners.entries()) {
+          if (tData?.userId === senderId) {
+            const ticketChannel = await client.channels.fetch(chId).catch(() => null);
+            if (!ticketChannel) continue;
+            try {
+              await ticketChannel.send({
+                content: `✅ **Otrzymano +rep!** Ticket zostanie zamknięty za **5 sekund**...`
+              });
+              setTimeout(async () => {
+                try {
+                  await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
+                  pendingTicketClose.delete(chId);
+                  ticketOwners.delete(chId);
+                  console.log(`Ticket ${chId} został zamknięty po +rep (fallback)`);
+                } catch (closeErr) {
+                  console.error(`Błąd zamykania ticketu ${chId} (fallback):`, closeErr);
+                  try {
+                    await ticketChannel.send({
+                      content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
+                    });
+                  } catch {}
+                }
+              }, 5000);
+            } catch (msgErr) {
+              console.error("Błąd wysyłania info o zamknięciu (fallback):", msgErr);
+            }
+            break;
           }
         }
       } catch (ticketErr) {
