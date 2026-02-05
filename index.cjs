@@ -1179,7 +1179,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zamknij-z-powodem")
     .setDescription("Zamknij ticket z powodem (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
       option.setName("powod").setDescription("Powód zamknięcia").setRequired(true)
     )
@@ -1187,7 +1187,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("legit-rep-ustaw")
     .setDescription("Ustaw licznik legit repów i zmień nazwę kanału")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((option) =>
       option
         .setName("ile")
@@ -1204,7 +1204,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zaproszeniastats")
     .setDescription("Edytuj statystyki zaproszeń")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((o) =>
       o
         .setName("kategoria")
@@ -1247,12 +1247,12 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zamknij")
     .setDescription("Zamknij ticket")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelweryfikacja")
     .setDescription("Wyślij panel weryfikacji na kanał")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("opinia")
@@ -1310,11 +1310,11 @@ const commands = [
     .toJSON(),
   // NEW: /wyczysckanal command
   new SlashCommandBuilder()
-    .setName("wyczysckanal")
+    .setName("wyczysc")
     .setDescription(
       "Wyczyść wiadomości na kanale (wszystko / ilosc-wiadomosci)",
     )
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
       option
         .setName("tryb")
@@ -1338,30 +1338,30 @@ const commands = [
   new SlashCommandBuilder()
     .setName("resetlc")
     .setDescription("Reset liczby legitchecków do zera")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
   new SlashCommandBuilder()
     .setName("zresetujczasoczekiwania")
     .setDescription("Resetuje czasy oczekiwania dla /drop i /opinia")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // NEW helper admin commands for claiming/unclaiming
   new SlashCommandBuilder()
     .setName("przejmij")
     .setDescription("Przejmij aktualny ticket (sprzedawca)")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("odprzejmij")
     .setDescription("Zwolnij aktualny ticket (sprzedawca)")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // UPDATED: embed (interactive flow)
   new SlashCommandBuilder()
     .setName("embed")
     .setDescription("Wyślij wiadomość przez bota (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addChannelOption((o) =>
       o
         .setName("kanal")
@@ -1380,7 +1380,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczenie")
     .setDescription("Dodaj kwote do rozliczeń (sprzedawca)")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((option) =>
       option
         .setName("kwota")
@@ -1397,7 +1397,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczeniazaplacil")
     .setDescription("Oznacz rozliczenie jako zapłacone (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
@@ -1423,7 +1423,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczenieustaw")
     .setDescription("Ustaw tygodniową sumę rozliczenia dla użytkownika (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
@@ -1451,16 +1451,16 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("stworzkonkurs")
+    .setName("utworz-konkurs")
     .setDescription(
       "Utwórz konkurs z przyciskiem do udziału i losowaniem zwycięzców",
     )
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("end-giveaways")
     .setDescription("Zakończ wszystkie aktywne konkursy (tylko właściciel serwera)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
 ];
 
