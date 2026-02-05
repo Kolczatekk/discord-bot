@@ -4677,7 +4677,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         "```\n" +
         "🎫 New Shop × TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **twój ticket został zamknięty z powodu:**\n> **${powod}**`
+        `${arrowEmoji} **twój ticket został zamknięty z powodu:**\n>\`➖\` **${powod}**`
       )
       .setTimestamp();
 
@@ -6264,7 +6264,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "konkurs-nagrody";
       ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> \`➖\` × **Informacje:** \`${info}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -6273,7 +6273,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "INNE";
-      formInfo = `> \`➖\` × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
