@@ -4580,8 +4580,7 @@ async function handleTicketZakonczCommand(interaction) {
       "```\n" +
       `${arrowEmoji} **${thankLine}**\n\n` +
       `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
-      `📋 **Wzór do skopiowania:**\n\`${repMessage}\`\n\n` +
-      `${arrowEmoji} **Po wysłaniu +rep, ticket zostanie automatycznie zamknięty.**`,
+      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``,
     )
     .setImage("attachment://standard_5.gif");
 
