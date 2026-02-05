@@ -551,7 +551,7 @@ async function handleWezwijCommand(interaction) {
 
   const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
   // użyj formatu animowanego (a:...) jeśli emoji jest GIFem
-  const arrowEmoji = '<a:arrow:1469026659645522181>';
+  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
 
   try {
     const user = await client.users.fetch(ownerId);
@@ -3923,7 +3923,7 @@ async function handleSendMessageCommand(interaction) {
 
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
-    const content = contentRaw.replace(/:arrow:/gi, '<a:arrow:1469026659645522181>');
+    const content = contentRaw.replace(/:arrow:/gi, '<a:arrowwhite:1469100658606211233>');
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
@@ -4269,8 +4269,8 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       "```\n" +
       "🛒 New Shop × WERYFIKACJA\n" +
       "```\n" +
-      `<a:arrow:1469026659645522181> Przejdź prostą zagadkę matematyczną\n` +
-      `<a:arrow:1469026659645522181> aby otrzymać rolę **klient.**`,
+      `<a:arrowwhite:1469100658606211233> Przejdź prostą zagadkę matematyczną\n` +
+      `<a:arrowwhite:1469100658606211233> aby otrzymać rolę **klient.**`,
     )
     // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
@@ -4547,7 +4547,7 @@ async function handleTicketZakonczCommand(interaction) {
   }
 
   const legitRepChannelId = "1449840030947217529";
-  const arrowEmoji = '<a:arrow:1469026659645522181>';
+  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
   let thankLine = "Dziękujemy za zakup w naszym sklepie";
   let repVerb = "sprzedał";
   const typLower = typ.toLowerCase();
@@ -4656,7 +4656,7 @@ async function handleZamknijZPowodemCommand(interaction) {
 
   try {
     // Wyślij embed do właściciela ticketu
-    const arrowEmoji = '<a:arrow:1469026659645522181>';
+    const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(
@@ -6839,10 +6839,10 @@ client.on(Events.MessageCreate, async (message) => {
           .setColor(COLOR_BLUE)
           .setDescription(
             "```\n" +
-            "❗ New Shop × LEGIT CHECK\n" +
+            "✅ New Shop × LEGIT CHECK\n" +
             "```\n" +
-            `<a:arrow:1469026659645522181> **__Stop!__**\n` +
-            `<a:arrow:1469026659645522181> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
+            `<a:arrowwhite:1469100658606211233> **__Stop!__**\n` +
+            `<a:arrowwhite:1469100658606211233> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
           )
           .setTimestamp();
         message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
