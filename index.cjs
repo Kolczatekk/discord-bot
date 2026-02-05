@@ -1354,8 +1354,21 @@ const commands = [
     .toJSON(),
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
   new SlashCommandBuilder()
-    .setName("zresetujczasoczekiwania")
-    .setDescription("Resetuje czasy oczekiwania dla /drop i /opinia")
+    .setName("zco")
+    .setDescription("Zresetuj czas oczekiwania (/drop /opinia /sprawdz-zaproszenia /+rep)")
+    .addStringOption((option) =>
+      option
+        .setName("co")
+        .setDescription("Co zresetować")
+        .setRequired(true)
+        .addChoices(
+          { name: "/drop", value: "drop" },
+          { name: "/opinia", value: "opinia" },
+          { name: "/sprawdz-zaproszenia", value: "zaproszenia" },
+          { name: "+rep", value: "rep" },
+          { name: "wszystko", value: "all" }
+        ),
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // NEW helper admin commands for claiming/unclaiming
@@ -3171,7 +3184,7 @@ const nickInput = new TextInputBuilder()
         embeds: [
           new EmbedBuilder()
             .setColor(COLOR_BLUE)
-            .setDescription("> \`ℹ️\` **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+            .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
         ]
       });
 
@@ -3373,7 +3386,7 @@ async function handleSlashCommand(interaction) {
     case "resetlc":
       await handleResetLCCommand(interaction);
       break;
-    case "zresetujczasoczekiwania":
+    case "zco":
       await handleZresetujCzasCommand(interaction);
       break;
     case "przejmij":
@@ -4457,7 +4470,7 @@ async function handleCloseTicketCommand(interaction) {
       embeds: [
         new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription("> \`ℹ️\` **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+          .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
       ]
     });
 
@@ -4649,7 +4662,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         "```\n" +
         "🎫 New Shop × TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **twój ticket został zamknięty** z **__powodu:__** \`${powod}\``
+        `${arrowEmoji} **twój ticket został zamknięty z powodu:**\n${powod}`
       )
       .setTimestamp();
 
@@ -5597,7 +5610,7 @@ async function handleModalSubmit(interaction) {
 
     if (numeric !== record.answer) {
       await interaction.reply({
-        content: "> \`❌\` **Źle! Nieprawidłowy wynik. Spróbuj jeszcze raz.**",
+        content: "> \`❌\` × **Źle! Nieprawidłowy wynik. Spróbuj jeszcze raz.**",
         flags: [MessageFlags.Ephemeral],
       });
       // remove record so they can request a new puzzle
@@ -6909,7 +6922,7 @@ client.on(Events.MessageCreate, async (message) => {
                 // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
                 try {
                   await ticketChannel.send({
-                    content: `✅ **Otrzymano +rep!** Ticket zostanie zamknięty za **5 sekund**...`
+                    content: `> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**`
                   });
                   setTimeout(async () => {
                     try {
@@ -6945,7 +6958,7 @@ client.on(Events.MessageCreate, async (message) => {
             if (!ticketChannel) continue;
             try {
               await ticketChannel.send({
-                content: `✅ **Otrzymano +rep!** Ticket zostanie zamknięty za **5 sekund**...`
+                content: `> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**`
               });
               setTimeout(async () => {
                 try {
@@ -7656,21 +7669,34 @@ async function handleZresetujCzasCommand(interaction) {
   }
 
   try {
-    // clear cooldown maps
-    dropCooldowns.clear();
-    opinionCooldowns.clear();
-    infoCooldowns.clear();
+    const what = interaction.options.getString("co");
+    const targets = [];
+    if (what === "drop" || what === "all") {
+      targets.push("/drop");
+      dropCooldowns.clear();
+    }
+    if (what === "opinia" || what === "all") {
+      targets.push("/opinia");
+      opinionCooldowns.clear();
+    }
+    if (what === "zaproszenia" || what === "all") {
+      targets.push("/sprawdz-zaproszenia");
+      sprawdzZaproszeniaCooldowns.clear();
+    }
+    if (what === "rep" || what === "all") {
+      targets.push("+rep");
+      legitRepCooldown.clear();
+    }
+
+    infoCooldowns.clear(); // zawsze resetuj wewnętrzne info
 
     await interaction.reply({
-      content:
-        "✅ Czasy oczekiwania dla /drop, /opinia oraz wewnętrznych info zostały zresetowane.",
+      content: `✅ Zresetowano czas oczekiwania dla: ${targets.join(', ') || 'brak'}.`,
       flags: [MessageFlags.Ephemeral],
     });
-    console.log(
-      `[zresetujczasoczekiwania] Użytkownik ${interaction.user.tag} zresetował cooldowny.`,
-    );
+    console.log(`[zco] ${interaction.user.tag} zresetował cooldowny: ${targets.join(', ')}`);
   } catch (err) {
-    console.error("[zresetujczasoczekiwania] Błąd:", err);
+    console.error("[zco] Błąd:", err);
     await interaction.reply({
       content: "> `❌` × **Wystąpił** błąd podczas resetowania czasów **oczekiwania**.",
       flags: [MessageFlags.Ephemeral],
