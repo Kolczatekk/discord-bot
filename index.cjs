@@ -1136,21 +1136,22 @@ const commands = [
   new SlashCommandBuilder()
     .setName("drop")
     .setDescription("Wylosuj zniżkę na zakupy w sklepie!")
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelkalkulator")
     .setDescription("Wyślij panel kalkulatora waluty na kanał")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticket-zakoncz")
     .setDescription("Użyj tej komendy jeżeli będziesz chciał zakończyć ticket (sprzedawca)")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
       option
         .setName("typ")
@@ -1252,6 +1253,11 @@ const commands = [
     .setName("panelweryfikacja")
     .setDescription("Wyślij panel weryfikacji na kanał")
     .setDefaultMemberPermissions(0)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("opinia")
+    .setDescription("Wystaw opinię")
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("opinia")
@@ -1402,17 +1408,17 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczeniezakoncz")
     .setDescription("Wyślij podsumowanie rozliczeń (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("wezwij")
     .setDescription("Wezwij osobe (sprzedawca)")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("statusbota")
     .setDescription("Pokaż szczegółowy status bota")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczenieustaw")
@@ -3304,7 +3310,8 @@ async function handleSlashCommand(interaction) {
       const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
       const SELLER_ROLE_ID = "1350786945944391733";
       const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
-      if (!isSeller && !publicCommands.has(commandName)) {
+      const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+      if (!isAdmin && !isSeller && !publicCommands.has(commandName)) {
         await interaction.reply({
           content: "> `❌` × Nie masz uprawnień do tej komendy.",
           flags: [MessageFlags.Ephemeral],
@@ -4513,35 +4520,32 @@ async function handleTicketZakonczCommand(interaction) {
   }
 
   const legitRepChannelId = "1449840030947217529";
-  const repMessage = `+rep @${interaction.user.username} ${typ.toLowerCase() === "sprzedaż" ? "kupił" : typ.toLowerCase() === "zakup" ? "sprzedał" : "wręczył nagrodę"} ${ile} ${serwer}`;
+  const arrowEmoji = '<a:arrow:1469026659645522181>';
+  const repMessage = `+rep <@${interaction.user.id}> ${typ.toLowerCase() === "sprzedaż" ? "kupił" : typ.toLowerCase() === "zakup" ? "sprzedał" : "wręczył nagrodę"} ${ile} ${serwer}`;
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
-    .setTitle("✅ New Shop × WYSTAW LEGIT CHECKA")
     .setDescription(
-      "💎 × Dziękujemy za korzystanie z naszych usług!\n" +
-      `${""}
-` +
-      `✅ × Prosimy o wystawienie legit checka na: <#${legitRepChannelId}>\n` +
-      `📋 × Wzór do skopiowania znajduje się poniżej.`
+      "```\n" +
+      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
+      "```\n" +
+      `${arrowEmoji} **Dziękujemy za zakup w naszym sklepie**\n\n` +
+      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał** (<#${legitRepChannelId}>)\n\n` +
+      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
     )
-    .addFields({
-      name: "📋 × Wzór do skopiowania:",
-      value: `\`\`\`\n${repMessage}\n\`\`\``
-    })
-    .addFields({
-      name: "❗ × Ważne",
-      value: "Twój ticket zostanie zamknięty po wystawieniu legit checka!"
-    })
     .setImage("attachment://standard_5.gif");
 
   const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
   const gifAttachment = new AttachmentBuilder(gifPath, { name: "standard_5.gif" });
 
+  // Wyślij embed (bez +rep) jako pierwszą wiadomość, a wzór +rep jako drugą w tej samej sekundzie
   await interaction.reply({
-    content: `<@${ticketOwnerId}>\n${repMessage}`,
     embeds: [embed],
     files: [gifAttachment]
+  });
+
+  await interaction.followUp({
+    content: repMessage,
   });
 
   // Zapisz informację o oczekiwaniu na +rep dla tego ticketu
@@ -4553,6 +4557,16 @@ async function handleTicketZakonczCommand(interaction) {
     legitRepChannelId,
     ts: Date.now()
   });
+
+  // Przenieś ticket do kategorii zrealizowanej
+  const ARCHIVED_CATEGORY_ID = "1469059216303198261";
+  try {
+    if (channel.parentId !== ARCHIVED_CATEGORY_ID) {
+      await channel.setParent(ARCHIVED_CATEGORY_ID, { lockPermissions: false });
+    }
+  } catch (err) {
+    console.error("Nie udało się przenieść ticketu do kategorii zrealizowanej:", err);
+  }
 
   console.log(`Ticket ${channel.id} oczekuje na +rep od użytkownika ${ticketOwnerId} (komenda użyta przez ${interaction.user.username})`);
 }
@@ -6840,13 +6854,16 @@ client.on(Events.MessageCreate, async (message) => {
             ticketData.userId === senderId &&
             channel.id === ticketData.legitRepChannelId
           ) {
-            // Sprawdź czy w wiadomości +rep jest nick osoby która użyła komendy
+            // Sprawdź czy w wiadomości +rep jest wzmianka o sprzedawcy/używającym komendę
             const expectedUsername = ticketData.commandUsername;
+            const expectedId = ticketData.commandUserId;
             const msgContent = message.content.trim();
-            
-            // Sprawdź czy wiadomość zawiera oczekiwany nick
-            if (msgContent.includes(`@${expectedUsername}`)) {
-              console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep z nickiem ${expectedUsername}`);
+
+            const mentionMatchesSeller = message.mentions.users.has(expectedId);
+            const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
+
+            if (mentionMatchesSeller || usernameIncluded) {
+              console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
               
               // Pobierz kanał ticketu
               const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
