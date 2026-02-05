@@ -515,6 +515,70 @@ async function saveStateToSupabase(data) {
   }
 }
 
+// Handler dla komendy /wezwij
+async function handleWezwijCommand(interaction) {
+  const channel = interaction.channel;
+
+  if (!channel || channel.type !== ChannelType.GuildText) {
+    await interaction.reply({
+      content: "> `❌` × Użyj tej komendy na kanale ticketu.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  // Sprawdź uprawnienia (admin/sprzedawca)
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `❌` × Brak uprawnień do użycia tej komendy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const ticketData = ticketOwners.get(channel.id);
+  const ownerId = ticketData?.userId;
+
+  if (!ownerId) {
+    await interaction.reply({
+      content: "> `❌` × Nie mogę znaleźć właściciela tego ticketu.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
+  const arrowEmoji = '<:arrow:1469026659645522181>';
+
+  try {
+    const user = await client.users.fetch(ownerId);
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+          "🚨 New Shop × JESTES WZYWANY\n" +
+        "```\n" +
+        `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
+        `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
+        `**KANAŁ:** ${channelLink}`
+      );
+
+    await user.send({ embeds: [embed] });
+
+    await interaction.reply({
+      content: `> ` + "`✅`" + ` × Wysłano wezwanie do właściciela ticketu.`,
+      flags: [MessageFlags.Ephemeral],
+    });
+  } catch (err) {
+    console.error("[wezwij] Błąd DM:", err);
+    await interaction.reply({
+      content: "> `❌` × Nie udało się wysłać wiadomości do właściciela (ma wyłączone DM lub nie znaleziono użytkownika).",
+      flags: [MessageFlags.Ephemeral],
+    });
+  }
+}
+
 async function loadStateFromSupabase() {
   try {
     const { data, error } = await supabase
@@ -1328,6 +1392,11 @@ const commands = [
     .setName("rozliczeniezakoncz")
     .setDescription("Wyślij podsumowanie rozliczeń (tylko właściciel)")
     .setDefaultMemberPermissions(0)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("wezwij")
+    .setDescription("Wezwij właściciela ticketu (DM z powiadomieniem)")
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("statusbota")
@@ -3293,6 +3362,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "rozliczenieustaw":
       await handleRozliczenieUstawCommand(interaction);
+      break;
+    case "wezwij":
+      await handleWezwijCommand(interaction);
       break;
     case "zaproszeniastats":
       await handleZaprosieniaStatsCommand(interaction);
