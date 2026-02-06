@@ -62,6 +62,8 @@ const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked }
+// Quizy do przejęcia ticketu
+const pendingClaimVerifications = new Map(); // modalId -> { channelId, userId, answer }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -5035,8 +5037,9 @@ async function showKonkursOdbiorModal(interaction) {
   await interaction.showModal(modal);
 }
 
-async function ticketClaimCommon(interaction, channelId) {
+async function ticketClaimCommon(interaction, channelId, opts = {}) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
+  const skipQuiz = opts.skipQuiz === true;
 
   if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
@@ -5050,6 +5053,32 @@ async function ticketClaimCommon(interaction, channelId) {
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
+    return;
+  }
+
+  if (isBtn && !skipQuiz) {
+    // pokaż prostą weryfikację matematyczną tylko dla przejęcia via przycisk
+    const questions = [
+      { q: "Ile to 3 × 5?", a: "15" },
+      { q: "Ile to 3 + 2?", a: "5" },
+      { q: "Ile to 7 − 3?", a: "4" },
+      { q: "Ile to 4 + 6?", a: "10" },
+    ];
+    const pick = questions[Math.floor(Math.random() * questions.length)];
+    const modalId = `claim_verify_${channelId}_${interaction.user.id}_${Date.now()}`;
+    pendingClaimVerifications.set(modalId, { channelId, userId: interaction.user.id, answer: pick.a });
+
+    const modal = new ModalBuilder()
+      .setCustomId(modalId)
+      .setTitle("Weryfikacja przejęcia ticketu");
+    const input = new TextInputBuilder()
+      .setCustomId("claim_answer")
+      .setLabel(pick.q)
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(4);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal).catch(() => null);
     return;
   }
 
@@ -5078,22 +5107,20 @@ async function ticketClaimCommon(interaction, channelId) {
   };
 
   if (ticketData.locked) {
-    await replyEphemeral(
-      "❌ Ten ticket został zablokowany do przejmowania (ustawienia/zmiana nazwy).",
-    );
+    await replyEphemeral("> `❌` × Ten ticket jest zablokowany do przejmowania (ustawienia/zmiana nazwy).");
     return;
   }
 
   if (ticketData && ticketData.claimedBy) {
     await replyEphemeral(
-      `❌ Ten ticket został już przejęty przez <@${ticketData.claimedBy}>!`,
+      `> \`❌\` × Ticket jest już przejęty przez <@${ticketData.claimedBy}>.`,
     );
     return;
   }
 
   const ch = await client.channels.fetch(channelId).catch(() => null);
   if (!ch) {
-    await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
+    await replyEphemeral("> `❌` × Nie mogę znaleźć tego kanału.");
     return;
   }
 
@@ -5180,7 +5207,7 @@ async function ticketClaimCommon(interaction, channelId) {
     }
   } catch (err) {
     console.error("Błąd przy przejmowaniu ticketu:", err);
-    await replyEphemeral("❌ Wystąpił błąd podczas przejmowania ticketu.");
+    await replyEphemeral("> `❌` × Wystąpił błąd podczas przejmowania ticketu.");
   }
 }
 
@@ -5433,6 +5460,34 @@ async function showInneModal(interaction) {
 async function handleModalSubmit(interaction) {
   const guildId = interaction.guildId;
   if (!guildId || !interaction.guild) return;
+
+  const customId = interaction.customId || "";
+
+  // Weryfikacja przejęcia ticketu (quiz)
+  if (customId.startsWith("claim_verify_")) {
+    const data = pendingClaimVerifications.get(customId);
+    if (!data || data.userId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❌` × Ta weryfikacja wygasła. Kliknij **Przejmij** ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+      return;
+    }
+
+    const answer = (interaction.fields.getTextInputValue("claim_answer") || "").trim();
+    if (answer !== data.answer) {
+      await interaction.reply({
+        content: "> `❌` × Zła odpowiedź. Spróbuj ponownie klikając **Przejmij**.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+      pendingClaimVerifications.delete(customId);
+      return;
+    }
+
+    pendingClaimVerifications.delete(customId);
+    await ticketClaimCommon(interaction, data.channelId, { skipQuiz: true });
+    return;
+  }
 
   const botName = client.user?.username || "NEWSHOP";
 
@@ -6860,135 +6915,72 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      if (!isValidRep) {
+        if (!isValidRep) {
         try {
-          await message.delete();
-          const warningEmbed = new EmbedBuilder()
-            .setColor(COLOR_RED)
-            .setDescription(
-              `• \`❗\` × __**Stosuj się do wzoru legit checka!**__`,
-            );
+          let matchedTicket = false;
 
-          const warnMsg = await channel.send({ embeds: [warningEmbed] });
-          setTimeout(() => warnMsg.delete().catch(() => null), 8000);
-        } catch (err) {
-          console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
-        }
-        return;
-      }
-
-      // Valid +rep message - increment counter + cooldown
-      legitRepCount++;
-      legitRepCooldown.set(message.author.id, now);
-      console.log(`+rep otrzymany! Licznik: ${legitRepCount}`);
-
-      // Sprawdź czy istnieje ticket oczekujący na +rep od tego użytkownika
-      try {
-        const senderId = message.author.id; // ID osoby która wysłała +rep
-        console.log(`[+rep] Sprawdzam tickety oczekujące na +rep od użytkownika ${senderId}`);
-        
-        // Przeszukaj wszystkie tickety oczekujące na +rep
-        for (const [ticketChannelId, ticketData] of pendingTicketClose.entries()) {
-          console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
-          if (
-            ticketData.awaitingRep &&
-            ticketData.userId === senderId &&
-            channel.id === ticketData.legitRepChannelId
-          ) {
-            // Sprawdź czy w wiadomości +rep jest wzmianka o sprzedawcy/używającym komendę
-            const expectedUsername = ticketData.commandUsername;
-            const expectedId = ticketData.commandUserId;
-            const msgContent = message.content.trim();
-
-            const mentionMatchesSeller = message.mentions.users.has(expectedId);
-            const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
-
-            if (mentionMatchesSeller || usernameIncluded) {
-              console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
-              
-              // Pobierz kanał ticketu
-              const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
-              if (ticketChannel) {
-                // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
+          const sendCloseNotice = async (ticketChannelId) => {
+            const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
+            if (!ticketChannel) return;
+            const noticeEmbed = new EmbedBuilder()
+              .setColor(COLOR_BLUE)
+              .setDescription("> `ℹ️` × **Ticket zostanie zamknięty w ciągu 5 sekund...**");
+            await ticketChannel.send({ embeds: [noticeEmbed] }).catch(() => null);
+            setTimeout(async () => {
+              try {
+                await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
+                pendingTicketClose.delete(ticketChannelId);
+                ticketOwners.delete(ticketChannelId);
+                console.log(`Ticket ${ticketChannelId} został zamknięty po otrzymaniu +rep`);
+              } catch (closeErr) {
+                console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
                 try {
-                  const noticeEmbed = new EmbedBuilder()
-                    .setColor(COLOR_BLUE)
-                    .setDescription("> `ℹ️` × **Ticket zostanie zamknięty w ciągu 5 sekund...**");
-                  await ticketChannel.send({ embeds: [noticeEmbed] });
-                  setTimeout(async () => {
-                    try {
-                      await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                      pendingTicketClose.delete(ticketChannelId);
-                      ticketOwners.delete(ticketChannelId);
-                      console.log(`Ticket ${ticketChannelId} został zamknięty po otrzymaniu +rep`);
-                    } catch (closeErr) {
-                      console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
-                      try {
-                        await ticketChannel.send({
-                          content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
-                        });
-                      } catch (msgErr) {
-                        console.error("Błąd wysyłania wiadomości o błędzie:", msgErr);
-                      }
-                    }
-                  }, 5000);
+                  await ticketChannel.send({
+                    content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
+                  });
                 } catch (msgErr) {
-                  console.error("Błąd wysyłania wiadomości o zamknięciu ticketu:", msgErr);
+                  console.error("Błąd wysyłania wiadomości o błędzie:", msgErr);
                 }
               }
+            }, 5000);
+          };
 
-              break; // znaleziono pasujący ticket
+          for (const [ticketChannelId, ticketData] of pendingTicketClose.entries()) {
+            console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
+            if (
+              ticketData.awaitingRep &&
+              ticketData.userId === message.author.id &&
+              channel.id === ticketData.legitRepChannelId
+            ) {
+              const expectedUsername = ticketData.commandUsername;
+              const expectedId = ticketData.commandUserId;
+              const msgContent = message.content.trim();
+
+              const mentionMatchesSeller = message.mentions.users.has(expectedId);
+              const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
+
+              if (mentionMatchesSeller || usernameIncluded) {
+                console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${message.author.id} wysłał +rep dla ${expectedUsername}`);
+                await sendCloseNotice(ticketChannelId);
+                matchedTicket = true;
+                break; // znaleziono pasujący ticket
+              }
             }
           }
-        }
 
-        // Fallback: jeśli użytkownik ma otwarty ticket (ticketOwners), zamknij po +rep niezależnie od pendingTicketClose
-        for (const [chId, tData] of ticketOwners.entries()) {
-          if (tData?.userId === senderId) {
-            const ticketChannel = await client.channels.fetch(chId).catch(() => null);
-            if (!ticketChannel) continue;
-            try {
-              const noticeEmbed = new EmbedBuilder()
-                .setColor(COLOR_BLUE)
-                .setDescription("> `ℹ️` × **Ticket zostanie zamknięty w ciągu 5 sekund...**");
-              await ticketChannel.send({ embeds: [noticeEmbed] });
-              setTimeout(async () => {
-                try {
-                  await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                  pendingTicketClose.delete(chId);
-                  ticketOwners.delete(chId);
-                  console.log(`Ticket ${chId} został zamknięty po +rep (fallback)`);
-                } catch (closeErr) {
-                  console.error(`Błąd zamykania ticketu ${chId} (fallback):`, closeErr);
-                  try {
-                    await ticketChannel.send({
-                      content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
-                    });
-                  } catch {}
-                }
-              }, 5000);
-            } catch (msgErr) {
-              console.error("Błąd wysyłania info o zamknięciu (fallback):", msgErr);
+          // Fallback: jeśli użytkownik ma otwarty ticket (ticketOwners), zamknij po +rep niezależnie od pendingTicketClose
+          if (!matchedTicket) {
+            for (const [chId, tData] of ticketOwners.entries()) {
+              if (tData?.userId === message.author.id) {
+                await sendCloseNotice(chId);
+                break;
+              }
             }
-            break;
           }
+        } catch (err) {
+          console.error("Błąd podczas automatycznego zamykania po +rep:", err);
         }
-      } catch (ticketErr) {
-        console.error("Błąd sprawdzania ticketów oczekujących na +rep:", ticketErr);
       }
-
-      // Use scheduled rename (respect cooldown)
-      scheduleRepChannelRename(channel, legitRepCount).catch(() => null);
-      scheduleSavePersistentState();
-
-      // cooldown per user for info embed
-      const last = infoCooldowns.get(message.author.id) || 0;
-      if (Date.now() - last < INFO_EMBED_COOLDOWN_MS) {
-        console.log(`Cooldown dla ${message.author.username}, pomijam embed`);
-        return;
-      }
-      infoCooldowns.set(message.author.id, Date.now());
-      console.log(`Wysyłam embed dla ${message.author.username}`);
 
       // delete previous info message (if we posted one earlier in this channel) to move new one to bottom
       const prevId = repLastInfoMessage.get(channel.id);
