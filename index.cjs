@@ -2108,6 +2108,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.error("Błąd obsługi interakcji:", error);
   }
 });
+
 async function handleModalSubmit(interaction) {
   // Sprawdź czy interakcja już została odpowiedziana
   if (interaction.replied || interaction.deferred) return;
