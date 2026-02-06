@@ -5602,21 +5602,21 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL" },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP" },
+          { label: "PYK MC", value: "PYK_MC" }
         );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
         .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)" },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)" },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)" },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)" },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)" },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)" }
         );
 
       const embed = new EmbedBuilder()
