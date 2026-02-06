@@ -5054,6 +5054,15 @@ async function ticketClaimCommon(interaction, channelId) {
     return;
   }
 
+  // szybka odpowiedź, żeby Discord nie wyświetlał błędu interakcji
+  if (!interaction.replied && !interaction.deferred) {
+    if (isBtn) {
+      await interaction.deferUpdate().catch(() => null);
+    } else {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+    }
+  }
+
   const replyEphemeral = async (text) => {
     // jeśli interakcja nie została jeszcze potwierdzona, użyj reply()
     if (!interaction.replied && !interaction.deferred) {
