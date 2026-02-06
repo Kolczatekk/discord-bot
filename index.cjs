@@ -1988,16 +1988,11 @@ client.once(Events.ClientReady, async (c) => {
               chd,
               (emb) =>
                 typeof emb.description === "string" &&
-                (emb.description.includes(
-                  "Użyj **komendy** </drop:1454974442370240585>",
-                ) ||
-                  emb.description.includes(
-                    "`🎁` Użyj **komendy** </drop:1464015494876102748>",
-                  ) ||
-                  emb.description.includes("Użyj **komendy** `/drop`")),
+                emb.description.includes("Użyj **komendy** </drop:1464015494876102748>"),
             );
             if (foundDrop) {
               lastDropInstruction.set(chd.id, foundDrop.id);
+              scheduleSavePersistentState();
               console.log(
                 `[ready] Znalazłem istniejącą instrukcję drop: ${foundDrop.id} w kanale ${chd.id}`,
               );
@@ -4676,7 +4671,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         "```\n" +
         "🎫 New Shop × TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **twój ticket został zamknięty z powodu:**\n> \`×\` **${powod}**`
+        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> \`**${powod}**\``
       )
       .setTimestamp();
 
@@ -6037,6 +6032,14 @@ async function handleModalSubmit(interaction) {
       ticketTopic = `Zakup na serwerze: ${serwer}`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
 
+      if (kwotaNum < 5) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${platnosc}\`\n` +
@@ -6047,10 +6050,19 @@ async function handleModalSubmit(interaction) {
       const co = interaction.fields.getTextInputValue("co_sprzedac");
       const serwer = interaction.fields.getTextInputValue("serwer");
       const ile = interaction.fields.getTextInputValue("ile");
+      const kwotaSprzedaz = parseFloat(ile.replace(/,/g, '.'));
 
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
       ticketTypeLabel = "SPRZEDAŻ";
+      if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${co}\`\n> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n> <a:arrowwhite:1469100658606211233> × **Oczekiwana kwota:** \`${ile}\``;
       break;
     }
@@ -6674,112 +6686,46 @@ client.on(Events.MessageCreate, async (message) => {
       `• \`❗\` __**Na tym kanale można losować tylko zniżki!**__`,
     );
 
-  // Enforce drop-channel-only rule (only allow messages starting with "/drop")
   try {
     const guildId = message.guildId;
     if (guildId) {
+      const content = (message.content || "").trim();
+
       const dropChannelId = dropChannels.get(guildId);
       if (dropChannelId && message.channel.id === dropChannelId) {
-        const content = (message.content || "").trim();
-        // allow if message begins with "/drop" (user typed it)
         if (!content.toLowerCase().startsWith("/drop")) {
-          // delete and warn
-          try {
-            await message.delete().catch(() => null);
-          } catch (e) {
-            // ignore
-          }
-          try {
-            const warnMsg = await message.channel.send({
-              content: `<@${message.author.id}>`,
-              embeds: [dropInvalidEmbed],
-            });
-            setTimeout(() => warnMsg.delete().catch(() => { }), 3000);
-          } catch (e) {
-            // ignore
-          }
+          await message.delete().catch(() => null);
           return;
         }
       }
-    }
-  } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguły kanału drop:", e);
-  }
 
-  // Enforce opinie-channel-only rule (only allow messages starting with "/opinia")
-  try {
-    const guildId = message.guildId;
-    if (guildId) {
       const opinieChannelId = opinieChannels.get(guildId);
       if (opinieChannelId && message.channel.id === opinieChannelId) {
-        const content = (message.content || "").trim();
         if (!content.toLowerCase().startsWith("/opinia")) {
-          // delete and warn
-          try {
-            await message.delete().catch(() => null);
-          } catch (e) {
-            // ignore
-          }
-          try {
-            const warnMsg = await message.channel.send({
-              content: `<@${message.author.id}>`,
-              embeds: [opinInvalidEmbed],
-            });
-            setTimeout(() => warnMsg.delete().catch(() => { }), 3000);
-          } catch (e) {
-            // ignore
-          }
+          await message.delete().catch(() => null);
           return;
-        } else {
-          // If user typed plain "/opinia" (not using slash command) we should also enforce per-user cooldown here.
-          const last = opinionCooldowns.get(message.author.id) || 0;
-          if (Date.now() - last < OPINION_COOLDOWN_MS) {
-            const remaining = OPINION_COOLDOWN_MS - (Date.now() - last);
-            try {
-              await message.delete().catch(() => null);
-            } catch (e) { }
-            try {
-              const warnMsg = await message.channel.send({
-                content: `<@${message.author.id}>`,
-                embeds: [
-                  new EmbedBuilder()
-                    .setColor(COLOR_BLUE)
-                    .setDescription(
-                      `• \`❗\` Musisz poczekać ${humanizeMs(remaining)}, zanim użyjesz /opinia ponownie.`,
-                    ),
-                ],
-              });
-              setTimeout(() => warnMsg.delete().catch(() => { }), 4000);
-            } catch (e) { }
-            return;
-          } else {
-            // allow typed /opinia but start cooldown
-            opinionCooldowns.set(message.author.id, Date.now());
-            // delete typed /opinia to reduce clutter:
-            try {
-              await message.delete().catch(() => null);
-            } catch (e) { }
-            // Inform user to use slash command properly (instruction should be yellow and mention command id)
-            try {
-              const info = await message.channel.send({
-                content: `<@${message.author.id}>`,
-                embeds: [
-                  new EmbedBuilder()
-                    .setColor(COLOR_YELLOW)
-                    .setDescription(
-                      `Użyj **komendy** × </opinia:1464015495392133321> aby wystawić opinię — post został przyjęty.`,
-                    ),
-                ],
-              });
-              setTimeout(() => info.delete().catch(() => { }), 3000);
-            } catch (e) { }
-            return;
-          }
+        }
+      }
+
+      const zapCh = message.guild
+        ? message.guild.channels.cache.find(
+          (c) =>
+            c.type === ChannelType.GuildText &&
+            (c.name === "❓-×┃sprawdz-zapro" ||
+              c.name.includes("sprawdz-zapro") ||
+              c.name.includes("sprawdz-zaproszenia")),
+        )
+        : null;
+
+      if (zapCh && message.channel.id === zapCh.id) {
+        if (!content.toLowerCase().startsWith("/sprawdz-zaproszenia")) {
+          await message.delete().catch(() => null);
+          return;
         }
       }
     }
   } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguły kanału opinii:", e);
+    console.error("Błąd przy egzekwowaniu reguł kanałów drop/opinia/zaproszenia:", e);
   }
 
   // Enforce zaproszenia-check-only channel rule:
@@ -6800,18 +6746,6 @@ client.on(Events.MessageCreate, async (message) => {
       if (!content.toLowerCase().startsWith("/sprawdz-zaproszenia")) {
         try {
           await message.delete().catch(() => null);
-        } catch (e) { }
-        try {
-          const warnEmbed = new EmbedBuilder()
-            .setColor(COLOR_RED)
-            .setDescription(
-              `• \`❗\` __**Na tym kanale można sprawdzać tylko swoje zaproszenia!**__`,
-            );
-          const warn = await message.channel.send({
-            content: `<@${message.author.id}>`,
-            embeds: [warnEmbed],
-          });
-          setTimeout(() => warn.delete().catch(() => { }), 4000);
         } catch (e) { }
         return;
       } else {
