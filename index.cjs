@@ -3925,10 +3925,7 @@ async function handleSendMessageCommand(interaction) {
 
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
-    const arrowEmoji =
-      interaction.guild?.emojis?.cache?.get("1469100658606211233")
-        ? '<a:arrowwhite:1469100658606211233>'
-        : '➡️';
+    const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const content = contentRaw.replace(/:strzałka:/gi, arrowEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
