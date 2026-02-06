@@ -3326,7 +3326,7 @@ const nickInput = new TextInputBuilder()
     const parts = customId.split("_");
     const channelId = parts[2];
     const expectedClaimer = parts[3] || null;
-    await ticketUnclaimCommon(interaction, channelId, expectedClaimer);
+    await ticketUnclaimCommon(interaction, channelId, expectedClaimer, { reason: null });
     return;
   }
 }
@@ -3791,7 +3791,7 @@ async function handleAdminPrzejmij(interaction) {
     });
     return;
   }
-  await ticketClaimCommon(interaction, channel.id);
+  await ticketClaimCommon(interaction, channel.id); // quiz odpali się w środku
 }
 async function handlePanelKalkulatorCommand(interaction) {
   if (!interaction.guild) {
@@ -3861,7 +3861,7 @@ async function handleAdminOdprzejmij(interaction) {
     });
     return;
   }
-  await ticketUnclaimCommon(interaction, channel.id, null);
+  await ticketUnclaimCommon(interaction, channel.id, null, { reason: null });
 }
 
 /*
@@ -5082,14 +5082,6 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     return;
   }
 
-  if (!interaction.replied && !interaction.deferred) {
-    if (isBtn) {
-      await interaction.deferUpdate().catch(() => null);
-    } else {
-      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
-    }
-  }
-
   const replyEphemeral = async (text) => {
     if (isBtn) {
       await interaction.followUp({ content: text, flags: [MessageFlags.Ephemeral] }).catch(() => null);
@@ -5284,6 +5276,33 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       "> `❗` Brak wymaganych uprawnień.",
     );
     return;
+  }
+
+  // Jeśli nie ma powodu -> pokaż modal i zakończ
+  if (!providedReason) {
+    const modalId = `unclaim_reason_${channelId}_${interaction.user.id}_${Date.now()}`;
+    pendingUnclaimReason.set(modalId, { channelId, userId: interaction.user.id, expectedClaimer });
+    const modal = new ModalBuilder()
+      .setCustomId(modalId)
+      .setTitle("Powód zwolnienia ticketu");
+    const input = new TextInputBuilder()
+      .setCustomId("unclaim_reason_input")
+      .setLabel("Podaj powód")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true)
+      .setMaxLength(300);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal).catch(() => null);
+    return;
+  }
+
+  // mamy powód -> teraz ewentualny defer
+  if (!interaction.replied && !interaction.deferred) {
+    if (isBtn) {
+      await interaction.deferUpdate().catch(() => null);
+    } else {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+    }
   }
 
   try {
