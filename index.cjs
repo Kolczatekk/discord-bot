@@ -7035,7 +7035,7 @@ client.on(Events.MessageCreate, async (message) => {
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
             .setDescription(`• \`❗\` × __**Stosuj się do wzoru legit checka!**__`);
-          const warnMsg = await channel.send({ embeds: [warningEmbed] });
+          const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
           console.error("Błąd usuwania nieoznaczonego legit-rep:", err);
@@ -7052,7 +7052,7 @@ client.on(Events.MessageCreate, async (message) => {
               `• \`❗\` × __**Stosuj się do wzoru legit checka!**__`,
             );
 
-          const warnMsg = await channel.send({ embeds: [warningEmbed] });
+          const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
           console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
