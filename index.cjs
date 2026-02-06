@@ -4671,7 +4671,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         "```\n" +
         "🎫 New Shop × TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> **\`${powod}\`**`
+        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> \`**${powod}**\``
       )
       .setTimestamp();
 
@@ -6693,7 +6693,8 @@ client.on(Events.MessageCreate, async (message) => {
 
       const dropChannelId = dropChannels.get(guildId);
       if (dropChannelId && message.channel.id === dropChannelId) {
-        if (!content.toLowerCase().startsWith("/drop")) {
+        // Usuń każdą wiadomość użytkownika (także wpisane "/drop"), zostaw tylko slash-command
+        if (!message.author.bot) {
           await message.delete().catch(() => null);
           return;
         }
@@ -6701,7 +6702,7 @@ client.on(Events.MessageCreate, async (message) => {
 
       const opinieChannelId = opinieChannels.get(guildId);
       if (opinieChannelId && message.channel.id === opinieChannelId) {
-        if (!content.toLowerCase().startsWith("/opinia")) {
+        if (!message.author.bot) {
           await message.delete().catch(() => null);
           return;
         }
@@ -6718,7 +6719,7 @@ client.on(Events.MessageCreate, async (message) => {
         : null;
 
       if (zapCh && message.channel.id === zapCh.id) {
-        if (!content.toLowerCase().startsWith("/sprawdz-zaproszenia")) {
+        if (!message.author.bot) {
           await message.delete().catch(() => null);
           return;
         }
