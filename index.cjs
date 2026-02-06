@@ -4668,7 +4668,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         "```\n" +
         "🎫 New Shop × TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> \`**${powod}**\``
+        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> **\`${powod}\`**`
       )
       .setTimestamp();
 
