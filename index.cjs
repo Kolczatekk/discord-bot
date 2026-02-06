@@ -6003,9 +6003,31 @@ async function handleModalSubmit(interaction) {
         "oczekiwana_waluta",
       );
 
-      // extract numeric (pozwól na zapisy typu 50zł / 50 zł / 50,5zł), bez blokady liter
-      const kwotaMatch = kwotaRaw.match(/(\d+(?:[\.,]\d+)?)/);
-      let kwotaNum = kwotaMatch ? parseFloat(kwotaMatch[1].replace(',', '.')) : 0;
+      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
+      if (!lettersOnly.test(serwer)) {
+        await interaction.reply({
+          content: "> `❌` × Pole **Na jakim serwerze** musi zawierać tylko litery.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      let kwotaNum = parseFloat(kwotaRaw.replace(/,/g, '.'));
+      if (Number.isNaN(kwotaNum)) {
+        await interaction.reply({
+          content: "> `❌` × Pole **Za ile chcesz kupić** musi być liczbą.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      if (!lettersOnly.test(platnosc)) {
+        await interaction.reply({
+          content: "> `❌` × Pole **Jaką metodą płatności** musi zawierać tylko litery.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // Użyj już sparsowanej kwoty (kwotaNum) – zapewnia liczbową wartość
       if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
 
       // routing to categories: treat >100 as 100-200+ (user requested)
@@ -6048,6 +6070,28 @@ async function handleModalSubmit(interaction) {
       const serwer = interaction.fields.getTextInputValue("serwer");
       const ile = interaction.fields.getTextInputValue("ile");
       const kwotaSprzedaz = parseFloat(ile.replace(/,/g, '.'));
+      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
+      if (!lettersOnly.test(serwer)) {
+        await interaction.reply({
+          content: "> `❌` × Pole **Na jakim serwerze** musi zawierać tylko litery.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      if (Number.isNaN(kwotaSprzedaz)) {
+        await interaction.reply({
+          content: "> `❌` × Pole **Za ile** musi być liczbą.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
 
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
