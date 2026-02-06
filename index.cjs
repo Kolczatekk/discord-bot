@@ -22,6 +22,13 @@ const {
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
+
+// Load local .env when running on a PC (Render ma własne env vars)
+try {
+  require("dotenv").config({ path: path.resolve(__dirname, ".env") });
+} catch (err) {
+  console.warn("[ENV] Nie udało się załadować .env:", err?.message || err);
+}
 const db = require("./database.js");
 
 const client = new Client({
@@ -2152,6 +2159,20 @@ async function handleModalSubmit(interaction) {
       });
     }
 
+    if (kwota < 5) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**).",
+      });
+    }
+
+    if (kwota > 10_000) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Maksymalna kwota to **10 000zł**.",
+      });
+    }
+
     const rate = getRateForPlnAmount(kwota, tryb);
     const feePercent = getPaymentFeePercent(metoda);
 
@@ -2181,6 +2202,20 @@ async function handleModalSubmit(interaction) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
         content: "> `❌` × Podaj **poprawną** ilość waluty (np. 125k / 1m).",
+      });
+    }
+
+    if (amount < 22_500) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Minimalna ilość to **22,5k** waluty.",
+      });
+    }
+
+    if (amount > 999_000_000) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Maksymalna ilość to **999 000 000** waluty.",
       });
     }
 
@@ -2287,6 +2322,24 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
+      // globalne minimum: 5zł (MYPSC 11zł dalej w metodach)
+      if (kwota < 5) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**). Podaj większą kwotę.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // maksymalnie 10 000 zł
+      if (kwota > 10_000) {
+        await interaction.reply({
+          content: "> `❌` × Maksymalna kwota to **10 000zł**. Podaj mniejszą kwotę.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       // Zapisz kwotę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
@@ -2295,8 +2348,8 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
           { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
@@ -2353,6 +2406,15 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
+      // minimalne zakupy dla "ile muszę dać" = 22.5k
+      if (waluta < 22_500) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna ilość to **22,5k** waluty. Podaj większą wartość.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       // Zapisz walutę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
@@ -2361,8 +2423,8 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
           { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
@@ -3861,7 +3923,7 @@ async function handlePanelKalkulatorCommand(interaction) {
       "```\n" +
       "🧮 New Shop × Kalkulator\n" +
       "```\n" +
-      "> \`ℹ️\` × **Aby w szybki i prosty sposób obliczyć ile otrzymasz waluty za określoną ilość PLN lub ile musisz dać, aby otrzymać określoną ilość waluty, kliknij jeden z przycisków poniżej.**",
+      "> <a:arrowwhite:1469100658606211233> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
     );
 
   const btnIleOtrzymam = new ButtonBuilder()
@@ -5646,8 +5708,8 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
           { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
@@ -5712,8 +5774,8 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
           { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
@@ -5879,13 +5941,13 @@ async function handleModalSubmit(interaction) {
         await interaction.user.send({ embeds: [dmEmbed] });
         // ephemeral confirmation (not public)
         await interaction.reply({
-          content: "> \`✅\` **Pomyślnie zweryfikowano**",
+          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (dmError) {
         console.error("Nie udało się wysłać DM po weryfikacji:", dmError);
         await interaction.reply({
-          content: "> \`✅\` **Pomyślnie zweryfikowano**",
+          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -6483,7 +6545,7 @@ async function handleModalSubmit(interaction) {
         }).catch(() => { });
 
         await interaction.reply({
-          content: `> \`✅\` **Utworzono ticket! Przejdź do:** <#${channel.id}>.`,
+          content: `> \`✅\` × Ticket został stworzony <#${channel.id}>.`,
           flags: [MessageFlags.Ephemeral],
         });
       } catch (err) {
@@ -6724,7 +6786,7 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      content: `> \`✅\` **Utworzono ticket! Przejdź do:** <#${channel.id}>`,
+      content: `> \`✅\` × Ticket został stworzony <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
   } catch (error) {
