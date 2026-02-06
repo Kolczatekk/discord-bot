@@ -6006,7 +6006,7 @@ async function handleModalSubmit(interaction) {
       const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
       if (!lettersOnly.test(serwer)) {
         await interaction.reply({
-          content: "> `❌` × Pole **Na jakim serwerze** musi zawierać tylko litery.",
+          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6014,14 +6014,14 @@ async function handleModalSubmit(interaction) {
       let kwotaNum = parseFloat(kwotaRaw.replace(/,/g, '.'));
       if (Number.isNaN(kwotaNum)) {
         await interaction.reply({
-          content: "> `❌` × Pole **Za ile chcesz kupić** musi być liczbą.",
+          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5` (zł).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
       if (!lettersOnly.test(platnosc)) {
         await interaction.reply({
-          content: "> `❌` × Pole **Jaką metodą płatności** musi zawierać tylko litery.",
+          content: "> `❌` × Napisz metodę płatności literami, bez cyfr.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6073,7 +6073,7 @@ async function handleModalSubmit(interaction) {
       const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
       if (!lettersOnly.test(serwer)) {
         await interaction.reply({
-          content: "> `❌` × Pole **Na jakim serwerze** musi zawierać tylko litery.",
+          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6087,7 +6087,7 @@ async function handleModalSubmit(interaction) {
       }
       if (Number.isNaN(kwotaSprzedaz)) {
         await interaction.reply({
-          content: "> `❌` × Pole **Za ile** musi być liczbą.",
+          content: "> `❌` × Podaj kwotę jako liczbę, np. `25` lub `25.5` (zł).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
