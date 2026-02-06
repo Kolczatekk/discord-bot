@@ -5084,6 +5084,13 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
   }
 
   const replyEphemeral = async (text) => {
+    // jeśli interakcja nie została jeszcze potwierdzona, użyj reply()
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction
+        .reply({ content: text, flags: [MessageFlags.Ephemeral] })
+        .catch(() => null);
+      return;
+    }
     if (isBtn) {
       await interaction.followUp({ content: text, flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
