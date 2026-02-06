@@ -3929,7 +3929,7 @@ async function handleSendMessageCommand(interaction) {
       interaction.guild?.emojis?.cache?.get("1469100658606211233")
         ? '<a:arrowwhite:1469100658606211233>'
         : '➡️';
-    const content = contentRaw.replace(/:arrow:/gi, arrowEmoji);
+    const content = contentRaw.replace(/:strzałka:/gi, arrowEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
@@ -4671,7 +4671,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         "```\n" +
         "🎫 New Shop × TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> **\`${powod}\`**`
+        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> \`**${powod}**\``
       )
       .setTimestamp();
 
