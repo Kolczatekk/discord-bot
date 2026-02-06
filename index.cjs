@@ -62,6 +62,8 @@ const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked }
+const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
+const pendingUnclaimReason = new Map(); // modalId -> { channelId, userId }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -5035,8 +5037,9 @@ async function showKonkursOdbiorModal(interaction) {
   await interaction.showModal(modal);
 }
 
-async function ticketClaimCommon(interaction, channelId) {
+async function ticketClaimCommon(interaction, channelId, opts = {}) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
+  const skipQuiz = opts.skipQuiz === true;
 
   if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
@@ -5050,6 +5053,32 @@ async function ticketClaimCommon(interaction, channelId) {
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
+    return;
+  }
+
+  if (!skipQuiz) {
+    // prosta weryfikacja matematyczna (modal) dla claim przyciskiem i /przejmij
+    const questions = [
+      { q: "Ile to 3 × 5?", a: "15" },
+      { q: "Ile to 3 + 2?", a: "5" },
+      { q: "Ile to 7 − 3?", a: "4" },
+      { q: "Ile to 4 + 6?", a: "10" },
+    ];
+    const pick = questions[Math.floor(Math.random() * questions.length)];
+    const modalId = `claim_quiz_${channelId}_${interaction.user.id}_${Date.now()}`;
+    pendingClaimQuiz.set(modalId, { channelId, userId: interaction.user.id, answer: pick.a });
+
+    const modal = new ModalBuilder()
+      .setCustomId(modalId)
+      .setTitle("Weryfikacja przejęcia ticketu");
+    const input = new TextInputBuilder()
+      .setCustomId("claim_answer")
+      .setLabel(pick.q)
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(4);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal).catch(() => null);
     return;
   }
 
@@ -5184,8 +5213,9 @@ async function ticketClaimCommon(interaction, channelId) {
   }
 }
 
-async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null) {
+async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null, opts = {}) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
+  const providedReason = opts.reason;
 
   if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
@@ -5346,9 +5376,38 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, null).catch(() => null);
     }
 
+    // log do logi-ticket z powodem
+    try {
+      const logCh = await getLogiTicketChannel(interaction.guild);
+      if (logCh) {
+        const logEmbed = new EmbedBuilder()
+          .setColor(COLOR_BLUE)
+          .setDescription(
+            `> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${providedReason}`,
+          )
+          .setFooter({ text: `Kanał: ${ch.name}` })
+          .setTimestamp();
+        await logCh.send({ embeds: [logEmbed] }).catch(() => null);
+      }
+    } catch (e) {
+      console.error("Log unclaim failed:", e);
+    }
+
+    // wyczyść historię kanału (poza najnowszym komunikatem, który zaraz wyślemy)
+    try {
+      const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => null);
+      if (msgs && msgs.size) {
+        await ch.bulkDelete(msgs, true).catch(() => null);
+      }
+    } catch (e) {
+      console.error("Nie udało się wyczyścić historii kanału po odprzejęciu:", e);
+    }
+
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${releaserId}>`);
+      .setDescription(
+        `> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${providedReason}`,
+      );
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
@@ -5433,6 +5492,39 @@ async function showInneModal(interaction) {
 async function handleModalSubmit(interaction) {
   const guildId = interaction.guildId;
   if (!guildId || !interaction.guild) return;
+
+  const cid = interaction.customId || "";
+
+  // quiz do przejęcia ticketu
+  if (cid.startsWith("claim_quiz_")) {
+    const data = pendingClaimQuiz.get(cid);
+    if (!data || data.userId !== interaction.user.id) {
+      await interaction.reply({ content: "> `❌` × Ta weryfikacja wygasła. Kliknij **Przejmij** ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      return;
+    }
+    const answer = (interaction.fields.getTextInputValue("claim_answer") || "").trim();
+    if (answer !== data.answer) {
+      await interaction.reply({ content: "> `❌` × Zła odpowiedź. Spróbuj ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      pendingClaimQuiz.delete(cid);
+      return;
+    }
+    pendingClaimQuiz.delete(cid);
+    await ticketClaimCommon(interaction, data.channelId, { skipQuiz: true });
+    return;
+  }
+
+  // powód odprzejęcia
+  if (cid.startsWith("unclaim_reason_")) {
+    const data = pendingUnclaimReason.get(cid);
+    if (!data || data.userId !== interaction.user.id) {
+      await interaction.reply({ content: "> `❌` × Ta weryfikacja wygasła. Kliknij **Odprzejmij** ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      return;
+    }
+    const reason = (interaction.fields.getTextInputValue("unclaim_reason_input") || "brak podanego powodu").trim();
+    pendingUnclaimReason.delete(cid);
+    await ticketUnclaimCommon(interaction, data.channelId, data.expectedClaimer || null, { reason });
+    return;
+  }
 
   const botName = client.user?.username || "NEWSHOP";
 
