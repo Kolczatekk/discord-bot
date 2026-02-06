@@ -61,7 +61,7 @@ function getInviteWord(count) {
 const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
-const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked }
+const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const pendingUnclaimReason = new Map(); // modalId -> { channelId, userId }
 
@@ -5203,7 +5203,16 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setColor(COLOR_BLUE)
       .setDescription(`> \`✅\` × Ticket został przejęty przez <@${claimerId}>`);
 
-    await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+    try {
+      const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+      if (sent && sent.id) {
+        ticketData.lastClaimMsgId = sent.id;
+        ticketOwners.set(channelId, ticketData);
+        scheduleSavePersistentState();
+      }
+    } catch {
+      // ignore
+    }
     if (!isBtn) {
       await interaction.deleteReply().catch(() => null);
     }
@@ -5383,7 +5392,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
         const logEmbed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(
-            `> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${providedReason}`,
+            `> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${providedReason || "brak podanego powodu"}`,
           )
           .setFooter({ text: `Kanał: ${ch.name}` })
           .setTimestamp();
@@ -5393,20 +5402,34 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       console.error("Log unclaim failed:", e);
     }
 
-    // wyczyść historię kanału (poza najnowszym komunikatem, który zaraz wyślemy)
+    // wyczyść historię kanału od czasu przejęcia do teraz (zostawiając samą wiadomość o przejęciu)
     try {
+      let claimMsg = null;
+      if (ticketData.lastClaimMsgId) {
+        claimMsg = await ch.messages.fetch(ticketData.lastClaimMsgId).catch(() => null);
+      }
+
       const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => null);
       if (msgs && msgs.size) {
-        await ch.bulkDelete(msgs, true).catch(() => null);
+        const toDelete = msgs.filter((m) => {
+          if (claimMsg && m.id === claimMsg.id) return false;
+          if (m.id === interaction.message?.id) return false;
+          if (claimMsg) return m.createdTimestamp >= claimMsg.createdTimestamp;
+          return true;
+        });
+        if (toDelete.size) {
+          await ch.bulkDelete(toDelete, true).catch(() => null);
+        }
       }
     } catch (e) {
       console.error("Nie udało się wyczyścić historii kanału po odprzejęciu:", e);
     }
 
+    const reasonText = providedReason || "brak podanego powodu";
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(
-        `> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${providedReason}`,
+        `> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${reasonText}`,
       );
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
