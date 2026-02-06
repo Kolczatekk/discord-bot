@@ -62,8 +62,6 @@ const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
-const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
-const pendingUnclaimReason = new Map(); // modalId -> { channelId, userId }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -5038,9 +5036,8 @@ async function showKonkursOdbiorModal(interaction) {
   await interaction.showModal(modal);
 }
 
-async function ticketClaimCommon(interaction, channelId, opts = {}) {
+async function ticketClaimCommon(interaction, channelId) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
-  const skipQuiz = opts.skipQuiz === true;
 
   if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
@@ -5054,32 +5051,6 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
-    return;
-  }
-
-  if (!skipQuiz) {
-    // prosta weryfikacja matematyczna (modal) dla claim przyciskiem i /przejmij
-    const questions = [
-      { q: "Ile to 3 × 5?", a: "15" },
-      { q: "Ile to 3 + 2?", a: "5" },
-      { q: "Ile to 7 − 3?", a: "4" },
-      { q: "Ile to 4 + 6?", a: "10" },
-    ];
-    const pick = questions[Math.floor(Math.random() * questions.length)];
-    const modalId = `claim_quiz_${channelId}_${interaction.user.id}_${Date.now()}`;
-    pendingClaimQuiz.set(modalId, { channelId, userId: interaction.user.id, answer: pick.a });
-
-    const modal = new ModalBuilder()
-      .setCustomId(modalId)
-      .setTitle("Weryfikacja przejęcia ticketu");
-    const input = new TextInputBuilder()
-      .setCustomId("claim_answer")
-      .setLabel(pick.q)
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(4);
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-    await interaction.showModal(modal).catch(() => null);
     return;
   }
 
@@ -5222,9 +5193,8 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
   }
 }
 
-async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null, opts = {}) {
+async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
-  const providedReason = opts.reason;
 
   if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
@@ -5286,25 +5256,6 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     return;
   }
 
-  // Jeśli nie ma powodu -> pokaż modal i zakończ
-  if (!providedReason) {
-    const modalId = `unclaim_reason_${channelId}_${interaction.user.id}_${Date.now()}`;
-    pendingUnclaimReason.set(modalId, { channelId, userId: interaction.user.id, expectedClaimer });
-    const modal = new ModalBuilder()
-      .setCustomId(modalId)
-      .setTitle("Powód zwolnienia ticketu");
-    const input = new TextInputBuilder()
-      .setCustomId("unclaim_reason_input")
-      .setLabel("Podaj powód")
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true)
-      .setMaxLength(300);
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-    await interaction.showModal(modal).catch(() => null);
-    return;
-  }
-
-  // mamy powód -> teraz ewentualny defer
   if (!interaction.replied && !interaction.deferred) {
     if (isBtn) {
       await interaction.deferUpdate().catch(() => null);
@@ -5412,15 +5363,13 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, null).catch(() => null);
     }
 
-    // log do logi-ticket z powodem
+    // log do logi-ticket
     try {
       const logCh = await getLogiTicketChannel(interaction.guild);
       if (logCh) {
         const logEmbed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription(
-            `> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${providedReason || "brak podanego powodu"}`,
-          )
+          .setDescription(`> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>`)
           .setFooter({ text: `Kanał: ${ch.name}` })
           .setTimestamp();
         await logCh.send({ embeds: [logEmbed] }).catch(() => null);
@@ -5452,12 +5401,9 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       console.error("Nie udało się wyczyścić historii kanału po odprzejęciu:", e);
     }
 
-    const reasonText = providedReason || "brak podanego powodu";
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(
-        `> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>\n> **Powód:** ${reasonText}`,
-      );
+      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>`);
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
