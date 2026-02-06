@@ -4318,8 +4318,8 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       "```\n" +
       "🛒 New Shop × WERYFIKACJA\n" +
       "```\n" +
-      `<a:arrowwhite:1469100658606211233> Przejdź prostą zagadkę matematyczną\n` +
-      `<a:arrowwhite:1469100658606211233> aby otrzymać rolę **klient.**`,
+      `<a:arrowwhite:1469100658606211233> **Przejdź prostą** zagadkę __matematyczną__\n` +
+      `<a:arrowwhite:1469100658606211233> aby **otrzymać** rolę **klient.**`,
     )
     // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
@@ -4330,7 +4330,7 @@ async function handlePanelWeryfikacjaCommand(interaction) {
 
   const button = new ButtonBuilder()
     .setCustomId(`verify_panel_${interaction.channelId}_${Date.now()}`)
-    .setStyle(ButtonStyle.Primary) // niebieski
+    .setStyle(ButtonStyle.Secondary) // niebieski
     .setEmoji("📝");
 
   const row = new ActionRowBuilder().addComponents(button);
