@@ -1572,12 +1572,36 @@ function getPaymentFeePercent(methodRaw) {
 
   if (m.startsWith("blik")) return 0;
   if (m.startsWith("kod blik")) return 10;
+  if (m.includes("mypsc")) return 20;
   if (m === "psc bez paragonu" || m.startsWith("psc bez paragonu")) return 20;
   if (m === "psc" || m.startsWith("psc ")) return 10;
   if (m.includes("paypal")) return 5;
   if (m.includes("ltc")) return 5;
 
   return 0;
+}
+
+function getMinPurchasePln(methodRaw) {
+  const m = (methodRaw || "").toString().trim().toLowerCase();
+  if (m.includes("mypsc")) return 11; // min zakupy dla MYPSC
+  if (m.startsWith("blik") || m.startsWith("kod blik")) return 5;
+  if (m.includes("psc")) return 5;
+  if (m.includes("paypal")) return 5;
+  if (m.includes("ltc")) return 5;
+  return 5;
+}
+
+function calculateFeePln(basePln, methodRaw) {
+  const percent = getPaymentFeePercent(methodRaw);
+  let fee = basePln * (percent / 100);
+  let feeLabel = `${percent}%`;
+
+  if ((methodRaw || "").toString().toLowerCase().includes("mypsc")) {
+    fee = Math.max(fee, 10); // min 10 zł
+    feeLabel = `${percent}% (min 10zł)`;
+  }
+
+  return { fee, feeLabel, percent };
 }
 
 function getRateForPlnAmount(pln, serverRaw) {
@@ -2271,21 +2295,22 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL" },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP" },
-          { label: "PYK MC", value: "PYK_MC" }
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
         );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
         .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)" },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)" },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)" },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)" },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)" },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)" }
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
         );
 
       const embed = new EmbedBuilder()
@@ -2336,21 +2361,22 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL" },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP" },
-          { label: "PYK MC", value: "PYK_MC" }
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
         );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
         .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)" },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)" },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)" },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)" },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)" },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)" }
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
         );
 
       const embed = new EmbedBuilder()
@@ -2934,16 +2960,26 @@ async function handleKalkulatorSubmit(interaction, typ) {
     }
 
     const feePercent = getPaymentFeePercent(userData.metoda);
+    const minPurchase = getMinPurchasePln(userData.metoda);
 
     if (typ === "otrzymam") {
       const kwota = userData.kwota;
-      const effectivePln = kwota * (1 - feePercent / 100);
+      if (kwota < minPurchase) {
+        await interaction.editReply({
+          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
+          embeds: [],
+          components: []
+        });
+        return;
+      }
+      const { fee, feeLabel } = calculateFeePln(kwota, userData.metoda);
+      const effectivePln = kwota - fee;
       const rate = getRateForPlnAmount(kwota, userData.tryb);
       const waluta = Math.floor(effectivePln * rate);
       const kwotaZl = Math.trunc(Number(kwota) || 0);
       const walutaShort = formatShortWaluta(waluta);
 
-      const msg = `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${userData.metoda} prowizja: ${feePercent}%) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
+      const msg = `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${userData.metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
 
       await interaction.editReply({
         content: msg,
@@ -2966,14 +3002,22 @@ async function handleKalkulatorSubmit(interaction, typ) {
       }
       const baseRaw = waluta / rate;
       const basePln = round2(baseRaw);
-      const feePln = round2(basePln * feePercent / 100);
-      const totalPln = round2(basePln + feePln);
+      const { fee, feeLabel } = calculateFeePln(basePln, userData.metoda);
+      const totalPln = round2(basePln + fee);
 
       const totalZl = Math.trunc(Number(totalPln) || 0);
+      if (totalZl < minPurchase) {
+        await interaction.editReply({
+          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
+          embeds: [],
+          components: []
+        });
+        return;
+      }
       const walutaInt = Math.floor(Number(waluta) || 0);
       const walutaShort = formatShortWaluta(walutaInt);
 
-      const msg = `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${userData.metoda} prowizja: ${feePercent}%)**`;
+      const msg = `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${userData.metoda} prowizja: ${feeLabel})**`;
 
       await interaction.editReply({
         content: msg,
@@ -7044,72 +7088,18 @@ client.on(Events.MessageCreate, async (message) => {
 
             if (mentionMatchesSeller || usernameIncluded) {
               console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
-              
-              // Pobierz kanał ticketu
               const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
-                // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
-                try {
-                  const noticeEmbed = new EmbedBuilder()
-                    .setColor(COLOR_BLUE)
-                    .setDescription("> `ℹ️` × **Ticket zostanie zamknięty w ciągu 5 sekund...**");
-                  await ticketChannel.send({ embeds: [noticeEmbed] });
-                  setTimeout(async () => {
-                    try {
-                      await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                      pendingTicketClose.delete(ticketChannelId);
-                      ticketOwners.delete(ticketChannelId);
-                      console.log(`Ticket ${ticketChannelId} został zamknięty po otrzymaniu +rep`);
-                    } catch (closeErr) {
-                      console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
-                      try {
-                        await ticketChannel.send({
-                          content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
-                        });
-                      } catch (msgErr) {
-                        console.error("Błąd wysyłania wiadomości o błędzie:", msgErr);
-                      }
-                    }
-                  }, 5000);
-                } catch (msgErr) {
-                  console.error("Błąd wysyłania wiadomości o zamknięciu ticketu:", msgErr);
-                }
-              }
-
-              break; // znaleziono pasujący ticket
-            }
-          }
-        }
-
-        // Fallback: jeśli użytkownik ma otwarty ticket (ticketOwners), zamknij po +rep niezależnie od pendingTicketClose
-        for (const [chId, tData] of ticketOwners.entries()) {
-          if (tData?.userId === senderId) {
-            const ticketChannel = await client.channels.fetch(chId).catch(() => null);
-            if (!ticketChannel) continue;
-            try {
-              const noticeEmbed = new EmbedBuilder()
-                .setColor(COLOR_BLUE)
-                .setDescription("> `ℹ️` × **Ticket zostanie zamknięty w ciągu 5 sekund...**");
-              await ticketChannel.send({ embeds: [noticeEmbed] });
-              setTimeout(async () => {
                 try {
                   await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                  pendingTicketClose.delete(chId);
-                  ticketOwners.delete(chId);
-                  console.log(`Ticket ${chId} został zamknięty po +rep (fallback)`);
+                  pendingTicketClose.delete(ticketChannelId);
+                  ticketOwners.delete(ticketChannelId);
+                  console.log(`Ticket ${ticketChannelId} został zamknięty po +rep`);
                 } catch (closeErr) {
-                  console.error(`Błąd zamykania ticketu ${chId} (fallback):`, closeErr);
-                  try {
-                    await ticketChannel.send({
-                      content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
-                    });
-                  } catch {}
+                  console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
                 }
-              }, 5000);
-            } catch (msgErr) {
-              console.error("Błąd wysyłania info o zamknięciu (fallback):", msgErr);
+              }
             }
-            break;
           }
         }
       } catch (ticketErr) {
