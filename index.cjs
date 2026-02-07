@@ -1159,7 +1159,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("ticket-zakoncz")
     .setDescription("Użyj tej komendy jeżeli będziesz chciał zakończyć ticket (sprzedawca)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
     .addStringOption((option) =>
       option
         .setName("typ")
@@ -1391,12 +1391,12 @@ const commands = [
   new SlashCommandBuilder()
     .setName("przejmij")
     .setDescription("Przejmij aktualny ticket (sprzedawca)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("odprzejmij")
     .setDescription("Zwolnij aktualny ticket (sprzedawca)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   // UPDATED: embed (interactive flow)
   new SlashCommandBuilder()
@@ -1421,7 +1421,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczenie")
     .setDescription("Dodaj kwote do rozliczeń (sprzedawca)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
     .addIntegerOption((option) =>
       option
         .setName("kwota")
@@ -1454,7 +1454,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("wezwij")
     .setDescription("Wezwij osobe (sprzedawca)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("statusbota")
@@ -3456,6 +3456,7 @@ async function handleSlashCommand(interaction) {
         });
         return;
       }
+      break;
     }
     case "drop":
       await handleDropCommand(interaction);
@@ -3493,7 +3494,7 @@ async function handleSlashCommand(interaction) {
     case "opinia":
       await handleOpinionCommand(interaction);
       break;
-    case "wyczysckanal":
+    case "wyczysc":
       await handleWyczyscKanalCommand(interaction);
       break;
     case "resetlc":
@@ -3516,6 +3517,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "sprawdz-kogo-zaprosil":
       await handleSprawdzKogoZaprosilCommand(interaction);
+      break;
+    case "utworz-konkurs":
+      await handleDodajKonkursCommand(interaction);
       break;
     case "rozliczenie":
       await handleRozliczenieCommand(interaction);
@@ -7501,18 +7505,6 @@ async function handleWyczyscKanalCommand(interaction) {
 
   // Defer to avoid timeout and allow multiple replies
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
-
-  // Sprawdź czy właściciel
-  if (interaction.user.id !== interaction.guild.ownerId) {
-    try {
-      await interaction.editReply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
-      });
-    } catch (e) {
-      // ignore
-    }
-    return;
-  }
 
   // only text channels
   if (
