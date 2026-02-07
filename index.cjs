@@ -3444,10 +3444,12 @@ async function handleSlashCommand(interaction) {
     default: {
       // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
       const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
+      // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
+      const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
       const SELLER_ROLE_ID = "1350786945944391733";
       const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
       const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
-      if (!isAdmin && !isSeller && !publicCommands.has(commandName)) {
+      if (!isAdmin && !isSeller && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
         await interaction.reply({
           content: "> `❌` × Nie masz uprawnień do tej komendy.",
           flags: [MessageFlags.Ephemeral],
