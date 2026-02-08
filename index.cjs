@@ -12,16 +12,23 @@ const {
   StringSelectMenuBuilder,
   ModalBuilder,  
   TextInputBuilder,
-  TextInputStyle,
+  TextInputStyle, 
   PermissionsBitField,
   ButtonBuilder,
-  ButtonStyle, 
+  ButtonStyle,  
   AttachmentBuilder,
   MessageFlags,
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
+
+// Load local .env when running on a PC (Render ma własne env vars)
+try {
+  require("dotenv").config({ path: path.resolve(__dirname, ".env") });
+} catch (err) {
+  console.warn("[ENV] Nie udało się załadować .env:", err?.message || err);
+}
 const db = require("./database.js");
 
 const client = new Client({
@@ -57,97 +64,12 @@ function getInviteWord(count) {
   return "zaproszeń";
 }
 
-async function handleFreeKasaCommand(interaction) {
-  const user = interaction.user;
-
-  // tylko właściciel (tymczasowo)
-  if (user.id !== FREE_KASA_OWNER_ID) {
-    await interaction.reply({
-      content: "> `❌` × Ta komenda jest tymczasowo dostępna tylko dla właściciela.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // tylko na serwerze
-  if (!interaction.guildId) {
-    await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // wymagany konkretny kanał
-  if (interaction.channelId !== FREE_KASA_CHANNEL_ID) {
-    await interaction.reply({
-      content: `> \`❌\` × Użyj tej **komendy** na kanale <#${FREE_KASA_CHANNEL_ID}>`,
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // cooldown 3h per user
-  const now = Date.now();
-  const last = freeKasaCooldowns.get(user.id) || 0;
-  if (now - last < FREE_KASA_COOLDOWN_MS) {
-    const remaining = FREE_KASA_COOLDOWN_MS - (now - last);
-    await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // zarejestruj cooldown niezależnie od wyniku
-  freeKasaCooldowns.set(user.id, now);
-
-  // losowanie nagrody: malejące szanse dla większych kwot
-  const roll = Math.random();
-  let prize = null;
-  if (roll < 0.60) {
-    prize = null; // przegrana
-  } else if (roll < 0.88) {
-    prize = 5; // 28%
-  } else if (roll < 0.98) {
-    prize = 10; // 10%
-  } else {
-    prize = 30; // 2%
-  }
-
-  if (!prize) {
-    const loseEmbed = new EmbedBuilder()
-      .setColor(COLOR_GRAY)
-      .setDescription(
-        "💵 New Shop × DARMOWA KASA\n" +
-        "``````\n" +
-        `\`👤\` × **Użytkownik:** ${user}\n` +
-        `\`😢\` × **Niestety, tym razem nie udało się! Spróbuj ponownie później...**`
-      )
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [loseEmbed] });
-    return;
-  }
-
-  const winEmbed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "💵 New Shop × DARMOWA KASA\n" +
-      "``````\n" +
-      `\`👤\` × **Użytkownik:** ${user}\n` +
-      `\`🎉\` × **Gratulacje! Wygrałeś ${prize}k na anarchia LF**`
-    )
-    .setTimestamp();
-
-  await interaction.reply({ embeds: [winEmbed] });
-}
-
 // NEW: weryfikacja
 const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
-const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked }
+const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
+const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -186,15 +108,11 @@ const CHANNEL_RENAME_COOLDOWN = 10 * 60 * 1000; // 10 minutes (Discord limit)
 let pendingRename = false;
 
 // NEW: cooldowns & limits
-const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user (was 24h)
+const DROP_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
-const FREE_KASA_COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours per user
-const FREE_KASA_CHANNEL_ID = "1470103962245005454";
-const FREE_KASA_OWNER_ID = "1305200545979437129"; // tylko właściciel może używać free-kasa (tymczasowo)
 
 const dropCooldowns = new Map(); // userId -> timestamp (ms)
 const opinionCooldowns = new Map(); // userId -> timestamp (ms)
-const freeKasaCooldowns = new Map(); // userId -> timestamp (ms)
 
 // Colors
 const COLOR_BLUE = 0x00aaff;
@@ -539,6 +457,7 @@ function buildPersistentStateData() {
 
   const data = {
     legitRepCount,
+    legitRepCooldown: Object.fromEntries(legitRepCooldown),
     ticketCounter: Object.fromEntries(ticketCounter),
     ticketOwners: Object.fromEntries(ticketOwners),
     inviteCounts: mapOfMapsToPlainObject(inviteCounts),
@@ -602,6 +521,72 @@ async function saveStateToSupabase(data) {
   } catch (error) {
     console.error('[supabase] Błąd podczas zapisu:', error);
     return false;
+  }
+}
+
+// Handler dla komendy /wezwij
+async function handleWezwijCommand(interaction) {
+  const channel = interaction.channel;
+
+  if (!channel || channel.type !== ChannelType.GuildText || !isTicketChannel(channel)) {
+    await interaction.reply({
+      content: "> `❌` × Użyj tej komendy na kanale ticketu.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  // Sprawdź uprawnienia: tylko sprzedawca
+  const SELLER_ROLE_ID = "1350786945944391733";
+  if (!interaction.member?.roles?.cache?.has(SELLER_ROLE_ID)) {
+    await interaction.reply({
+      content: "> `❌` × Brak uprawnień do użycia tej komendy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const ticketData = ticketOwners.get(channel.id);
+  const ownerId = ticketData?.userId;
+
+  if (!ownerId) {
+    await interaction.reply({
+      content: "> `❌` × Nie mogę znaleźć właściciela tego ticketu.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
+  // użyj formatu animowanego (a:...) jeśli emoji jest GIFem
+  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
+
+  try {
+    const user = await client.users.fetch(ownerId);
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+          "🚨 New Shop × JESTES WZYWANY\n" +
+        "```\n" +
+        `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
+        `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
+        `**KANAŁ:** ${channelLink}`
+      );
+
+    await user.send({ embeds: [embed] });
+
+    await interaction.reply({
+      content: `> ` + "`✅`" + ` × Wysłano wezwanie do właściciela ticketu.`,
+      flags: [MessageFlags.Ephemeral],
+    });
+  } catch (err) {
+    console.error("[wezwij] Błąd DM:", err);
+    await interaction.reply({
+      content: "> `❌` × Nie udało się wysłać wiadomości do właściciela (ma wyłączone DM lub nie znaleziono użytkownika).",
+      flags: [MessageFlags.Ephemeral],
+    });
   }
 }
 
@@ -690,6 +675,14 @@ async function loadPersistentState() {
       if (typeof botStateData.legitRepCount === "number") {
         legitRepCount = botStateData.legitRepCount;
       }
+
+    if (botStateData.legitRepCooldown && typeof botStateData.legitRepCooldown === "object") {
+      for (const [userId, ts] of Object.entries(botStateData.legitRepCooldown)) {
+        if (typeof ts === "number") {
+          legitRepCooldown.set(userId, ts);
+        }
+      }
+    }
 
     if (botStateData.ticketCounter && typeof botStateData.ticketCounter === "object") {
       for (const [guildId, value] of Object.entries(botStateData.ticketCounter)) {
@@ -1151,16 +1144,17 @@ const commands = [
   new SlashCommandBuilder()
     .setName("drop")
     .setDescription("Wylosuj zniżkę na zakupy w sklepie!")
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelkalkulator")
     .setDescription("Wyślij panel kalkulatora waluty na kanał")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticket-zakoncz")
@@ -1191,23 +1185,36 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("free-kasa")
-    .setDescription("Losuj darmową kasę (cooldown 3h, tylko kanał free-kasa)")
-    .setDefaultMemberPermissions(0)
-    .setDMPermission(false)
-    .toJSON(),
-  new SlashCommandBuilder()
     .setName("zamknij-z-powodem")
     .setDescription("Zamknij ticket z powodem (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
-      option.setName("powod").setDescription("Powód zamknięcia").setRequired(true)
+      option
+        .setName("powod")
+        .setDescription("Powód zamknięcia")
+        .setRequired(true)
+        .addChoices(
+          { name: "Brak odpowiedzi", value: "Brak odpowiedzi" },
+          { name: "Fake ticket", value: "Fake ticket" },
+          { name: "Próba oszustwa", value: "Próba oszustwa" },
+          { name: "Brak kultury", value: "Brak kultury" },
+          { name: "Spam", value: "Spam" },
+          { name: "Zamówienie zrealizowane", value: "Zamówienie zrealizowane" },
+          { name: "Inny powód", value: "Inny powód" }
+        )
+    )
+    .addStringOption((option) =>
+      option
+        .setName("powod_custom")
+        .setDescription("Własny powód zamknięcia")
+        .setRequired(false)
+        .setMaxLength(200)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("legit-rep-ustaw")
     .setDescription("Ustaw licznik legit repów i zmień nazwę kanału")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((option) =>
       option
         .setName("ile")
@@ -1224,7 +1231,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zaproszeniastats")
     .setDescription("Edytuj statystyki zaproszeń")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((o) =>
       o
         .setName("kategoria")
@@ -1267,12 +1274,12 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zamknij")
     .setDescription("Zamknij ticket")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelweryfikacja")
     .setDescription("Wyślij panel weryfikacji na kanał")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("opinia")
@@ -1325,11 +1332,11 @@ const commands = [
     .toJSON(),
   // NEW: /wyczysckanal command
   new SlashCommandBuilder()
-    .setName("wyczysckanal")
+    .setName("wyczysc")
     .setDescription(
       "Wyczyść wiadomości na kanale (wszystko / ilosc-wiadomosci)",
     )
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
       option
         .setName("tryb")
@@ -1353,13 +1360,32 @@ const commands = [
   new SlashCommandBuilder()
     .setName("resetlc")
     .setDescription("Reset liczby legitchecków do zera")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
   new SlashCommandBuilder()
-    .setName("zresetujczasoczekiwania")
-    .setDescription("Resetuje czasy oczekiwania dla /drop i /opinia")
-    .setDefaultMemberPermissions(0)
+    .setName("zco")
+    .setDescription("Zresetuj czas oczekiwania (/drop /opinia /sprawdz-zaproszenia /+rep)")
+    .addStringOption((option) =>
+      option
+        .setName("co")
+        .setDescription("Co zresetować")
+        .setRequired(true)
+        .addChoices(
+          { name: "/drop", value: "drop" },
+          { name: "/opinia", value: "opinia" },
+          { name: "/sprawdz-zaproszenia", value: "zaproszenia" },
+          { name: "+rep", value: "rep" },
+          { name: "wszystko", value: "all" }
+        ),
+    )
+    .addUserOption((option) =>
+      option
+        .setName("kto")
+        .setDescription("Użytkownik do resetu (domyślnie Ty)")
+        .setRequired(false)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // NEW helper admin commands for claiming/unclaiming
   new SlashCommandBuilder()
@@ -1376,7 +1402,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("embed")
     .setDescription("Wyślij wiadomość przez bota (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addChannelOption((o) =>
       o
         .setName("kanal")
@@ -1412,7 +1438,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczeniazaplacil")
     .setDescription("Oznacz rozliczenie jako zapłacone (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
@@ -1423,17 +1449,22 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczeniezakoncz")
     .setDescription("Wyślij podsumowanie rozliczeń (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("wezwij")
+    .setDescription("Wezwij osobe (sprzedawca)")
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("statusbota")
     .setDescription("Pokaż szczegółowy status bota")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczenieustaw")
     .setDescription("Ustaw tygodniową sumę rozliczenia dla użytkownika (tylko właściciel)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
@@ -1461,16 +1492,16 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("stworzkonkurs")
+    .setName("utworz-konkurs")
     .setDescription(
       "Utwórz konkurs z przyciskiem do udziału i losowaniem zwycięzców",
     )
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("end-giveaways")
     .setDescription("Zakończ wszystkie aktywne konkursy (tylko właściciel serwera)")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
 ];
 
@@ -1548,12 +1579,36 @@ function getPaymentFeePercent(methodRaw) {
 
   if (m.startsWith("blik")) return 0;
   if (m.startsWith("kod blik")) return 10;
+  if (m.includes("mypsc")) return 20;
   if (m === "psc bez paragonu" || m.startsWith("psc bez paragonu")) return 20;
   if (m === "psc" || m.startsWith("psc ")) return 10;
   if (m.includes("paypal")) return 5;
   if (m.includes("ltc")) return 5;
 
   return 0;
+}
+
+function getMinPurchasePln(methodRaw) {
+  const m = (methodRaw || "").toString().trim().toLowerCase();
+  if (m.includes("mypsc")) return 11; // min zakupy dla MYPSC
+  if (m.startsWith("blik") || m.startsWith("kod blik")) return 5;
+  if (m.includes("psc")) return 5;
+  if (m.includes("paypal")) return 5;
+  if (m.includes("ltc")) return 5;
+  return 5;
+}
+
+function calculateFeePln(basePln, methodRaw) {
+  const percent = getPaymentFeePercent(methodRaw);
+  let fee = basePln * (percent / 100);
+  let feeLabel = `${percent}%`;
+
+  if ((methodRaw || "").toString().toLowerCase().includes("mypsc")) {
+    fee = Math.max(fee, 10); // min 10 zł
+    feeLabel = `${percent}% (min 10zł)`;
+  }
+
+  return { fee, feeLabel, percent };
 }
 
 function getRateForPlnAmount(pln, serverRaw) {
@@ -1965,16 +2020,11 @@ client.once(Events.ClientReady, async (c) => {
               chd,
               (emb) =>
                 typeof emb.description === "string" &&
-                (emb.description.includes(
-                  "Użyj **komendy** </drop:1454974442370240585>",
-                ) ||
-                  emb.description.includes(
-                    "`🎁` Użyj **komendy** </drop:1464015494876102748>",
-                  ) ||
-                  emb.description.includes("Użyj **komendy** `/drop`")),
+                emb.description.includes("Użyj **komendy** </drop:1464015494876102748>"),
             );
             if (foundDrop) {
               lastDropInstruction.set(chd.id, foundDrop.id);
+              scheduleSavePersistentState();
               console.log(
                 `[ready] Znalazłem istniejącą instrukcję drop: ${foundDrop.id} w kanale ${chd.id}`,
               );
@@ -2088,6 +2138,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.error("Błąd obsługi interakcji:", error);
   }
 });
+
 async function handleModalSubmit(interaction) {
   // Sprawdź czy interakcja już została odpowiedziana
   if (interaction.replied || interaction.deferred) return;
@@ -2105,6 +2156,20 @@ async function handleModalSubmit(interaction) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
         content: "> `❌` × Podaj **poprawną** kwotę w PLN.",
+      });
+    }
+
+    if (kwota < 5) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**).",
+      });
+    }
+
+    if (kwota > 10_000) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Maksymalna kwota to **10 000zł**.",
       });
     }
 
@@ -2137,6 +2202,20 @@ async function handleModalSubmit(interaction) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
         content: "> `❌` × Podaj **poprawną** ilość waluty (np. 125k / 1m).",
+      });
+    }
+
+    if (amount < 22_500) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Minimalna ilość to **22,5k** waluty.",
+      });
+    }
+
+    if (amount > 999_000_000) {
+      return interaction.reply({
+        flags: [MessageFlags.Ephemeral],
+        content: "> `❌` × Maksymalna ilość to **999 000 000** waluty.",
       });
     }
 
@@ -2243,6 +2322,24 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
+      // globalne minimum: 5zł (MYPSC 11zł dalej w metodach)
+      if (kwota < 5) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**). Podaj większą kwotę.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // maksymalnie 10 000 zł
+      if (kwota > 10_000) {
+        await interaction.reply({
+          content: "> `❌` × Maksymalna kwota to **10 000zł**. Podaj mniejszą kwotę.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       // Zapisz kwotę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
@@ -2251,21 +2348,22 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
         .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
 
       const embed = new EmbedBuilder()
@@ -2308,6 +2406,15 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
+      // minimalne zakupy dla "ile muszę dać" = 22.5k
+      if (waluta < 22_500) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna ilość to **22,5k** waluty. Podaj większą wartość.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       // Zapisz walutę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
@@ -2316,21 +2423,22 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
         .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
 
       const embed = new EmbedBuilder()
@@ -2676,7 +2784,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "odbior-nagrody";
       ticketTypeLabel = "NAGRODA ZA ZAPROSZENIA";
-      formInfo = `> ➖ × **Kod:** \`${enteredCode}\`\n> ➖ × **Nagroda:** \`${codeData.reward || "Brak"}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.reward || "Brak"}\``;
       break;
     }
     case "modal_konkurs_odbior": {
@@ -2685,7 +2793,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "konkurs-nagrody";
       ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> ➖ × **Informacje:** \`${info}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -2694,7 +2802,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "INNE";
-      formInfo = `> ➖ × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -2789,9 +2897,9 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## 🛒 NEW SHOP × ${ticketTypeLabel}\n\n` +
         `### ・ 👤 × Informacje o kliencie:\n` +
-        `> ➖ **× Ping:** <@${user.id}>\n` +
-        `> ➖ **× Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> ➖ **× ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> **× Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> **× ID:** \`${user.id}\`\n` +
         `### ・ 📋 × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -2914,16 +3022,26 @@ async function handleKalkulatorSubmit(interaction, typ) {
     }
 
     const feePercent = getPaymentFeePercent(userData.metoda);
+    const minPurchase = getMinPurchasePln(userData.metoda);
 
     if (typ === "otrzymam") {
       const kwota = userData.kwota;
-      const effectivePln = kwota * (1 - feePercent / 100);
+      if (kwota < minPurchase) {
+        await interaction.editReply({
+          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
+          embeds: [],
+          components: []
+        });
+        return;
+      }
+      const { fee, feeLabel } = calculateFeePln(kwota, userData.metoda);
+      const effectivePln = kwota - fee;
       const rate = getRateForPlnAmount(kwota, userData.tryb);
       const waluta = Math.floor(effectivePln * rate);
       const kwotaZl = Math.trunc(Number(kwota) || 0);
       const walutaShort = formatShortWaluta(waluta);
 
-      const msg = `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${userData.metoda} prowizja: ${feePercent}%) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
+      const msg = `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${userData.metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
 
       await interaction.editReply({
         content: msg,
@@ -2946,14 +3064,22 @@ async function handleKalkulatorSubmit(interaction, typ) {
       }
       const baseRaw = waluta / rate;
       const basePln = round2(baseRaw);
-      const feePln = round2(basePln * feePercent / 100);
-      const totalPln = round2(basePln + feePln);
+      const { fee, feeLabel } = calculateFeePln(basePln, userData.metoda);
+      const totalPln = round2(basePln + fee);
 
       const totalZl = Math.trunc(Number(totalPln) || 0);
+      if (totalZl < minPurchase) {
+        await interaction.editReply({
+          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
+          embeds: [],
+          components: []
+        });
+        return;
+      }
       const walutaInt = Math.floor(Number(waluta) || 0);
       const walutaShort = formatShortWaluta(walutaInt);
 
-      const msg = `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${userData.metoda} prowizja: ${feePercent}%)**`;
+      const msg = `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${userData.metoda} prowizja: ${feeLabel})**`;
 
       await interaction.editReply({
         content: msg,
@@ -3169,7 +3295,7 @@ const nickInput = new TextInputBuilder()
         embeds: [
           new EmbedBuilder()
             .setColor(COLOR_BLUE)
-            .setDescription("> \`ℹ️\` **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+            .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
         ]
       });
 
@@ -3306,7 +3432,7 @@ const nickInput = new TextInputBuilder()
     const parts = customId.split("_");
     const channelId = parts[2];
     const expectedClaimer = parts[3] || null;
-    await ticketUnclaimCommon(interaction, channelId, expectedClaimer);
+    await ticketUnclaimCommon(interaction, channelId, expectedClaimer, { reason: null });
     return;
   }
 }
@@ -3315,11 +3441,25 @@ async function handleSlashCommand(interaction) {
   const { commandName } = interaction;
 
   switch (commandName) {
+    default: {
+      // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
+      const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
+      // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
+      const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
+      const SELLER_ROLE_ID = "1350786945944391733";
+      const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+      const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+      if (!isAdmin && !isSeller && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
+        await interaction.reply({
+          content: "> `❌` × Nie masz uprawnień do tej komendy.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      break;
+    }
     case "drop":
       await handleDropCommand(interaction);
-      break;
-    case "free-kasa":
-      await handleFreeKasaCommand(interaction);
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
@@ -3354,13 +3494,13 @@ async function handleSlashCommand(interaction) {
     case "opinia":
       await handleOpinionCommand(interaction);
       break;
-    case "wyczysckanal":
+    case "wyczysc":
       await handleWyczyscKanalCommand(interaction);
       break;
     case "resetlc":
       await handleResetLCCommand(interaction);
       break;
-    case "zresetujczasoczekiwania":
+    case "zco":
       await handleZresetujCzasCommand(interaction);
       break;
     case "przejmij":
@@ -3378,6 +3518,9 @@ async function handleSlashCommand(interaction) {
     case "sprawdz-kogo-zaprosil":
       await handleSprawdzKogoZaprosilCommand(interaction);
       break;
+    case "utworz-konkurs":
+      await handleDodajKonkursCommand(interaction);
+      break;
     case "rozliczenie":
       await handleRozliczenieCommand(interaction);
       break;
@@ -3392,6 +3535,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "rozliczenieustaw":
       await handleRozliczenieUstawCommand(interaction);
+      break;
+    case "wezwij":
+      await handleWezwijCommand(interaction);
       break;
     case "zaproszeniastats":
       await handleZaprosieniaStatsCommand(interaction);
@@ -3757,7 +3903,7 @@ async function handleAdminPrzejmij(interaction) {
     });
     return;
   }
-  await ticketClaimCommon(interaction, channel.id);
+  await ticketClaimCommon(interaction, channel.id); // quiz odpali się w środku
 }
 async function handlePanelKalkulatorCommand(interaction) {
   if (!interaction.guild) {
@@ -3783,7 +3929,7 @@ async function handlePanelKalkulatorCommand(interaction) {
       "```\n" +
       "🧮 New Shop × Kalkulator\n" +
       "```\n" +
-      "> \`ℹ️\` × **Aby w szybki i prosty sposób obliczyć ile otrzymasz waluty za określoną ilość PLN lub ile musisz dać, aby otrzymać określoną ilość waluty, kliknij jeden z przycisków poniżej.**",
+      "> <a:arrowwhite:1469100658606211233> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
     );
 
   const btnIleOtrzymam = new ButtonBuilder()
@@ -3827,7 +3973,7 @@ async function handleAdminOdprzejmij(interaction) {
     });
     return;
   }
-  await ticketUnclaimCommon(interaction, channel.id, null);
+  await ticketUnclaimCommon(interaction, channel.id, null, { reason: null });
 }
 
 /*
@@ -3892,7 +4038,9 @@ async function handleSendMessageCommand(interaction) {
   });
 
   collector.on("collect", async (msg) => {
-    const content = (msg.content || "").trim();
+    const contentRaw = (msg.content || "").trim();
+    const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
+    const content = contentRaw.replace(/:strzałka:/gi, arrowEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
@@ -4238,8 +4386,8 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       "```\n" +
       "🛒 New Shop × WERYFIKACJA\n" +
       "```\n" +
-      `> Przejdź prostą zagadkę matematyczną\n` +
-      `> aby otrzymać rolę **klient.**`,
+      `<a:arrowwhite:1469100658606211233> **Kliknij w przycisk** na dole, **aby przejdź prostą** zagadkę\n` +
+      `<a:arrowwhite:1469100658606211233> **matematyczną** i **otrzymać** rolę **klient.**`,
     )
     // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
@@ -4250,7 +4398,7 @@ async function handlePanelWeryfikacjaCommand(interaction) {
 
   const button = new ButtonBuilder()
     .setCustomId(`verify_panel_${interaction.channelId}_${Date.now()}`)
-    .setStyle(ButtonStyle.Primary) // niebieski
+    .setStyle(ButtonStyle.Secondary) // niebieski
     .setEmoji("📝");
 
   const row = new ActionRowBuilder().addComponents(button);
@@ -4440,7 +4588,7 @@ async function handleCloseTicketCommand(interaction) {
       embeds: [
         new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription("> \`ℹ️\` **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+          .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
       ]
     });
 
@@ -4515,92 +4663,52 @@ async function handleTicketZakonczCommand(interaction) {
     return;
   }
 
-  // Stwórz embed instrukcji w zależności od typu
-  let embed;
   const legitRepChannelId = "1449840030947217529";
-  
-  // Przygotuj wiadomość +rep
-  let repMessage;
-  switch (typ.toLowerCase()) {
-    case "zakup":
-      repMessage = `+rep @${interaction.user.username} sprzedał ${ile} ${serwer}`;
-      break;
-    case "sprzedaż":
-      repMessage = `+rep @${interaction.user.username} kupił ${ile} ${serwer}`;
-      break;
-    case "wręczył nagrodę":
-      repMessage = `+rep @${interaction.user.username} wręczył nagrodę ${ile} ${serwer}`;
-      break;
+  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
+  let thankLine = "Dziękujemy za zakup w naszym sklepie";
+  let repVerb = "sprzedał";
+  const typLower = typ.toLowerCase();
+  if (typLower === "sprzedaż") {
+    thankLine = "Dziękujemy za sprzedaż w naszym sklepie";
+    repVerb = "kupił";
+  } else if (typLower === "wręczył nagrodę") {
+    thankLine = "Nagroda została nadana";
+    repVerb = "wręczył nagrodę";
   }
 
-  switch (typ.toLowerCase()) {
-    case "zakup":
-      embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE) // 🔵 niebieski
-        .setTitle("😎 DZIĘKUJEMY ZA ZAKUP W NASZYM SKLEPIE! ❤️")
-        .setDescription(
-          `Aby zakończyć ticket, wyślij poniższą wiadomość na kanał\n<#${legitRepChannelId}>\n\n` +
-          `\`\`\`\n${repMessage}\n\`\`\``
-        )
-        .setImage("attachment://standard_5.gif");
-      break;
+  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${ile} ${serwer}`;
 
-    case "sprzedaż":
-      embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE) // 🔵 niebieski
-        .setTitle("💪 DZIĘKUJEMY ZA SPRZEDAŻ W NASZYM SKLEPIE! ❤️")
-        .setDescription(
-          `Aby zamknąć ten ticket wyślij wiadomość +rep na kanał \n<#${legitRepChannelId}>\n\n` +
-          `\`\`\`\n${repMessage}\n\`\`\``
-        )
-        .setImage("attachment://standard_5.gif");
-      break;
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      "```\n" +
+      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
+      "```\n" +
+      `${arrowEmoji} **${thankLine}**\n\n` +
+      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
+      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``,
+    )
+    .setImage("attachment://standard_5.gif");
 
-    case "wręczył nagrodę":
-      embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE) // 🔵 niebieski
-        .setTitle("💰 NAGRODA ZOSTAŁA NADANA ❤️")
-        .setDescription(
-          `Aby zakończyć ticket, wyślij poniższą wiadomość na kanał\n<#${legitRepChannelId}>\n\n` +
-          `\`\`\`\n${repMessage}\n\`\`\``
-        )
-        .setImage("attachment://standard_5.gif");
-      
-      // Dodaj informację o brakujących zaproszeniach dla typu "wręczył nagrodę"
-      try {
-        const guildId = interaction.guildId;
-        const gMap = inviteCounts.get(guildId) || new Map();
-        const userInvites = gMap.get(ticketOwnerId) || 0;
-        const requiredInvites = 10; // zakładam 10 zaproszeń na nagrodę
-        const missing = Math.max(0, requiredInvites - userInvites);
-        
-        if (missing > 0) {
-          embed.addFields({
-            name: "ℹ️ Informacja o zaproszeniach",
-            value: `Brakuje ci **${missing}** zaproszeń, aby otrzymać kolejną nagrodę 50k$.`
-          });
-        }
-      } catch (e) {
-        console.error("Błąd sprawdzania zaproszeń:", e);
-      }
-      break;
-
-    default:
-      await interaction.followUp({
-        content: "> `❌` × **Nieprawidłowy** typ. Wybierz: **zakup**, **sprzedaż** lub **wręczył nagrodę**.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-  }
-
-  // Wyślij jedną wiadomość z pingiem, embedem i +rep w obu miejscach
   const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
   const gifAttachment = new AttachmentBuilder(gifPath, { name: "standard_5.gif" });
-  
+
+  // Ephemeral potwierdzenie dla sprzedawcy
   await interaction.reply({
-    content: `<@${ticketOwnerId}>\n\n\`\`\`\n${repMessage}\n\`\`\``,
+    content: "`✅` × Poprawnie użyto komendy ticket zakończ.",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  // Wyślij ping właściciela + embed + wzór (bez reply na slash)
+  await interaction.channel.send({ content: `<@${ticketOwnerId}>` });
+
+  await interaction.channel.send({
     embeds: [embed],
     files: [gifAttachment]
+  });
+
+  await interaction.channel.send({
+    content: repMessage,
   });
 
   // Zapisz informację o oczekiwaniu na +rep dla tego ticketu
@@ -4609,8 +4717,19 @@ async function handleTicketZakonczCommand(interaction) {
     commandUserId: interaction.user.id, // osoba która użyła komendy
     commandUsername: interaction.user.username, // nick osoby która użyła komendy
     awaitingRep: true,
+    legitRepChannelId,
     ts: Date.now()
   });
+
+  // Przenieś ticket do kategorii zrealizowanej
+  const ARCHIVED_CATEGORY_ID = "1469059216303198261";
+  try {
+    if (channel.parentId !== ARCHIVED_CATEGORY_ID) {
+      await channel.setParent(ARCHIVED_CATEGORY_ID, { lockPermissions: false });
+    }
+  } catch (err) {
+    console.error("Nie udało się przenieść ticketu do kategorii zrealizowanej:", err);
+  }
 
   console.log(`Ticket ${channel.id} oczekuje na +rep od użytkownika ${ticketOwnerId} (komenda użyta przez ${interaction.user.username})`);
 }
@@ -4638,7 +4757,9 @@ async function handleZamknijZPowodemCommand(interaction) {
   }
 
   // Pobierz powód
-  const powod = interaction.options.getString("powod");
+  const powodPreset = interaction.options.getString("powod");
+  const powodCustom = (interaction.options.getString("powod_custom") || "").trim();
+  const powod = powodCustom || powodPreset;
 
   // Pobierz właściciela ticketu
   const ticketData = ticketOwners.get(channel.id);
@@ -4654,21 +4775,27 @@ async function handleZamknijZPowodemCommand(interaction) {
 
   try {
     // Wyślij embed do właściciela ticketu
+    const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("**TICKET ZOSTAŁ ZAMKNIĘTY**")
-      .setDescription(`\`powód:\` **${powod}**`)
+      .setDescription(
+        "```\n" +
+        "🎫 New Shop × TICKETY\n" +
+        "```\n" +
+        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> **\`${powod}\`**`
+      )
       .setTimestamp();
 
     // Wyślij DM do właściciela ticketu
     const ticketOwner = await client.users.fetch(ticketOwnerId).catch(() => null);
     if (ticketOwner) {
-      await ticketOwner.send({ embeds: [embed] });
+      await ticketOwner.send({ embeds: [embed] }).catch(() => null);
     }
 
-    // Wyślij potwierdzenie na kanał
+    // Wyślij potwierdzenie na kanał (publicznie)
     await interaction.reply({
-      content: "✅ **Ticket został zamknięty!** Właściciel otrzymał powód w wiadomości prywatnej."
+      content: `> \`✅\` × Ticket zamknięty z powodem: **${powod}**`,
+      flags: [MessageFlags.Ephemeral],
     });
 
     // Zamknij ticket po 2 sekundach
@@ -5022,8 +5149,9 @@ async function showKonkursOdbiorModal(interaction) {
   await interaction.showModal(modal);
 }
 
-async function ticketClaimCommon(interaction, channelId) {
+async function ticketClaimCommon(interaction, channelId, opts = {}) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
+  const skipQuiz = opts.skipQuiz === true;
 
   if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
@@ -5040,6 +5168,38 @@ async function ticketClaimCommon(interaction, channelId) {
     return;
   }
 
+  // quiz matematyczny przed przejęciem (przycisk + /przejmij)
+  if (!skipQuiz) {
+    const questions = [
+      { q: "Ile to 5 * 3?", a: "15" },
+      { q: "Ile to 3 * 3?", a: "9" },
+      { q: "Ile to 4 * 6?", a: "24" },
+      { q: "Ile to 7 + 8?", a: "15" },
+      { q: "Ile to 12 - 5?", a: "7" },
+      { q: "Ile to 9 + 6?", a: "15" },
+      { q: "Ile to 14 - 8?", a: "6" },
+      { q: "Ile to 6 * 4?", a: "24" },
+      { q: "Ile to 5 + 9?", a: "14" },
+    ];
+    const pick = questions[Math.floor(Math.random() * questions.length)];
+    const modalId = `claim_quiz_${channelId}_${interaction.user.id}_${Date.now()}`;
+    pendingClaimQuiz.set(modalId, { channelId, userId: interaction.user.id, answer: pick.a });
+
+    const modal = new ModalBuilder()
+      .setCustomId(modalId)
+      .setTitle("Weryfikacja przejęcia ticketu");
+    const input = new TextInputBuilder()
+      .setCustomId("claim_answer")
+      .setLabel(pick.q)
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(4);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal).catch(() => null);
+    return;
+  }
+
+  // szybka odpowiedź, żeby Discord nie wyświetlał błędu interakcji (po quizie)
   if (!interaction.replied && !interaction.deferred) {
     if (isBtn) {
       await interaction.deferUpdate().catch(() => null);
@@ -5049,6 +5209,13 @@ async function ticketClaimCommon(interaction, channelId) {
   }
 
   const replyEphemeral = async (text) => {
+    // jeśli interakcja nie została jeszcze potwierdzona, użyj reply()
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction
+        .reply({ content: text, flags: [MessageFlags.Ephemeral] })
+        .catch(() => null);
+      return;
+    }
     if (isBtn) {
       await interaction.followUp({ content: text, flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
@@ -5161,7 +5328,16 @@ async function ticketClaimCommon(interaction, channelId) {
       .setColor(COLOR_BLUE)
       .setDescription(`> \`✅\` × Ticket został przejęty przez <@${claimerId}>`);
 
-    await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+    try {
+      const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+      if (sent && sent.id) {
+        ticketData.lastClaimMsgId = sent.id;
+        ticketOwners.set(channelId, ticketData);
+        scheduleSavePersistentState();
+      }
+    } catch {
+      // ignore
+    }
     if (!isBtn) {
       await interaction.deleteReply().catch(() => null);
     }
@@ -5232,6 +5408,14 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       "> `❗` Brak wymaganych uprawnień.",
     );
     return;
+  }
+
+  if (!interaction.replied && !interaction.deferred) {
+    if (isBtn) {
+      await interaction.deferUpdate().catch(() => null);
+    } else {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+    }
   }
 
   try {
@@ -5333,9 +5517,69 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, null).catch(() => null);
     }
 
+    // log do logi-ticket + backup wiadomości przed czyszczeniem
+    try {
+      const logCh = await getLogiTicketChannel(interaction.guild);
+      // backup wiadomości przed usunięciem
+      let backupAttachment = null;
+      try {
+        const messages = await ch.messages.fetch({ limit: 100 }).catch(() => null);
+        if (messages && messages.size) {
+          const sorted = Array.from(messages.values()).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+          const lines = sorted.map((m) => {
+            const ts = new Date(m.createdTimestamp).toISOString();
+            const author = `${m.author.tag} (${m.author.id})`;
+            const content = (m.content || "").replace(/\n/g, " ");
+            const attachments = m.attachments?.size ? ` [załączniki: ${Array.from(m.attachments.values()).map((a) => a.url).join(", ")}]` : "";
+            return `[${ts}] ${author}: ${content}${attachments}`;
+          });
+          const buf = Buffer.from(lines.join("\n"), "utf8");
+          backupAttachment = new AttachmentBuilder(buf, { name: `ticket_${channelId}_history.txt` });
+        }
+      } catch (e) {
+        console.error("Backup messages before unclaim failed:", e);
+      }
+
+      if (logCh) {
+        const logEmbed = new EmbedBuilder()
+          .setColor(COLOR_BLUE)
+          .setDescription(`> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>`)
+          .setFooter({ text: `Kanał: ${ch.name}` })
+          .setTimestamp();
+        const payload = { embeds: [logEmbed] };
+        if (backupAttachment) payload.files = [backupAttachment];
+        await logCh.send(payload).catch(() => null);
+      }
+    } catch (e) {
+      console.error("Log unclaim failed:", e);
+    }
+
+    // wyczyść historię kanału od czasu przejęcia do teraz (zostawiając samą wiadomość o przejęciu)
+    try {
+      let claimMsg = null;
+      if (ticketData.lastClaimMsgId) {
+        claimMsg = await ch.messages.fetch(ticketData.lastClaimMsgId).catch(() => null);
+      }
+
+      const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => null);
+      if (msgs && msgs.size) {
+        const toDelete = msgs.filter((m) => {
+          if (claimMsg && m.id === claimMsg.id) return false;
+          if (m.id === interaction.message?.id) return false;
+          if (claimMsg) return m.createdTimestamp >= claimMsg.createdTimestamp;
+          return true;
+        });
+        if (toDelete.size) {
+          await ch.bulkDelete(toDelete, true).catch(() => null);
+        }
+      }
+    } catch (e) {
+      console.error("Nie udało się wyczyścić historii kanału po odprzejęciu:", e);
+    }
+
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${releaserId}>`);
+      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>`);
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
@@ -5421,6 +5665,26 @@ async function handleModalSubmit(interaction) {
   const guildId = interaction.guildId;
   if (!guildId || !interaction.guild) return;
 
+  const cid = interaction.customId || "";
+
+  // quiz do przejęcia ticketu
+  if (cid.startsWith("claim_quiz_")) {
+    const data = pendingClaimQuiz.get(cid);
+    if (!data || data.userId !== interaction.user.id) {
+      await interaction.reply({ content: "> `❌` × Ta weryfikacja wygasła. Kliknij **Przejmij** ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      return;
+    }
+    const answer = (interaction.fields.getTextInputValue("claim_answer") || "").trim();
+    if (answer !== data.answer) {
+      await interaction.reply({ content: "> `❌` × Zła odpowiedź. Spróbuj ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      pendingClaimQuiz.delete(cid);
+      return;
+    }
+    pendingClaimQuiz.delete(cid);
+    await ticketClaimCommon(interaction, data.channelId, { skipQuiz: true });
+    return;
+  }
+
   const botName = client.user?.username || "NEWSHOP";
 
   // NEW: konkurs create modal
@@ -5450,21 +5714,22 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
         .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
 
       const embed = new EmbedBuilder()
@@ -5515,21 +5780,22 @@ async function handleModalSubmit(interaction) {
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
         .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
         );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
         .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
 
       const embed = new EmbedBuilder()
@@ -5603,7 +5869,7 @@ async function handleModalSubmit(interaction) {
 
     if (numeric !== record.answer) {
       await interaction.reply({
-        content: "> \`❌\` **Źle! Nieprawidłowy wynik. Spróbuj jeszcze raz.**",
+        content: "> \`❌\` × **Źle! Nieprawidłowy wynik. Spróbuj jeszcze raz.**",
         flags: [MessageFlags.Ephemeral],
       });
       // remove record so they can request a new puzzle
@@ -5681,13 +5947,13 @@ async function handleModalSubmit(interaction) {
         await interaction.user.send({ embeds: [dmEmbed] });
         // ephemeral confirmation (not public)
         await interaction.reply({
-          content: "> \`✅\` **Pomyślnie zweryfikowano**",
+          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (dmError) {
         console.error("Nie udało się wysłać DM po weryfikacji:", dmError);
         await interaction.reply({
-          content: "> \`✅\` **Pomyślnie zweryfikowano**",
+          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -5990,9 +6256,31 @@ async function handleModalSubmit(interaction) {
         "oczekiwana_waluta",
       );
 
-      // extract numeric (pozwól na zapisy typu 50zł / 50 zł / 50,5zł), bez blokady liter
-      const kwotaMatch = kwotaRaw.match(/(\d+(?:[\.,]\d+)?)/);
-      let kwotaNum = kwotaMatch ? parseFloat(kwotaMatch[1].replace(',', '.')) : 0;
+      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
+      if (!lettersOnly.test(serwer)) {
+        await interaction.reply({
+          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      let kwotaNum = parseFloat(kwotaRaw.replace(/,/g, '.'));
+      if (Number.isNaN(kwotaNum)) {
+        await interaction.reply({
+          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5` (zł).",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      if (!lettersOnly.test(platnosc)) {
+        await interaction.reply({
+          content: "> `❌` × Napisz metodę płatności literami, bez cyfr.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // Użyj już sparsowanej kwoty (kwotaNum) – zapewnia liczbową wartość
       if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
 
       // routing to categories: treat >100 as 100-200+ (user requested)
@@ -6016,21 +6304,60 @@ async function handleModalSubmit(interaction) {
       ticketTopic = `Zakup na serwerze: ${serwer}`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
 
-      formInfo = `> \`➖\` × **Serwer:** \`${serwer}\`\n` +
-        `> \`➖\` × **Kwota:** \`${kwotaNum}zł\`\n` +
-        `> \`➖\` × **Metoda płatności:** \`${platnosc}\`\n` +
-        `> \`➖\` × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
+      if (kwotaNum < 5) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${platnosc}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
       break;
     }
     case "modal_sprzedaz": {
       const co = interaction.fields.getTextInputValue("co_sprzedac");
       const serwer = interaction.fields.getTextInputValue("serwer");
       const ile = interaction.fields.getTextInputValue("ile");
+      const kwotaSprzedaz = parseFloat(ile.replace(/,/g, '.'));
+      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
+      if (!lettersOnly.test(serwer)) {
+        await interaction.reply({
+          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      if (Number.isNaN(kwotaSprzedaz)) {
+        await interaction.reply({
+          content: "> `❌` × Podaj kwotę jako liczbę, np. `25` lub `25.5` (zł).",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
 
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
       ticketTypeLabel = "SPRZEDAŻ";
-      formInfo = `> \`➖\` × **Co chce sprzedać:** \`${co}\`\n> \`➖\` × **Serwer:** \`${serwer}\`\n> \`➖\` × **Oczekiwana kwota:** \`${ile}\``;
+      if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${co}\`\n> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n> <a:arrowwhite:1469100658606211233> × **Oczekiwana kwota:** \`${ile}\``;
       break;
     }
     case "modal_odbior": {
@@ -6116,10 +6443,10 @@ async function handleModalSubmit(interaction) {
         ? Math.floor(codeData.expiresAt / 1000)
         : null;
       const expiryLine = expiryTs
-        ? `\n> \`➖\` × **Kod wygasa za:** <t:${expiryTs}:R>`
+        ? `\n> <a:arrowwhite:1469100658606211233> × **Kod wygasa za:** <t:${expiryTs}:R>`
         : "";
 
-      const formInfo = `> \`➖\` × **Kod:** \`${enteredCode}\`\n> \`➖\` × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
+      const formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
 
       try {
         let parentToUse = categoryId;
@@ -6167,9 +6494,9 @@ async function handleModalSubmit(interaction) {
           .setDescription(
             `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> \`➖\` **× Ping:** <@${user.id}>\n` +
-            `> \`➖\` × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-            `> \`➖\` × **ID:** \`${user.id}\`\n` +
+            `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+            `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+            `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
             `### ・ \`📋\` × Informacje z formularza:\n` +
             `${formInfo}`,
           )
@@ -6224,7 +6551,7 @@ async function handleModalSubmit(interaction) {
         }).catch(() => { });
 
         await interaction.reply({
-          content: `> \`✅\` **Utworzono ticket! Przejdź do:** <#${channel.id}>.`,
+          content: `> \`✅\` × Ticket został stworzony <#${channel.id}>.`,
           flags: [MessageFlags.Ephemeral],
         });
       } catch (err) {
@@ -6242,7 +6569,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "konkurs-nagrody";
       ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> \`➖\` × **Informacje:** \`${info}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -6251,7 +6578,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "INNE";
-      formInfo = `> \`➖\` × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -6390,9 +6717,9 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> \`➖\` **× Ping:** <@${user.id}>\n` +
-        `> \`➖\` × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> \`➖\` × **ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -6465,7 +6792,7 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      content: `> \`✅\` **Utworzono ticket! Przejdź do:** <#${channel.id}>`,
+      content: `> \`✅\` × Ticket został stworzony <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
   } catch (error) {
@@ -6653,112 +6980,47 @@ client.on(Events.MessageCreate, async (message) => {
       `• \`❗\` __**Na tym kanale można losować tylko zniżki!**__`,
     );
 
-  // Enforce drop-channel-only rule (only allow messages starting with "/drop")
   try {
     const guildId = message.guildId;
     if (guildId) {
+      const content = (message.content || "").trim();
+
       const dropChannelId = dropChannels.get(guildId);
       if (dropChannelId && message.channel.id === dropChannelId) {
-        const content = (message.content || "").trim();
-        // allow if message begins with "/drop" (user typed it)
-        if (!content.toLowerCase().startsWith("/drop")) {
-          // delete and warn
-          try {
-            await message.delete().catch(() => null);
-          } catch (e) {
-            // ignore
-          }
-          try {
-            const warnMsg = await message.channel.send({
-              content: `<@${message.author.id}>`,
-              embeds: [dropInvalidEmbed],
-            });
-            setTimeout(() => warnMsg.delete().catch(() => { }), 3000);
-          } catch (e) {
-            // ignore
-          }
+        // Usuń każdą wiadomość użytkownika (także wpisane "/drop"), zostaw tylko slash-command
+        if (!message.author.bot) {
+          await message.delete().catch(() => null);
           return;
         }
       }
-    }
-  } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguły kanału drop:", e);
-  }
 
-  // Enforce opinie-channel-only rule (only allow messages starting with "/opinia")
-  try {
-    const guildId = message.guildId;
-    if (guildId) {
       const opinieChannelId = opinieChannels.get(guildId);
       if (opinieChannelId && message.channel.id === opinieChannelId) {
-        const content = (message.content || "").trim();
-        if (!content.toLowerCase().startsWith("/opinia")) {
-          // delete and warn
-          try {
-            await message.delete().catch(() => null);
-          } catch (e) {
-            // ignore
-          }
-          try {
-            const warnMsg = await message.channel.send({
-              content: `<@${message.author.id}>`,
-              embeds: [opinInvalidEmbed],
-            });
-            setTimeout(() => warnMsg.delete().catch(() => { }), 3000);
-          } catch (e) {
-            // ignore
-          }
+        if (!message.author.bot) {
+          await message.delete().catch(() => null);
           return;
-        } else {
-          // If user typed plain "/opinia" (not using slash command) we should also enforce per-user cooldown here.
-          const last = opinionCooldowns.get(message.author.id) || 0;
-          if (Date.now() - last < OPINION_COOLDOWN_MS) {
-            const remaining = OPINION_COOLDOWN_MS - (Date.now() - last);
-            try {
-              await message.delete().catch(() => null);
-            } catch (e) { }
-            try {
-              const warnMsg = await message.channel.send({
-                content: `<@${message.author.id}>`,
-                embeds: [
-                  new EmbedBuilder()
-                    .setColor(COLOR_BLUE)
-                    .setDescription(
-                      `• \`❗\` Musisz poczekać ${humanizeMs(remaining)}, zanim użyjesz /opinia ponownie.`,
-                    ),
-                ],
-              });
-              setTimeout(() => warnMsg.delete().catch(() => { }), 4000);
-            } catch (e) { }
-            return;
-          } else {
-            // allow typed /opinia but start cooldown
-            opinionCooldowns.set(message.author.id, Date.now());
-            // delete typed /opinia to reduce clutter:
-            try {
-              await message.delete().catch(() => null);
-            } catch (e) { }
-            // Inform user to use slash command properly (instruction should be yellow and mention command id)
-            try {
-              const info = await message.channel.send({
-                content: `<@${message.author.id}>`,
-                embeds: [
-                  new EmbedBuilder()
-                    .setColor(COLOR_YELLOW)
-                    .setDescription(
-                      `Użyj **komendy** × </opinia:1464015495392133321> aby wystawić opinię — post został przyjęty.`,
-                    ),
-                ],
-              });
-              setTimeout(() => info.delete().catch(() => { }), 3000);
-            } catch (e) { }
-            return;
-          }
+        }
+      }
+
+      const zapCh = message.guild
+        ? message.guild.channels.cache.find(
+          (c) =>
+            c.type === ChannelType.GuildText &&
+            (c.name === "❓-×┃sprawdz-zapro" ||
+              c.name.includes("sprawdz-zapro") ||
+              c.name.includes("sprawdz-zaproszenia")),
+        )
+        : null;
+
+      if (zapCh && message.channel.id === zapCh.id) {
+        if (!message.author.bot) {
+          await message.delete().catch(() => null);
+          return;
         }
       }
     }
   } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguły kanału opinii:", e);
+    console.error("Błąd przy egzekwowaniu reguł kanałów drop/opinia/zaproszenia:", e);
   }
 
   // Enforce zaproszenia-check-only channel rule:
@@ -6779,18 +7041,6 @@ client.on(Events.MessageCreate, async (message) => {
       if (!content.toLowerCase().startsWith("/sprawdz-zaproszenia")) {
         try {
           await message.delete().catch(() => null);
-        } catch (e) { }
-        try {
-          const warnEmbed = new EmbedBuilder()
-            .setColor(COLOR_RED)
-            .setDescription(
-              `• \`❗\` __**Na tym kanale można sprawdzać tylko swoje zaproszenia!**__`,
-            );
-          const warn = await message.channel.send({
-            content: `<@${message.author.id}>`,
-            embeds: [warnEmbed],
-          });
-          setTimeout(() => warn.delete().catch(() => { }), 4000);
         } catch (e) { }
         return;
       } else {
@@ -6830,17 +7080,20 @@ client.on(Events.MessageCreate, async (message) => {
         const cooldownEmbed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(
-            "🛒 New Shop × Legit-checki\n" +
-            "`🛑` Stop!\n\n" +
-            `\`❌\` × Możesz wystawić następnego legit-repa za \`${humanizeMs(remaining)}\`!`
-          );
+            "```\n" +
+            "✅ New Shop × LEGIT CHECK\n" +
+            "```\n" +
+            `<a:arrowwhite:1469100658606211233> **__Stop!__**\n` +
+            `<a:arrowwhite:1469100658606211233> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
+          )
+          .setTimestamp();
         message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
         return;
       }
 
       // Wzorzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]
-      const mentionPattern = /<@!?\d+>/;
-      const repPattern = /^\+rep\s+<@!?\d+>\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
+      const mentionPattern = /<@!?\d+>|@\S+/;
+      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
       const hasMention = mentionPattern.test(messageContent);
       const isValidRep = repPattern.test(messageContent);
 
@@ -6851,8 +7104,8 @@ client.on(Events.MessageCreate, async (message) => {
           await message.delete();
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
-            .setDescription(`• \`❗\` Oznacz poprawnie sprzedawcę!`);
-          const warnMsg = await channel.send({ embeds: [warningEmbed] });
+            .setDescription(`• \`❗\` × __**Stosuj się do wzoru legit checka!**__`);
+          const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
           console.error("Błąd usuwania nieoznaczonego legit-rep:", err);
@@ -6866,10 +7119,10 @@ client.on(Events.MessageCreate, async (message) => {
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
             .setDescription(
-              `• \`❗\` __**Stosuj się do wzoru legit checka!**__\n+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]`,
+              `• \`❗\` × __**Stosuj się do wzoru legit checka!**__`,
             );
 
-          const warnMsg = await channel.send({ embeds: [warningEmbed] });
+          const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
           console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
@@ -6888,48 +7141,34 @@ client.on(Events.MessageCreate, async (message) => {
         console.log(`[+rep] Sprawdzam tickety oczekujące na +rep od użytkownika ${senderId}`);
         
         // Przeszukaj wszystkie tickety oczekujące na +rep
-        for (const [channelId, ticketData] of pendingTicketClose.entries()) {
-          console.log(`[+rep] Sprawdzam ticket ${channelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
-          if (ticketData.awaitingRep && ticketData.userId === senderId) {
-            // Sprawdź czy w wiadomości +rep jest nick osoby która użyła komendy
+        for (const [ticketChannelId, ticketData] of pendingTicketClose.entries()) {
+          console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
+          if (
+            ticketData.awaitingRep &&
+            ticketData.userId === senderId &&
+            channel.id === ticketData.legitRepChannelId
+          ) {
+            // Sprawdź czy w wiadomości +rep jest wzmianka o sprzedawcy/używającym komendę
             const expectedUsername = ticketData.commandUsername;
+            const expectedId = ticketData.commandUserId;
             const msgContent = message.content.trim();
-            
-            // Sprawdź czy wiadomość zawiera oczekiwany nick
-            if (msgContent.includes(`@${expectedUsername}`)) {
-              console.log(`Znaleziono ticket ${channelId} - twórca ticketu ${senderId} wysłał +rep z nickiem ${expectedUsername}`);
-              
-              // Pobierz kanał ticketu
-              const ticketChannel = await client.channels.fetch(channelId).catch(() => null);
+
+            const mentionMatchesSeller = message.mentions.users.has(expectedId);
+            const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
+
+            if (mentionMatchesSeller || usernameIncluded) {
+              console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
+              const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
-                // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
                 try {
-                  await ticketChannel.send({
-                    content: `✅ **Otrzymano +rep!** Ticket zostanie zamknięty za **5 sekund**...`
-                  });
-                  setTimeout(async () => {
-                    try {
-                      await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                      pendingTicketClose.delete(channelId);
-                      ticketOwners.delete(channelId);
-                      console.log(`Ticket ${channelId} został zamknięty po otrzymaniu +rep`);
-                    } catch (closeErr) {
-                      console.error(`Błąd zamykania ticketu ${channelId}:`, closeErr);
-                      try {
-                        await ticketChannel.send({
-                          content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
-                        });
-                      } catch (msgErr) {
-                        console.error("Błąd wysyłania wiadomości o błędzie:", msgErr);
-                      }
-                    }
-                  }, 5000);
-                } catch (msgErr) {
-                  console.error("Błąd wysyłania wiadomości o zamknięciu ticketu:", msgErr);
+                  await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
+                  pendingTicketClose.delete(ticketChannelId);
+                  ticketOwners.delete(ticketChannelId);
+                  console.log(`Ticket ${ticketChannelId} został zamknięty po +rep`);
+                } catch (closeErr) {
+                  console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
                 }
               }
-
-              break; // znaleziono pasujący ticket
             }
           }
         }
@@ -7266,18 +7505,6 @@ async function handleWyczyscKanalCommand(interaction) {
 
   // Defer to avoid timeout and allow multiple replies
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
-
-  // Sprawdź czy właściciel
-  if (interaction.user.id !== interaction.guild.ownerId) {
-    try {
-      await interaction.editReply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
-      });
-    } catch (e) {
-      // ignore
-    }
-    return;
-  }
 
   // only text channels
   if (
@@ -7621,21 +7848,36 @@ async function handleZresetujCzasCommand(interaction) {
   }
 
   try {
-    // clear cooldown maps
-    dropCooldowns.clear();
-    opinionCooldowns.clear();
-    infoCooldowns.clear();
+    const what = interaction.options.getString("co");
+    const targetUser = interaction.options.getUser("kto") || interaction.user;
+    const targetId = targetUser.id;
+    const targets = [];
+    if (what === "drop" || what === "all") {
+      targets.push("/drop");
+      dropCooldowns.delete(targetId);
+    }
+    if (what === "opinia" || what === "all") {
+      targets.push("/opinia");
+      opinionCooldowns.delete(targetId);
+    }
+    if (what === "zaproszenia" || what === "all") {
+      targets.push("/sprawdz-zaproszenia");
+      sprawdzZaproszeniaCooldowns.delete(targetId);
+    }
+    if (what === "rep" || what === "all") {
+      targets.push("+rep");
+      legitRepCooldown.delete(targetId);
+    }
+
+    infoCooldowns.delete(targetId); // reset internal info cooldown for target
 
     await interaction.reply({
-      content:
-        "✅ Czasy oczekiwania dla /drop, /opinia oraz wewnętrznych info zostały zresetowane.",
+      content: `✅ Zresetowano czas oczekiwania (${targets.join(', ') || 'brak'}) dla <@${targetId}>.`,
       flags: [MessageFlags.Ephemeral],
     });
-    console.log(
-      `[zresetujczasoczekiwania] Użytkownik ${interaction.user.tag} zresetował cooldowny.`,
-    );
+    console.log(`[zco] ${interaction.user.tag} zresetował cooldowny: ${targets.join(', ')} dla ${targetUser.tag}`);
   } catch (err) {
-    console.error("[zresetujczasoczekiwania] Błąd:", err);
+    console.error("[zco] Błąd:", err);
     await interaction.reply({
       content: "> `❌` × **Wystąpił** błąd podczas resetowania czasów **oczekiwania**.",
       flags: [MessageFlags.Ephemeral],
@@ -9930,12 +10172,20 @@ setInterval(async () => {
   const webhookUrl = process.env.UPTIME_WEBHOOK;
   if (!webhookUrl) return;
 
+  const monitorUrl = process.env.MONITOR_HTTP_URL || process.env.RENDER_EXTERNAL_URL;
+  if (!monitorUrl) {
+    console.warn('[MONITOR_HTTP] Pomijam — brak MONITOR_HTTP_URL/RENDER_EXTERNAL_URL');
+    return;
+  }
+
   try {
     const startTime = Date.now();
-    
+    const parsed = new URL(monitorUrl);
+
     const options = {
-      hostname: 'bot-discord-hixl.onrender.com',
-      path: '/',
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      path: parsed.pathname || '/',
       method: 'GET'
     };
 
@@ -10021,6 +10271,46 @@ async function checkBotStatus() {
   };
 }
 
+// Szybka weryfikacja tokena przed logowaniem (REST /users/@me)
+async function validateBotToken() {
+  return new Promise((resolve) => {
+    try {
+      const req = https.request({
+        method: 'GET',
+        hostname: 'discord.com',
+        path: '/api/v10/users/@me',
+        headers: {
+          Authorization: `Bot ${process.env.BOT_TOKEN}`,
+        },
+      }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => {
+          console.log(`[TOKEN_CHECK] status=${res.statusCode}`);
+          if (body) console.log(`[TOKEN_CHECK] body=${body.slice(0, 200)}`);
+          resolve(res.statusCode);
+        });
+      });
+
+      req.on('error', (err) => {
+        console.error('[TOKEN_CHECK] error:', err.message);
+        resolve(null);
+      });
+
+      req.setTimeout(5000, () => {
+        console.error('[TOKEN_CHECK] timeout');
+        req.destroy();
+        resolve(null);
+      });
+
+      req.end();
+    } catch (err) {
+      console.error('[TOKEN_CHECK] unexpected error:', err.message);
+      resolve(null);
+    }
+  });
+}
+
 // 8. Komenda statusu (opcjonalnie - można dodać do slash commands)
 async function sendStatusReport(channel) {
   const status = await checkBotStatus();
@@ -10080,31 +10370,48 @@ try {
   console.error("[WS_TEST] Błąd tworzenia WebSocket:", err.message);
 }
 
-// Prosta funkcja retry
-async function loginWithRetry(maxRetries = 3) {
+// Prosta funkcja retry z backoffem i obsługą 429 + diagnostyka
+async function loginWithRetry(maxRetries = 5) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      console.log(`[LOGIN] Próba ${i + 1}/${maxRetries}...`);
-      
-      // Dodaj timeout do login
-      const loginPromise = client.login(process.env.BOT_TOKEN);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Login timeout po 20 sekundach')), 20000);
-      });
-      
-      await Promise.race([loginPromise, timeoutPromise]);
+      const attempt = i + 1;
+      console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
+
+      const slowLoginWarning = setTimeout(() => {
+        console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
+      }, 30000);
+
+      const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
+
+      await Promise.race([client.login(process.env.BOT_TOKEN), hardTimeout]);
+
+      clearTimeout(slowLoginWarning);
+
       console.log("[LOGIN] Sukces! Bot połączony z Discord.");
       return;
     } catch (err) {
-      console.error(`[LOGIN] Błąd próby ${i + 1}:`, err.message);
+      const is429 = err?.code === 429 || /429/.test(err?.message || "");
+      const retryAfterHeader = Number(err?.data?.retry_after || err?.retry_after || 0) * 1000;
+      const backoff = is429 ? Math.max(retryAfterHeader, 30000) : 10000 * (i + 1);
+
+      console.error(`[LOGIN] Błąd próby ${i + 1}:`, err?.message || err);
+      if (err?.code) console.error(`[LOGIN] err.code=${err.code}`);
+      if (err?.status) console.error(`[LOGIN] err.status=${err.status}`);
+      if (err?.data?.retry_after) console.error(`[LOGIN] retry_after=${err.data.retry_after}`);
+
+      if (err?.name === 'DiscordAPIError' && err?.rawError) {
+        console.error('[LOGIN] rawError:', err.rawError);
+      }
+
       if (i < maxRetries - 1) {
-        console.log(`[LOGIN] Czekam 10 sekund przed kolejną próbą...`);
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log(`[LOGIN] Czekam ${Math.round(backoff / 1000)}s przed kolejną próbą...`);
+        await new Promise(resolve => setTimeout(resolve, backoff));
       }
     }
   }
+
   console.error("[LOGIN] Wszystkie próby nieudane!");
-  
+
   // Sprawdź połączenie sieciowe
   console.log("[NETWORK] Sprawdzam połączenie z Discord API...");
   try {
@@ -10131,7 +10438,7 @@ async function loginWithRetry(maxRetries = 3) {
 }
 
 // Start login
-loginWithRetry();
+validateBotToken().finally(() => loginWithRetry());
 
 const express = require('express');
 const app = express();
@@ -10178,5 +10485,5 @@ app.get('/health', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`[HTTP] Health server listening on port ${PORT}`);
+  console.log(`[HTTP] Status endpoint nasłuchuje na porcie ${PORT}`);
 });
