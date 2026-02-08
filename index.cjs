@@ -108,10 +108,15 @@ const CHANNEL_RENAME_COOLDOWN = 10 * 60 * 1000; // 10 minutes (Discord limit)
 let pendingRename = false;
 
 // NEW: cooldowns & limits
-const DROP_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours per user
+const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 
+// FREE KASA cooldown (3h) and allowed channel
+const FREE_KASA_COOLDOWN_MS = 3 * 60 * 60 * 1000;
+const FREE_KASA_CHANNEL_ID = "1470103962245005454";
+
 const dropCooldowns = new Map(); // userId -> timestamp (ms)
+const freeKasaCooldowns = new Map(); // userId -> timestamp (ms)
 const opinionCooldowns = new Map(); // userId -> timestamp (ms)
 
 // Colors
@@ -522,6 +527,89 @@ async function saveStateToSupabase(data) {
     console.error('[supabase] Błąd podczas zapisu:', error);
     return false;
   }
+}
+
+// ----------------- /free-kasa command -----------------
+async function handleFreeKasaCommand(interaction) {
+  const user = interaction.user;
+  const guildId = interaction.guildId;
+
+  if (!guildId) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  // tylko właściciel serwera
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  // wymagany kanał
+  if (interaction.channelId !== FREE_KASA_CHANNEL_ID) {
+    await interaction.reply({
+      content: `> \`❌\` × Użyj tej **komendy** na kanale <#${FREE_KASA_CHANNEL_ID}>`,
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const last = freeKasaCooldowns.get(user.id) || 0;
+  const now = Date.now();
+  if (now - last < FREE_KASA_COOLDOWN_MS) {
+    const remaining = FREE_KASA_COOLDOWN_MS - (now - last);
+    await interaction.reply({
+      content: `> \`❌\` × Możesz użyć komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  freeKasaCooldowns.set(user.id, now);
+
+  // Szanse: brak wygranej (50%), 5k (30%), 10k (15%), 30k (5%)
+  const roll = Math.random() * 100;
+  let reward = 0;
+  if (roll < 5) reward = 30000;
+  else if (roll < 20) reward = 10000;
+  else if (roll < 50) reward = 5000;
+  else reward = 0;
+
+  if (reward <= 0) {
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_GRAY)
+      .setDescription(
+        "```\n" +
+        "💵 New Shop × DARMOWA KASA\n" +
+        "```\n" +
+        `\`👤\` × **Użytkownik:** ${user}\n` +
+        "\`😢\` × **Niestety, tym razem nie udało się! Spróbuj ponownie później...**",
+      )
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+    return;
+  }
+
+  const rewardText = `${reward >= 1000 ? reward / 1000 + "k" : reward}`;
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_YELLOW)
+    .setDescription(
+      "```\n" +
+      "💵 New Shop × DARMOWA KASA\n" +
+      "```\n" +
+      `\`👤\` × **Użytkownik:** ${user}\n` +
+      `\`🎉\` × **Gratulacje! Wygrałeś ${rewardText} na anarchia LF**\n`,
+    )
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
 }
 
 // Handler dla komendy /wezwij
@@ -1144,6 +1232,11 @@ const commands = [
   new SlashCommandBuilder()
     .setName("drop")
     .setDescription("Wylosuj zniżkę na zakupy w sklepie!")
+    .setDefaultMemberPermissions(null)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("free-kasa")
+    .setDescription("Wylosuj darmową kasę (tylko właściciel, kanał free-kasa)")
     .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
@@ -3460,6 +3553,9 @@ async function handleSlashCommand(interaction) {
     }
     case "drop":
       await handleDropCommand(interaction);
+      break;
+    case "free-kasa":
+      await handleFreeKasaCommand(interaction);
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
