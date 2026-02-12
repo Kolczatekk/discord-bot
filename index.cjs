@@ -2991,7 +2991,7 @@ async function handleModalSubmit(interaction) {
       .setTitle(embedTitle)
       .setDescription(
         "```\n" +
-        `## 🛒 New Shop × ${ticketTypeLabel}\n` +
+        `## \`🛒 New Shop × ${ticketTypeLabel}\`\n` +
         "```\n" +
         `### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
@@ -6602,7 +6602,7 @@ async function handleModalSubmit(interaction) {
           .setColor(COLOR_BLUE)
           .setDescription(
             "```\n" +
-            `## 🛒 New Shop × ${ticketTypeLabel}\n` +
+            `## \`🛒 New Shop × ${ticketTypeLabel}\`\n` +
             "```\n" +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
@@ -6827,7 +6827,7 @@ async function handleModalSubmit(interaction) {
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
         "```\n" +
-        `## 🛒 New Shop × ${ticketTypeLabel}\n` +
+        `## \`🛒 New Shop × ${ticketTypeLabel}\`\n` +
         "```\n" +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
