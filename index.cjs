@@ -4917,40 +4917,43 @@ async function handleZamknijZPowodemCommand(interaction) {
 
 // ----------------- /legit-rep-ustaw handler -----------------
 async function handleLegitRepUstawCommand(interaction) {
-  // ensure we acknowledge the interaction to avoid "application did not respond"
   try {
+    console.log("[/legit-rep-ustaw] start", {
+      user: interaction.user?.id,
+      guild: interaction.guild?.id,
+    });
+
+    // ensure we acknowledge the interaction to avoid "application did not respond"
     if (!interaction.deferred && !interaction.replied) {
       await interaction.deferReply({ ephemeral: true });
     }
-  } catch (e) {
-    console.error("legit-rep-ustaw defer error:", e);
-    // continue; we'll try to reply anyway
-  }
 
-  // Sprawdź czy właściciel
-  if (interaction.user.id !== interaction.guild.ownerId) {
-    const payload = { content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] };
-    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-    else await interaction.reply(payload);
-    return;
-  }
+    // Sprawdź czy właściciel
+    if (interaction.user.id !== interaction.guild.ownerId) {
+      const payload = { content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] };
+      if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+      else await interaction.reply(payload);
+      return;
+    }
 
-  const ile = interaction.options.getInteger("ile");
-  
-  if (ile < 0 || ile > 9999) {
-    const payload = { content: "> `❌` × **Podaj** liczbę od 0 do 9999.", flags: [MessageFlags.Ephemeral] };
-    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-    else await interaction.reply(payload);
-    return;
-  }
+    const ile = interaction.options.getInteger("ile");
+    
+    if (ile < 0 || ile > 9999) {
+      const payload = { content: "> `❌` × **Podaj** liczbę od 0 do 9999.", flags: [MessageFlags.Ephemeral] };
+      if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+      else await interaction.reply(payload);
+      return;
+    }
 
-  try {
     // Zaktualizuj licznik
     legitRepCount = ile;
     
     // Zmień nazwę kanału
     const channelId = "1449840030947217529";
-    const channel = await client.channels.fetch(channelId).catch(() => null);
+    const channel = await client.channels.fetch(channelId).catch((err) => {
+      console.error("legit-rep-ustaw fetch channel error", err);
+      return null;
+    });
     
     if (!channel) {
       const payload = { content: "> `❌` × **Nie znaleziono** kanału legit-rep.", flags: [MessageFlags.Ephemeral] };
@@ -4974,9 +4977,8 @@ async function handleLegitRepUstawCommand(interaction) {
     scheduleSavePersistentState();
     
     console.log(`Nazwa kanału legit-rep zmieniona na: ${newName} przez ${interaction.user.tag}`);
-    
   } catch (error) {
-    console.error("Błąd podczas ustawiania legit-rep:", error);
+    console.error("Błąd podczas ustawiania legit-rep (outer catch):", error);
     const payload = { content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.", flags: [MessageFlags.Ephemeral] };
     if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
     else await interaction.reply(payload);
