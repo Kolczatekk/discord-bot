@@ -6596,10 +6596,10 @@ async function handleModalSubmit(interaction) {
 
         const channel = await interaction.guild.channels.create(createOptions);
 
-        const embed = new EmbedBuilder()
-          .setColor(COLOR_BLUE)
-          .setDescription(
-            `**🛒 New Shop × ${ticketTypeLabel}**\n` +
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
+      .setDescription(
+        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
