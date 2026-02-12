@@ -2992,8 +2992,8 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         "```\n" +
         `🛒 New Shop × ${ticketTypeLabel}\n` +
-        "```\n" +
-        `### ・ 👤 × Informacje o kliencie:\n` +
+        "```" +
+        `\n### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
@@ -6603,8 +6603,8 @@ async function handleModalSubmit(interaction) {
           .setDescription(
             "```\n" +
             `🛒 New Shop × ${ticketTypeLabel}\n` +
-            "```\n" +
-            `### ・ \`👤\` × Informacje o kliencie:\n` +
+            "```" +
+            `\n### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
             `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
@@ -6828,8 +6828,8 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         "```\n" +
         `🛒 New Shop × ${ticketTypeLabel}\n` +
-        "```\n" +
-        `### ・ \`👤\` × Informacje o kliencie:\n` +
+        "```" +
+        `\n### ・ \`👤\` × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
