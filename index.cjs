@@ -2984,15 +2984,19 @@ async function handleModalSubmit(interaction) {
 
     const channel = await guild.channels.create(createOptions);
 
+    const embedTitle = "```\n🛒 NEW SHOP × " + ticketTypeLabel + "\n```\n";
+
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle(`🛒 NEW SHOP × ${ticketTypeLabel}`)
+      .setTitle(embedTitle)
       .setDescription(
-        `## 🛒 NEW SHOP × ${ticketTypeLabel}\n\n` +
+        "```\n" +
+        `🛒 NEW SHOP × ${ticketTypeLabel}\n` +
+        "```\n\n" +
         `### ・ 👤 × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1469100658606211233> **× Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> **× ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
         `### ・ 📋 × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -6590,7 +6594,7 @@ async function handleModalSubmit(interaction) {
           .setDescription(
             `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+            `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
             `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
             `### ・ \`📋\` × Informacje z formularza:\n` +
@@ -6813,7 +6817,7 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1469100658606211233> **× Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
@@ -7257,6 +7261,12 @@ client.on(Events.MessageCreate, async (message) => {
               const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
                 try {
+                  const ticketMeta = ticketOwners.get(ticketChannelId) || null;
+                  await archiveTicketOnClose(
+                    ticketChannel,
+                    message.author.id,
+                    ticketMeta,
+                  ).catch((e) => console.error("archiveTicketOnClose error (+rep):", e));
                   await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
                   pendingTicketClose.delete(ticketChannelId);
                   ticketOwners.delete(ticketChannelId);
@@ -7329,8 +7339,8 @@ client.on(Events.MessageCreate, async (message) => {
           "```\n" +
           "✅ New Shop × LEGIT CHECK\n" +
           "```\n" +
-          "- `📝` **× Wzór:**\n" +
-          `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrode] [ile] [serwer]\`\n\n` +
+          "- `📝` **× Jak napisać:**\n" +
+          `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]\`\n\n` +
           "- `📋` **× Przykład**\n" +
           `> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
