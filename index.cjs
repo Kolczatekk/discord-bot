@@ -2984,13 +2984,13 @@ async function handleModalSubmit(interaction) {
 
     const channel = await guild.channels.create(createOptions);
 
-    const embedTitle = "## ticketTypeLabel;
+    const embedTitle = "🛒 New Shop × " + ticketTypeLabel;
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setTitle(embedTitle)
       .setDescription(
-        `## \`🛒\` ${ticketTypeLabel}**\n` +
+        `**🛒 New Shop × ${ticketTypeLabel}**\n` +
         `### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
