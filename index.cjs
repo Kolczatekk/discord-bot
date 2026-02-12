@@ -2984,15 +2984,15 @@ async function handleModalSubmit(interaction) {
 
     const channel = await guild.channels.create(createOptions);
 
-    const embedTitle = "```\n🛒 NEW SHOP × " + ticketTypeLabel + "\n```\n";
+    const embedTitle = "```\n🛒 New Shop × " + ticketTypeLabel + "\n```";
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setTitle(embedTitle)
       .setDescription(
         "```\n" +
-        `🛒 NEW SHOP × ${ticketTypeLabel}\n` +
-        "```\n\n" +
+        `🛒 New Shop × ${ticketTypeLabel}\n` +
+        "```\n" +
         `### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
@@ -6602,8 +6602,8 @@ async function handleModalSubmit(interaction) {
           .setColor(COLOR_BLUE)
           .setDescription(
             "```\n" +
-            `🛒 NEW SHOP × ${ticketTypeLabel}\n` +
-            "```\n\n" +
+            `🛒 New Shop × ${ticketTypeLabel}\n` +
+            "```\n" +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
@@ -6827,8 +6827,8 @@ async function handleModalSubmit(interaction) {
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
         "```\n" +
-        `🛒 NEW SHOP × ${ticketTypeLabel}\n` +
-        "```\n\n" +
+        `🛒 New Shop × ${ticketTypeLabel}\n` +
+        "```\n" +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
@@ -7354,7 +7354,7 @@ client.on(Events.MessageCreate, async (message) => {
           "```\n" +
           "- `📝` **× Jak napisać:**\n" +
           `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]\`\n\n` +
-          "- `📋` **× Przykład**\n" +
+          "- `📋` **× Przykład:**\n" +
           `> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
