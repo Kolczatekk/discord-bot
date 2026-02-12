@@ -7354,7 +7354,7 @@ client.on(Events.MessageCreate, async (message) => {
           "```\n" +
           "- `📝` **× Jak napisać:**\n" +
           `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]\`\n\n` +
-          "- `📋` **× Przykład:**\n" +
+          "- `📋` **× Przykład**\n" +
           `> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
