@@ -2984,13 +2984,13 @@ async function handleModalSubmit(interaction) {
 
     const channel = await guild.channels.create(createOptions);
 
-    const embedTitle = "```\n🛒 New Shop × " + ticketTypeLabel + "\n```";
+    const embedTitle = "🛒 New Shop × " + ticketTypeLabel;
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setTitle(embedTitle)
       .setDescription(
-        "```" + `🛒 New Shop × ${ticketTypeLabel}` + "```\n" +
+        "`" + `🛒 New Shop × ${ticketTypeLabel}` + "`\n" +
         `### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
@@ -6599,7 +6599,7 @@ async function handleModalSubmit(interaction) {
         const embed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(
-            "```" + `🛒 New Shop × ${ticketTypeLabel}` + "```\n" +
+            "`" + `🛒 New Shop × ${ticketTypeLabel}` + "`\n" +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
@@ -6822,7 +6822,7 @@ async function handleModalSubmit(interaction) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
-        "```" + `🛒 New Shop × ${ticketTypeLabel}` + "```\n" +
+        "`" + `🛒 New Shop × ${ticketTypeLabel}` + "`\n" +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
