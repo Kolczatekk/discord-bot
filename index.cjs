@@ -2982,15 +2982,12 @@ async function handleModalSubmit(interaction) {
       }
     }
 
-    const channel = await guild.channels.create(createOptions);
-
-    const embedTitle = "🛒 New Shop × " + ticketTypeLabel;
+    const channel = await interaction.guild.channels.create(createOptions);
 
     const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setTitle(embedTitle)
+      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
-        `**🛒 New Shop × ${ticketTypeLabel}**\n` +
+        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
