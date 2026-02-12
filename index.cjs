@@ -2991,7 +2991,7 @@ async function handleModalSubmit(interaction) {
       .setTitle(embedTitle)
       .setDescription(
         "```\n" +
-        `## 🛒 New Shop × ${ticketTypeLabel}\n` +
+        `🛒 New Shop × ${ticketTypeLabel}\n` +
         "```\n" +
         `### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
@@ -6601,9 +6601,9 @@ async function handleModalSubmit(interaction) {
         const embed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(
-            "```\n" +
-            `## 🛒 New Shop × ${ticketTypeLabel}\n` +
-            "```\n" +
+                     ````\n" +
+            `🛒 New Shop × ${ticketTypeLabel}\n` +
+                    ````\n" +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
