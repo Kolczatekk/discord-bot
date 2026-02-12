@@ -4922,22 +4922,30 @@ async function handleZamknijZPowodemCommand(interaction) {
 
 // ----------------- /legit-rep-ustaw handler -----------------
 async function handleLegitRepUstawCommand(interaction) {
+  // ensure we acknowledge the interaction to avoid "application did not respond"
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: true });
+    }
+  } catch (e) {
+    console.error("legit-rep-ustaw defer error:", e);
+    // continue; we'll try to reply anyway
+  }
+
   // Sprawdź czy właściciel
   if (interaction.user.id !== interaction.guild.ownerId) {
-    await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    const payload = { content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+    else await interaction.reply(payload);
     return;
   }
 
   const ile = interaction.options.getInteger("ile");
   
   if (ile < 0 || ile > 9999) {
-    await interaction.reply({
-      content: "> `❌` × **Podaj** liczbę od 0 do 9999.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    const payload = { content: "> `❌` × **Podaj** liczbę od 0 do 9999.", flags: [MessageFlags.Ephemeral] };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+    else await interaction.reply(payload);
     return;
   }
 
@@ -4950,10 +4958,9 @@ async function handleLegitRepUstawCommand(interaction) {
     const channel = await client.channels.fetch(channelId).catch(() => null);
     
     if (!channel) {
-      await interaction.reply({
-        content: "> `❌` × **Nie znaleziono** kanału legit-rep.",
-        flags: [MessageFlags.Ephemeral],
-      });
+      const payload = { content: "> `❌` × **Nie znaleziono** kanału legit-rep.", flags: [MessageFlags.Ephemeral] };
+      if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+      else await interaction.reply(payload);
       return;
     }
 
@@ -4961,9 +4968,12 @@ async function handleLegitRepUstawCommand(interaction) {
     await channel.setName(newName);
     
     // Wyślij informacyjną wiadomość
-    await interaction.reply({
-      content: `LegitRepy: ${ile}\nLegitChecki: ${ile}`
-    });
+    const successPayload = {
+      content: `LegitRepy: ${ile}\nLegitChecki: ${ile}`,
+      flags: [MessageFlags.Ephemeral],
+    };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(successPayload);
+    else await interaction.reply(successPayload);
     
     // Zapisz stan
     scheduleSavePersistentState();
@@ -4972,10 +4982,9 @@ async function handleLegitRepUstawCommand(interaction) {
     
   } catch (error) {
     console.error("Błąd podczas ustawiania legit-rep:", error);
-    await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    const payload = { content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.", flags: [MessageFlags.Ephemeral] };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+    else await interaction.reply(payload);
   }
 }
 
@@ -6592,7 +6601,9 @@ async function handleModalSubmit(interaction) {
         const embed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(
-            `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+            "```\n" +
+            `🛒 NEW SHOP × ${ticketTypeLabel}\n` +
+            "```\n\n" +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
@@ -6815,7 +6826,9 @@ async function handleModalSubmit(interaction) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+        "```\n" +
+        `🛒 NEW SHOP × ${ticketTypeLabel}\n` +
+        "```\n\n" +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
