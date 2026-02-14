@@ -7351,8 +7351,7 @@ client.on(Events.MessageCreate, async (message) => {
           `> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
-        .setImage(imageUrl)
-        .setTimestamp();
+        .setImage(imageUrl);
 
       // Always send a new info message (after deleting the previous one) so it appears below the new +rep
       try {
