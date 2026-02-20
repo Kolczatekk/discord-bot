@@ -4135,7 +4135,12 @@ async function handleSendMessageCommand(interaction) {
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
     const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
-    const content = contentRaw.replace(/:strzałka:/gi, arrowEmoji);
+    const alertEmoji = '<a:alert:1474431227972026469>';
+    const starEmoji = '<:star:1474431260133691567>';
+    const content = contentRaw
+      .replace(/:strzałka:/gi, arrowEmoji)
+      .replace(/:alert:/gi, alertEmoji)
+      .replace(/:star:/gi, starEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
