@@ -4139,8 +4139,8 @@ async function handleSendMessageCommand(interaction) {
     const starEmoji = '<:star:1474431260133691567>';
     const content = contentRaw
       .replace(/:strzałka:/gi, arrowEmoji)
-      .replace(/:alert:/gi, alertEmoji)
-      .replace(/:star:/gi, starEmoji);
+      .replace(/:alertownik:/gi, alertEmoji)
+      .replace(/:startownik:/gi, starEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
