@@ -70,6 +70,8 @@ const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId,
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
+const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
+const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -498,6 +500,7 @@ function buildPersistentStateData() {
     opinionCooldowns: opinionCooldownsObj,
     pendingTicketClose: pendingTicketCloseObj,
     opinieChannels: opinieChannelsObj,
+    autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
   };
 
   return data;
@@ -1138,6 +1141,15 @@ async function loadPersistentState() {
       }
     }
 
+    // Load autoPrzejmijSettings
+    if (botStateData.autoPrzejmijSettings && typeof botStateData.autoPrzejmijSettings === "object") {
+      for (const [guildId, cfg] of Object.entries(botStateData.autoPrzejmijSettings)) {
+        if (cfg && typeof cfg === "object" && cfg.enabled) {
+          autoPrzejmijSettings.set(guildId, cfg);
+        }
+      }
+    }
+
     try {
       let fakeGuilds = 0;
       let fakeEntries = 0;
@@ -1490,6 +1502,21 @@ const commands = [
     .setName("odprzejmij")
     .setDescription("Zwolnij aktualny ticket (sprzedawca)")
     .setDefaultMemberPermissions(null)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("autoprzejmij")
+    .setDescription("Automatyczne przejmowanie ticketow zakupowych (wlacz/wylacz)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption((option) =>
+      option
+        .setName("status")
+        .setDescription("Wlacz lub wylacz autoprzejmowanie")
+        .setRequired(true)
+        .addChoices(
+          { name: "WLACZ", value: "wlacz" },
+          { name: "WYLACZ", value: "wylacz" }
+        )
+    )
     .toJSON(),
   // UPDATED: embed (interactive flow)
   new SlashCommandBuilder()
@@ -3604,6 +3631,9 @@ async function handleSlashCommand(interaction) {
     case "odprzejmij":
       await handleAdminOdprzejmij(interaction);
       break;
+    case "autoprzejmij":
+      await handleAutoPrzejmijCommand(interaction);
+      break;
     case "embed":
       await handleSendMessageCommand(interaction);
       break;
@@ -4000,6 +4030,267 @@ async function handleAdminPrzejmij(interaction) {
   }
   await ticketClaimCommon(interaction, channel.id); // quiz odpali się w środku
 }
+
+function getPurchaseTicketCategoryIdsForGuild(guild) {
+  const guildCats = ticketCategories.get(guild.id) || {};
+  const purchaseCategoryIds = new Set();
+
+  for (const [key, value] of Object.entries(guildCats)) {
+    if (key.startsWith("zakup-") && value) {
+      purchaseCategoryIds.add(String(value));
+    }
+  }
+
+  if (purchaseCategoryIds.size === 0) {
+    for (const ch of guild.channels.cache.values()) {
+      if (
+        ch.type === ChannelType.GuildCategory &&
+        ch.name &&
+        ch.name.toLowerCase().includes("zakup")
+      ) {
+        purchaseCategoryIds.add(String(ch.id));
+      }
+    }
+  }
+
+  return purchaseCategoryIds;
+}
+
+async function runAutoPrzejmijSweep(guild, ownerId, ownerName, targetChannelId = null) {
+  const purchaseCategoryIds = getPurchaseTicketCategoryIdsForGuild(guild);
+  const CLAIMED_CATEGORY_ID = "1457446529395593338";
+  const ARCHIVED_CATEGORY_ID = "1469059216303198261";
+  const ownerMember = await guild.members.fetch(ownerId).catch(() => null);
+
+  const stats = {
+    claimedCount: 0,
+    skippedNonPurchase: 0,
+    skippedClaimed: 0,
+    skippedLocked: 0,
+    skippedArchived: 0,
+    staleRemoved: 0,
+    errorCount: 0,
+    claimedChannels: [],
+    missingPurchaseCategories: purchaseCategoryIds.size === 0,
+  };
+
+  if (stats.missingPurchaseCategories) return stats;
+
+  const nick = (ownerName || ownerMember?.displayName || "Wlasciciel")
+    .toString()
+    .replace(/`/g, "")
+    .trim();
+
+  const fakeInteraction = {
+    user: { id: ownerId, username: nick || "Wlasciciel" },
+    member: ownerMember,
+    guild,
+    replied: true,
+    deferred: true,
+    isButton: () => false,
+    reply: async () => null,
+    followUp: async () => null,
+    editReply: async () => null,
+    deleteReply: async () => null,
+    deferReply: async () => null,
+    deferUpdate: async () => null,
+    showModal: async () => null,
+  };
+
+  for (const [channelId] of ticketOwners.entries()) {
+    if (targetChannelId && channelId !== targetChannelId) continue;
+
+    let channel = guild.channels.cache.get(channelId) || null;
+    if (!channel) channel = await client.channels.fetch(channelId).catch(() => null);
+
+    if (!channel) {
+      ticketOwners.delete(channelId);
+      stats.staleRemoved += 1;
+      continue;
+    }
+
+    if (
+      !channel.guild ||
+      channel.guild.id !== guild.id ||
+      channel.type !== ChannelType.GuildText
+    ) {
+      continue;
+    }
+
+    const parentId = channel.parentId ? String(channel.parentId) : "";
+    if (parentId === ARCHIVED_CATEGORY_ID) {
+      stats.skippedArchived += 1;
+      continue;
+    }
+    if (parentId === CLAIMED_CATEGORY_ID) {
+      stats.skippedClaimed += 1;
+      continue;
+    }
+    if (!purchaseCategoryIds.has(parentId)) {
+      stats.skippedNonPurchase += 1;
+      continue;
+    }
+
+    const result = await ticketClaimCommon(fakeInteraction, channel.id, {
+      skipQuiz: true,
+      bypassPermissionCheck: true,
+      publicClaimerLabel: `\`${nick || "Wlasciciel"}\``,
+    });
+
+    if (result && result.ok) {
+      stats.claimedCount += 1;
+      stats.claimedChannels.push(`<#${channel.id}>`);
+      continue;
+    }
+
+    const reason = result?.reason || "error";
+    if (reason === "already-claimed") {
+      stats.skippedClaimed += 1;
+    } else if (reason === "locked") {
+      stats.skippedLocked += 1;
+    } else if (reason === "channel-not-found") {
+      stats.staleRemoved += 1;
+    } else {
+      stats.errorCount += 1;
+    }
+  }
+
+  if (stats.staleRemoved > 0) scheduleSavePersistentState();
+  return stats;
+}
+
+function formatAutoPrzejmijSummary(stats, statusLine) {
+  const lines = [];
+  if (statusLine) lines.push(statusLine);
+
+  if (stats.missingPurchaseCategories) {
+    lines.push("> `❌` × Nie znalazlem kategorii ticketow zakupowych.");
+    return lines.join("\n");
+  }
+
+  lines.push(`> \`✅\` × Przejete tickety zakupowe: **${stats.claimedCount}**.`);
+  lines.push(`> \`⏭️\` × Pominiete nie-zakupowe: **${stats.skippedNonPurchase}**.`);
+  lines.push(`> \`⏭️\` × Pominiete (juz przejete): **${stats.skippedClaimed}**.`);
+  lines.push(`> \`⏭️\` × Pominiete (zablokowane): **${stats.skippedLocked}**.`);
+  lines.push(`> \`⏭️\` × Pominiete (zrealizowane): **${stats.skippedArchived}**.`);
+
+  if (stats.staleRemoved > 0) {
+    lines.push(`> \`🧹\` × Usuniete nieaktualne wpisy: **${stats.staleRemoved}**.`);
+  }
+  if (stats.errorCount > 0) {
+    lines.push(`> \`⚠️\` × Bledy podczas przejmowania: **${stats.errorCount}**.`);
+  }
+  if (stats.claimedChannels.length > 0) {
+    const preview = stats.claimedChannels.slice(0, 10).join(", ");
+    const more =
+      stats.claimedChannels.length > 10
+        ? ` (+${stats.claimedChannels.length - 10} wiecej)`
+        : "";
+    lines.push(`> \`📌\` × Przejete kanaly: ${preview}${more}`);
+  }
+  return lines.join("\n");
+}
+
+async function maybeAutoPrzejmijNewTicket(guild, channelId) {
+  const cfg = autoPrzejmijSettings.get(guild.id);
+  if (!cfg || !cfg.enabled) return;
+
+  if (cfg.ownerId !== guild.ownerId) {
+    autoPrzejmijSettings.delete(guild.id);
+    scheduleSavePersistentState();
+    return;
+  }
+
+  const ownerMember = await guild.members.fetch(cfg.ownerId).catch(() => null);
+  const ownerName = ownerMember?.displayName || cfg.ownerName || "Wlasciciel";
+
+  if (cfg.ownerName !== ownerName) {
+    cfg.ownerName = ownerName;
+    autoPrzejmijSettings.set(guild.id, cfg);
+    scheduleSavePersistentState();
+  }
+
+  await runAutoPrzejmijSweep(guild, cfg.ownerId, ownerName, channelId).catch(
+    (err) => console.error("[autoprzejmij] Auto-claim nowego ticketa nieudany:", err),
+  );
+}
+
+async function handleAutoPrzejmijCommand(interaction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    await interaction.reply({
+      content: "> `❌` × Ta komenda dziala tylko na serwerze.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== guild.ownerId) {
+    await interaction.reply({
+      content: "> `❌` × Tej komendy moze uzyc tylko wlasciciel serwera.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const modeSel = interaction.options.getString("status", true);
+  const guildId = guild.id;
+
+  if (modeSel === "wylacz") {
+    autoPrzejmijSettings.delete(guildId);
+    scheduleSavePersistentState();
+    await interaction.reply({
+      content: "> `✅` × Autoprzejmowanie zostalo **wylaczone**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const quizQuestions = [
+    { q: "Ile to 5 * 3?", a: "15" },
+    { q: "Ile to 3 * 3?", a: "9" },
+    { q: "Ile to 4 * 6?", a: "24" },
+    { q: "Ile to 7 + 8?", a: "15" },
+    { q: "Ile to 12 - 5?", a: "7" },
+    { q: "Ile to 9 + 6?", a: "15" },
+    { q: "Ile to 14 - 8?", a: "6" },
+    { q: "Ile to 6 * 4?", a: "24" },
+    { q: "Ile to 5 + 9?", a: "14" },
+  ];
+  const pick = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
+  const modalId = `autoprzejmij_quiz_${guildId}_${interaction.user.id}_${Date.now()}`;
+
+  pendingAutoPrzejmijQuiz.set(modalId, {
+    guildId,
+    userId: interaction.user.id,
+    ownerId: interaction.user.id,
+    ownerName:
+      interaction.member?.displayName ||
+      interaction.user.globalName ||
+      interaction.user.username,
+    answer: pick.a,
+  });
+
+  const modal = new ModalBuilder()
+    .setCustomId(modalId)
+    .setTitle("Weryfikacja autoprzejmowania");
+  const input = new TextInputBuilder()
+    .setCustomId("autoprzejmij_answer")
+    .setLabel(pick.q)
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(4);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+
+  await interaction.showModal(modal).catch(async () => {
+    pendingAutoPrzejmijQuiz.delete(modalId);
+    await interaction.reply({
+      content: "> `❌` × Nie udalo sie otworzyc captcha. Sprobuj ponownie.",
+      flags: [MessageFlags.Ephemeral],
+    }).catch(() => null);
+  });
+}
+
 async function handlePanelKalkulatorCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
@@ -5263,8 +5554,9 @@ async function showKonkursOdbiorModal(interaction) {
 async function ticketClaimCommon(interaction, channelId, opts = {}) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
   const skipQuiz = opts.skipQuiz === true;
+  const bypassPermissionCheck = opts.bypassPermissionCheck === true;
 
-  if (!isAdminOrSeller(interaction.member)) {
+  if (!bypassPermissionCheck && !isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
         content: "> `❗` × Brak wymaganych uprawnień.",
@@ -5276,7 +5568,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
-    return;
+    return { ok: false, reason: "permission" };
   }
 
   // quiz matematyczny przed przejęciem (przycisk + /przejmij)
@@ -5307,7 +5599,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setMaxLength(4);
     modal.addComponents(new ActionRowBuilder().addComponents(input));
     await interaction.showModal(modal).catch(() => null);
-    return;
+    return { ok: false, reason: "quiz-required" };
   }
 
   // szybka odpowiedź, żeby Discord nie wyświetlał błędu interakcji (po quizie)
@@ -5346,20 +5638,20 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     await replyEphemeral(
       "❌ Ten ticket został zablokowany do przejmowania (ustawienia/zmiana nazwy).",
     );
-    return;
+    return { ok: false, reason: "locked" };
   }
 
   if (ticketData && ticketData.claimedBy) {
     await replyEphemeral(
       `❌ Ten ticket został już przejęty przez <@${ticketData.claimedBy}>!`,
     );
-    return;
+    return { ok: false, reason: "already-claimed", claimedBy: ticketData.claimedBy };
   }
 
   const ch = await client.channels.fetch(channelId).catch(() => null);
   if (!ch) {
     await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
-    return;
+    return { ok: false, reason: "channel-not-found" };
   }
 
   try {
@@ -5435,9 +5727,12 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, claimerId).catch(() => null);
     }
 
+    const publicClaimerLabel =
+      (typeof opts.publicClaimerLabel === "string" && opts.publicClaimerLabel.trim()) ||
+      `<@${claimerId}>`;
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`✅\` × Ticket został przejęty przez <@${claimerId}>`);
+      .setDescription(`> \`✅\` × Ticket został przejęty przez ${publicClaimerLabel}`);
 
     try {
       const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
@@ -5452,9 +5747,11 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     if (!isBtn) {
       await interaction.deleteReply().catch(() => null);
     }
+    return { ok: true, reason: "claimed", channelId, claimedBy: claimerId };
   } catch (err) {
     console.error("Błąd przy przejmowaniu ticketu:", err);
     await replyEphemeral("❌ Wystąpił błąd podczas przejmowania ticketu.");
+    return { ok: false, reason: "error", channelId };
   }
 }
 
@@ -5793,6 +6090,53 @@ async function handleModalSubmit(interaction) {
     }
     pendingClaimQuiz.delete(cid);
     await ticketClaimCommon(interaction, data.channelId, { skipQuiz: true });
+    return;
+  }
+
+  // captcha do wlaczenia /autoprzejmij
+  if (cid.startsWith("autoprzejmij_quiz_")) {
+    const data = pendingAutoPrzejmijQuiz.get(cid);
+    if (!data || data.userId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❌` × Ta captcha wygasla. Uzyj /autoprzejmij ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+      return;
+    }
+
+    const answer = (interaction.fields.getTextInputValue("autoprzejmij_answer") || "").trim();
+    if (answer !== data.answer) {
+      pendingAutoPrzejmijQuiz.delete(cid);
+      await interaction.reply({
+        content: "> `❌` × Zla odpowiedz captcha. Sprobuj ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+      return;
+    }
+
+    pendingAutoPrzejmijQuiz.delete(cid);
+    autoPrzejmijSettings.set(data.guildId, {
+      enabled: true,
+      ownerId: data.ownerId,
+      ownerName: data.ownerName,
+      enabledAt: Date.now(),
+    });
+    scheduleSavePersistentState();
+
+    const stats = await runAutoPrzejmijSweep(
+      interaction.guild,
+      data.ownerId,
+      data.ownerName,
+      null,
+    );
+
+    await interaction.reply({
+      content: formatAutoPrzejmijSummary(
+        stats,
+        "> `✅` × Autoprzejmowanie zostalo **wlaczone**.",
+      ),
+      flags: [MessageFlags.Ephemeral],
+    }).catch(() => null);
     return;
   }
 
@@ -6906,6 +7250,12 @@ async function handleModalSubmit(interaction) {
       content: `> \`✅\` × Ticket został stworzony <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
+
+    if (ticketTypeLabel === "ZAKUP") {
+      await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
+        console.error("[autoprzejmij] Auto-claim po utworzeniu ticketa nieudany:", err),
+      );
+    }
   } catch (error) {
     console.error("Błąd tworzenia ticketu:", error);
     await interaction.reply({
