@@ -4134,7 +4134,7 @@ async function runAutoPrzejmijSweep(guild, ownerId, ownerName, targetChannelId =
     const result = await ticketClaimCommon(fakeInteraction, channel.id, {
       skipQuiz: true,
       bypassPermissionCheck: true,
-      publicClaimerLabel: `\`${nick || "Wlasciciel"}\``,
+      publicClaimerLabel: `<@${ownerId}>`,
     });
 
     if (result && result.ok) {
