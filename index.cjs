@@ -23,11 +23,11 @@ const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
 
-// Load local .env when running on a PC (Render ma własne env vars)
+// Load local .env when running on a PC (Render ma wÅ‚asne env vars)
 try {
   require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 } catch (err) {
-  console.warn("[ENV] Nie udało się załadować .env:", err?.message || err);
+  console.warn("[ENV] Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ .env:", err?.message || err);
 }
 const db = require("./database.js");
 
@@ -50,18 +50,18 @@ const ticketCounter = new Map();
 const fourMonthBlockList = new Map(); // guildId -> Set(userId)
 const ticketCategories = new Map();
 const legitRepCooldown = new Map(); // userId -> timestamp ostatniego poprawnego +rep
-const dropChannels = new Map(); // <-- mapa kanałów gdzie można używać /drop
+const dropChannels = new Map(); // <-- mapa kanaÅ‚Ã³w gdzie moÅ¼na uÅ¼ywaÄ‡ /drop
 const sprawdzZaproszeniaCooldowns = new Map(); // userId -> lastTs
-const inviteTotalJoined = new Map(); // guild -> userId -> liczba wszystkich dołączeń
-const inviteFakeAccounts = new Map(); // guild -> userId -> liczba kont < 4 miesiące
+const inviteTotalJoined = new Map(); // guild -> userId -> liczba wszystkich doÅ‚Ä…czeÅ„
+const inviteFakeAccounts = new Map(); // guild -> userId -> liczba kont < 4 miesiÄ…ce
 const inviteBonusInvites = new Map(); // guild -> userId -> dodatkowe zaproszenia (z /ustawzaproszenia)
-const inviteRewardsGiven = new Map(); // NEW: guild -> userId -> ile nagród już przyznano
+const inviteRewardsGiven = new Map(); // NEW: guild -> userId -> ile nagrÃ³d juÅ¼ przyznano
 
-// Helper: funkcja zwracająca poprawną formę słowa "zaproszenie"
+// Helper: funkcja zwracajÄ…ca poprawnÄ… formÄ™ sÅ‚owa "zaproszenie"
 function getInviteWord(count) {
   if (count === 1) return "zaproszenie";
   if (count >= 2 && count <= 4) return "zaproszenia";
-  return "zaproszeń";
+  return "zaproszeÅ„";
 }
 
 // NEW: weryfikacja
@@ -70,13 +70,15 @@ const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId,
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
+const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
+const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
 const lastDropInstruction = new Map(); // channelId -> messageId  <-- NEW for drop instructions
 const lastInviteInstruction = new Map(); // channelId -> messageId  <-- NEW for invite instructions
 
-// Mapa do przechowywania wyborów użytkowników dla kalkulatora
+// Mapa do przechowywania wyborÃ³w uÅ¼ytkownikÃ³w dla kalkulatora
 const kalkulatorData = new Map(); // userId -> { tryb, metoda, typ }
 
 // Contest maps (new)
@@ -89,7 +91,7 @@ const contestLeaveBlocks = new Map(); // userId -> { messageId: { leaveCount: nu
 const REP_CHANNEL_ID = "1449840030947217529";
 
 // cooldown (ms) per user between the bot posting the info embed
-const INFO_EMBED_COOLDOWN_MS = 5 * 1000; // default 5s — change to desired value
+const INFO_EMBED_COOLDOWN_MS = 5 * 1000; // default 5s â€” change to desired value
 
 // map used for throttling per-user
 const infoCooldowns = new Map(); // userId -> timestamp (ms)
@@ -135,7 +137,7 @@ const inviterOfMember = new Map(); // `${guildId}:${memberId}` -> inviterId
 const INVITE_REWARD_THRESHOLD = 5;
 const INVITE_REWARD_TEXT = "50k$"; // <-- zmienione z 40k$ na 50k$
 
-// Nowa struktura do śledzenia nagród za konkretne progi
+// Nowa struktura do Å›ledzenia nagrÃ³d za konkretne progi
 // guildId -> Map<userId, Set<rewardLevel>> gdzie rewardLevel to "5", "10", "15", etc.
 const inviteRewardLevels = new Map();
 
@@ -168,9 +170,9 @@ client.on("inviteDelete", (invite) => {
     console.warn("inviteDelete handler error:", e);
   }
 });
-// Invite rate-limit settings (zapobiega nadużyciom liczenia zaproszeń)
+// Invite rate-limit settings (zapobiega naduÅ¼yciom liczenia zaproszeÅ„)
 const INVITER_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 godzina
-const INVITER_RATE_LIMIT_MAX = 10; // maksymalnie 10 zaproszeń w oknie (zmień wedle potrzeby)
+const INVITER_RATE_LIMIT_MAX = 10; // maksymalnie 10 zaproszeÅ„ w oknie (zmieÅ„ wedle potrzeby)
 // track how many people left per inviter (for /sprawdz-zaproszenia)
 const inviteLeaves = new Map(); // guildId -> Map<inviterId, leftCount>
 // -----------------------------------------------------
@@ -196,7 +198,7 @@ try {
     fs.mkdirSync(dir, { recursive: true });
   }
 } catch (e) {
-  console.warn("Nie udało się przygotować katalogu dla STORE_FILE:", e);
+  console.warn("Nie udaÅ‚o siÄ™ przygotowaÄ‡ katalogu dla STORE_FILE:", e);
 }
 
 try {
@@ -204,7 +206,7 @@ try {
   const size = exists ? fs.statSync(STORE_FILE).size : 0;
   console.log(`[state] STORE_FILE=${STORE_FILE} exists=${exists} size=${size}`);
 } catch (e) {
-  console.warn("[state] Nie udało się odczytać informacji o STORE_FILE:", e);
+  console.warn("[state] Nie udaÅ‚o siÄ™ odczytaÄ‡ informacji o STORE_FILE:", e);
 }
 
 // -------- Persistent storage helpers (invites, tickets, legit-rep) --------
@@ -251,7 +253,7 @@ function buildPersistentStateData() {
   // Convert contest participants to plain object
   const participantsObj = {};
   for (const [msgId, setOrMap] of contestParticipants.entries()) {
-    // contestParticipants may store Set or Map — normalize to array of [userId, nick] pairs
+    // contestParticipants may store Set or Map â€” normalize to array of [userId, nick] pairs
     if (setOrMap instanceof Set) {
       // Convert Set to array of [userId, ""] pairs (backward compatibility)
       participantsObj[msgId] = Array.from(setOrMap).map(userId => [userId, ""]);
@@ -498,12 +500,13 @@ function buildPersistentStateData() {
     opinionCooldowns: opinionCooldownsObj,
     pendingTicketClose: pendingTicketCloseObj,
     opinieChannels: opinieChannelsObj,
+    autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
   };
 
   return data;
 }
 
-// Funkcje do obsługi Supabase
+// Funkcje do obsÅ‚ugi Supabase
 async function saveStateToSupabase(data) {
   try {
     const { error } = await supabase
@@ -517,14 +520,14 @@ async function saveStateToSupabase(data) {
       });
     
     if (error) {
-      console.error('[supabase] Błąd zapisu:', error);
+      console.error('[supabase] BÅ‚Ä…d zapisu:', error);
       return false;
     }
     
-    console.log('[supabase] Stan zapisany pomyślnie');
+    console.log('[supabase] Stan zapisany pomyÅ›lnie');
     return true;
   } catch (error) {
-    console.error('[supabase] Błąd podczas zapisu:', error);
+    console.error('[supabase] BÅ‚Ä…d podczas zapisu:', error);
     return false;
   }
 }
@@ -536,25 +539,25 @@ async function handleFreeKasaCommand(interaction) {
 
   if (!guildId) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // tylko właściciel serwera
+  // tylko wÅ‚aÅ›ciciel serwera
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // wymagany kanał
+  // wymagany kanaÅ‚
   if (interaction.channelId !== FREE_KASA_CHANNEL_ID) {
     await interaction.reply({
-      content: `> \`❌\` × Użyj tej **komendy** na kanale <#${FREE_KASA_CHANNEL_ID}>`,
+      content: `> \`âŒ\` Ã— UÅ¼yj tej **komendy** na kanale <#${FREE_KASA_CHANNEL_ID}>`,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -565,7 +568,7 @@ async function handleFreeKasaCommand(interaction) {
   if (now - last < FREE_KASA_COOLDOWN_MS) {
     const remaining = FREE_KASA_COOLDOWN_MS - (now - last);
     await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
+      content: `> \`âŒ\` Ã— MoÅ¼esz uÅ¼yÄ‡ komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -586,10 +589,10 @@ async function handleFreeKasaCommand(interaction) {
       .setColor(COLOR_GRAY)
       .setDescription(
         "```\n" +
-        "💵 New Shop × DARMOWA KASA\n" +
+        "ðŸ’µ New Shop Ã— DARMOWA KASA\n" +
         "```\n" +
-        `\`👤\` × **Użytkownik:** ${user}\n` +
-        "\`😢\` × **Niestety, tym razem nie udało się! Spróbuj ponownie później...**",
+        `\`ðŸ‘¤\` Ã— **UÅ¼ytkownik:** ${user}\n` +
+        "\`ðŸ˜¢\` Ã— **Niestety, tym razem nie udaÅ‚o siÄ™! SprÃ³buj ponownie pÃ³Åºniej...**",
       )
       .setTimestamp();
 
@@ -602,10 +605,10 @@ async function handleFreeKasaCommand(interaction) {
     .setColor(COLOR_YELLOW)
     .setDescription(
       "```\n" +
-      "💵 New Shop × DARMOWA KASA\n" +
+      "ðŸ’µ New Shop Ã— DARMOWA KASA\n" +
       "```\n" +
-      `\`👤\` × **Użytkownik:** ${user}\n` +
-      `\`🎉\` × **Gratulacje! Wygrałeś ${rewardText} na anarchia LF**\n`,
+      `\`ðŸ‘¤\` Ã— **UÅ¼ytkownik:** ${user}\n` +
+      `\`ðŸŽ‰\` Ã— **Gratulacje! WygraÅ‚eÅ› ${rewardText} na anarchia LF**\n`,
     )
     .setTimestamp();
 
@@ -618,17 +621,17 @@ async function handleWezwijCommand(interaction) {
 
   if (!channel || channel.type !== ChannelType.GuildText || !isTicketChannel(channel)) {
     await interaction.reply({
-      content: "> `❌` × Użyj tej komendy na kanale ticketu.",
+      content: "> `âŒ` Ã— UÅ¼yj tej komendy na kanale ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Sprawdź uprawnienia: tylko sprzedawca
+  // SprawdÅº uprawnienia: tylko sprzedawca
   const SELLER_ROLE_ID = "1350786945944391733";
   if (!interaction.member?.roles?.cache?.has(SELLER_ROLE_ID)) {
     await interaction.reply({
-      content: "> `❌` × Brak uprawnień do użycia tej komendy.",
+      content: "> `âŒ` Ã— Brak uprawnieÅ„ do uÅ¼ycia tej komendy.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -639,14 +642,14 @@ async function handleWezwijCommand(interaction) {
 
   if (!ownerId) {
     await interaction.reply({
-      content: "> `❌` × Nie mogę znaleźć właściciela tego ticketu.",
+      content: "> `âŒ` Ã— Nie mogÄ™ znaleÅºÄ‡ wÅ‚aÅ›ciciela tego ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
   const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
-  // użyj formatu animowanego (a:...) jeśli emoji jest GIFem
+  // uÅ¼yj formatu animowanego (a:...) jeÅ›li emoji jest GIFem
   const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
 
   try {
@@ -656,23 +659,23 @@ async function handleWezwijCommand(interaction) {
       .setColor(COLOR_BLUE)
       .setDescription(
         "```\n" +
-          "🚨 New Shop × JESTES WZYWANY\n" +
+          "ðŸš¨ New Shop Ã— JESTES WZYWANY\n" +
         "```\n" +
-        `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
-        `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
-        `**KANAŁ:** ${channelLink}`
+        `${arrowEmoji} **jesteÅ› wzywany** na **swojego ticketa**!\n` +
+        `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedÅº lub ticket **zostanie zamkniÄ™ty!**\n\n` +
+        `**KANAÅ:** ${channelLink}`
       );
 
     await user.send({ embeds: [embed] });
 
     await interaction.reply({
-      content: `> ` + "`✅`" + ` × Wysłano wezwanie do właściciela ticketu.`,
+      content: `> ` + "`âœ…`" + ` Ã— WysÅ‚ano wezwanie do wÅ‚aÅ›ciciela ticketu.`,
       flags: [MessageFlags.Ephemeral],
     });
   } catch (err) {
-    console.error("[wezwij] Błąd DM:", err);
+    console.error("[wezwij] BÅ‚Ä…d DM:", err);
     await interaction.reply({
-      content: "> `❌` × Nie udało się wysłać wiadomości do właściciela (ma wyłączone DM lub nie znaleziono użytkownika).",
+      content: "> `âŒ` Ã— Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ wiadomoÅ›ci do wÅ‚aÅ›ciciela (ma wyÅ‚Ä…czone DM lub nie znaleziono uÅ¼ytkownika).",
       flags: [MessageFlags.Ephemeral],
     });
   }
@@ -688,17 +691,17 @@ async function loadStateFromSupabase() {
     
     if (error) {
       if (error.code === 'PGRST116') {
-        console.log('[supabase] Nie znaleziono stanu, tworzę nowy');
+        console.log('[supabase] Nie znaleziono stanu, tworzÄ™ nowy');
         return null;
       }
-      console.error('[supabase] Błąd odczytu:', error);
+      console.error('[supabase] BÅ‚Ä…d odczytu:', error);
       return null;
     }
     
-    console.log('[supabase] Stan wczytany pomyślnie');
+    console.log('[supabase] Stan wczytany pomyÅ›lnie');
     return data.data;
   } catch (error) {
-    console.error('[supabase] Błąd podczas odczytu:', error);
+    console.error('[supabase] BÅ‚Ä…d podczas odczytu:', error);
     return null;
   }
 }
@@ -730,9 +733,9 @@ function scheduleSavePersistentState(immediate = false) {
         saveStateToSupabase(data);
         console.log(`[state] immediate save ok -> supabase only`);
       } catch (err) {
-        console.error("Nie udało się zapisać stanu bota (immediate):", err);
+        console.error("Nie udaÅ‚o siÄ™ zapisaÄ‡ stanu bota (immediate):", err);
       }
-    }, 100); // Bardzo krótkie opóźnienie
+    }, 100); // Bardzo krÃ³tkie opÃ³Åºnienie
   } else {
     // Standardowy debounced save
     saveStateTimeout = setTimeout(() => {
@@ -743,7 +746,7 @@ function scheduleSavePersistentState(immediate = false) {
         saveStateToSupabase(data);
         console.log(`[state] save ok -> supabase only`);
       } catch (err) {
-        console.error("Błąd serializacji stanu bota:", err);
+        console.error("BÅ‚Ä…d serializacji stanu bota:", err);
       }
     }, 2000);
   }
@@ -757,7 +760,7 @@ async function loadPersistentState() {
     const supabaseData = await loadStateFromSupabase();
     
     if (supabaseData) {
-      console.log("[state] Używam danych z Supabase");
+      console.log("[state] UÅ¼ywam danych z Supabase");
       const botStateData = supabaseData;
 
       if (typeof botStateData.legitRepCount === "number") {
@@ -802,7 +805,7 @@ async function loadPersistentState() {
       const loaded = nestedObjectToMapOfMaps(botStateData.inviteCounts);
       loaded.forEach((inner, guildId) => {
         inviteCounts.set(guildId, inner);
-        console.log(`[state] Wczytano inviteCounts dla guild ${guildId}: ${inner.size} wpisów`);
+        console.log(`[state] Wczytano inviteCounts dla guild ${guildId}: ${inner.size} wpisÃ³w`);
       });
     }
 
@@ -825,7 +828,7 @@ async function loadPersistentState() {
       const loaded = nestedObjectToMapOfMaps(botStateData.inviteRewardsGiven);
       loaded.forEach((inner, guildId) => {
         inviteRewardsGiven.set(guildId, inner);
-        console.log(`[state] Wczytano inviteRewardsGiven dla guild ${guildId}: ${inner.size} wpisów`);
+        console.log(`[state] Wczytano inviteRewardsGiven dla guild ${guildId}: ${inner.size} wpisÃ³w`);
       });
     }
 
@@ -869,7 +872,7 @@ async function loadPersistentState() {
               endContestByMessageId(msgId).catch((e) => console.error(e));
             }, delay);
             console.log(
-              `[contests] Przywrócono konkurs ${msgId}, zakończy się za ${Math.round(delay / 1000)}s`,
+              `[contests] PrzywrÃ³cono konkurs ${msgId}, zakoÅ„czy siÄ™ za ${Math.round(delay / 1000)}s`,
             );
           } else {
             // Contest should have ended, end it now
@@ -936,16 +939,16 @@ async function loadPersistentState() {
           paidAt: paid_at || null
         });
       });
-      console.log(`[Supabase] Wczytano weeklySales: ${sales.length} użytkowników`);
+      console.log(`[Supabase] Wczytano weeklySales: ${sales.length} uÅ¼ytkownikÃ³w`);
     } catch (error) {
-      console.error("[Supabase] Błąd wczytywania weeklySales:", error);
+      console.error("[Supabase] BÅ‚Ä…d wczytywania weeklySales:", error);
     }
 
     // Load active codes
     try {
       const codes = await db.getActiveCodes();
       codes.forEach(({ code, ...codeData }) => {
-        // Konwertuj nazwy pól na format używany w bocie
+        // Konwertuj nazwy pÃ³l na format uÅ¼ywany w bocie
         const botCodeData = {
           oderId: codeData.user_id,
           discount: codeData.discount,
@@ -958,9 +961,9 @@ async function loadPersistentState() {
         };
         activeCodes.set(code, botCodeData);
       });
-      console.log(`[Supabase] Wczytano activeCodes: ${codes.length} kodów`);
+      console.log(`[Supabase] Wczytano activeCodes: ${codes.length} kodÃ³w`);
     } catch (error) {
-      console.error("[Supabase] Błąd wczytywania activeCodes:", error);
+      console.error("[Supabase] BÅ‚Ä…d wczytywania activeCodes:", error);
     }
 
     // Load ticket owners from Supabase
@@ -969,9 +972,9 @@ async function loadPersistentState() {
       for (const [channelId, ticketData] of Object.entries(ticketOwnersData)) {
         ticketOwners.set(channelId, ticketData);
       }
-      console.log(`[Supabase] Wczytano ticketOwners: ${Object.keys(ticketOwnersData).length} wpisów`);
+      console.log(`[Supabase] Wczytano ticketOwners: ${Object.keys(ticketOwnersData).length} wpisÃ³w`);
     } catch (error) {
-      console.error("[Supabase] Błąd wczytywania ticketOwners:", error);
+      console.error("[Supabase] BÅ‚Ä…d wczytywania ticketOwners:", error);
     }
 
     // Load invite total joined
@@ -1138,6 +1141,15 @@ async function loadPersistentState() {
       }
     }
 
+    // Load autoPrzejmijSettings
+    if (botStateData.autoPrzejmijSettings && typeof botStateData.autoPrzejmijSettings === "object") {
+      for (const [guildId, cfg] of Object.entries(botStateData.autoPrzejmijSettings)) {
+        if (cfg && typeof cfg === "object" && cfg.enabled) {
+          autoPrzejmijSettings.set(guildId, cfg);
+        }
+      }
+    }
+
     try {
       let fakeGuilds = 0;
       let fakeEntries = 0;
@@ -1151,13 +1163,13 @@ async function loadPersistentState() {
     } catch (e) {
       // ignore
     }
-    console.log("Załadowano zapisany stan bota z Supabase.");
-    console.log("[state] Zakończono wczytywanie stanu");
+    console.log("ZaÅ‚adowano zapisany stan bota z Supabase.");
+    console.log("[state] ZakoÅ„czono wczytywanie stanu");
     } else {
       console.log("[state] Nie znaleziono danych w Supabase, zaczynam z pustym stanem");
     }
   } catch (err) {
-    console.error("Nie udało się odczytać stanu bota z Supabase:", err);
+    console.error("Nie udaÅ‚o siÄ™ odczytaÄ‡ stanu bota z Supabase:", err);
   }
 }
 
@@ -1179,11 +1191,11 @@ function getNextTicketNumber(guildId) {
 }
 
 // Load persisted state once on startup (IMMEDIATELY after maps are defined)
-console.log("[state] Wywołuję loadPersistentState()...");
+console.log("[state] WywoÅ‚ujÄ™ loadPersistentState()...");
 loadPersistentState().then(() => {
-  console.log("[state] loadPersistentState() zakończone");
+  console.log("[state] loadPersistentState() zakoÅ„czone");
 }).catch(err => {
-  console.error("[state] Błąd loadPersistentState():", err);
+  console.error("[state] BÅ‚Ä…d loadPersistentState():", err);
 });
 
 // Flush debounced state on shutdown so counters don't reset on restart
@@ -1214,8 +1226,8 @@ process.once("SIGTERM", () => {
 const DEFAULT_GUILD_ID = "1350446732365926491";
 const REWARDS_CATEGORY_ID = "1449455567641907351";
 const DEFAULT_NAMES = {
-  dropChannelName: "🎁-×┃dropy",
-  verificationRoleName: "@> | 💲 klient",
+  dropChannelName: "ðŸŽ-Ã—â”ƒdropy",
+  verificationRoleName: "@> | ðŸ’² klient",
   categories: {
     "zakup-0-20": "zakup 0-20",
     "zakup-20-50": "zakup 20-50",
@@ -1231,27 +1243,27 @@ const DEFAULT_NAMES = {
 const commands = [
   new SlashCommandBuilder()
     .setName("drop")
-    .setDescription("Wylosuj zniżkę na zakupy w sklepie!")
+    .setDescription("Wylosuj zniÅ¼kÄ™ na zakupy w sklepie!")
     .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("free-kasa")
-    .setDescription("Wylosuj darmową kasę (tylko właściciel, kanał free-kasa)")
+    .setDescription("Wylosuj darmowÄ… kasÄ™ (tylko wÅ‚aÅ›ciciel, kanaÅ‚ free-kasa)")
     .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelkalkulator")
-    .setDescription("Wyślij panel kalkulatora waluty na kanał")
+    .setDescription("WyÅ›lij panel kalkulatora waluty na kanaÅ‚")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticketpanel")
-    .setDescription("Wyślij TicketPanel na kanał")
+    .setDescription("WyÅ›lij TicketPanel na kanaÅ‚")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticket-zakoncz")
-    .setDescription("Użyj tej komendy jeżeli będziesz chciał zakończyć ticket (sprzedawca)")
+    .setDescription("UÅ¼yj tej komendy jeÅ¼eli bÄ™dziesz chciaÅ‚ zakoÅ„czyÄ‡ ticket (sprzedawca)")
     .setDefaultMemberPermissions(null)
     .addStringOption((option) =>
       option
@@ -1260,8 +1272,8 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "ZAKUP", value: "zakup" },
-          { name: "SPRZEDAŻ", value: "sprzedaż" },
-          { name: "WRĘCZYŁ NAGRODĘ", value: "wręczył nagrodę" }
+          { name: "SPRZEDAÅ»", value: "sprzedaÅ¼" },
+          { name: "WRÄ˜CZYÅ NAGRODÄ˜", value: "wrÄ™czyÅ‚ nagrodÄ™" }
         )
     )
     .addStringOption((option) =>
@@ -1279,39 +1291,39 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("zamknij-z-powodem")
-    .setDescription("Zamknij ticket z powodem (tylko właściciel)")
+    .setDescription("Zamknij ticket z powodem (tylko wÅ‚aÅ›ciciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
       option
         .setName("powod")
-        .setDescription("Powód zamknięcia")
+        .setDescription("PowÃ³d zamkniÄ™cia")
         .setRequired(true)
         .addChoices(
           { name: "Brak odpowiedzi", value: "Brak odpowiedzi" },
           { name: "Fake ticket", value: "Fake ticket" },
-          { name: "Próba oszustwa", value: "Próba oszustwa" },
+          { name: "PrÃ³ba oszustwa", value: "PrÃ³ba oszustwa" },
           { name: "Brak kultury", value: "Brak kultury" },
           { name: "Spam", value: "Spam" },
-          { name: "Zamówienie zrealizowane", value: "Zamówienie zrealizowane" },
-          { name: "Inny powód", value: "Inny powód" }
+          { name: "ZamÃ³wienie zrealizowane", value: "ZamÃ³wienie zrealizowane" },
+          { name: "Inny powÃ³d", value: "Inny powÃ³d" }
         )
     )
     .addStringOption((option) =>
       option
         .setName("powod_custom")
-        .setDescription("Własny powód zamknięcia")
+        .setDescription("WÅ‚asny powÃ³d zamkniÄ™cia")
         .setRequired(false)
         .setMaxLength(200)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("legit-rep-ustaw")
-    .setDescription("Ustaw licznik legit repów i zmień nazwę kanału")
+    .setDescription("Ustaw licznik legit repÃ³w i zmieÅ„ nazwÄ™ kanaÅ‚u")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((option) =>
       option
         .setName("ile")
-        .setDescription("Liczba legit repów (0-9999)")
+        .setDescription("Liczba legit repÃ³w (0-9999)")
         .setRequired(true)
         .setMinValue(0)
         .setMaxValue(9999)
@@ -1323,13 +1335,13 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("zaproszeniastats")
-    .setDescription("Edytuj statystyki zaproszeń")
+    .setDescription("Edytuj statystyki zaproszeÅ„")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((o) =>
       o
         .setName("kategoria")
         .setDescription(
-          "Wybierz kategorię: prawdziwe / opuszczone / mniej4mies / dodatkowe",
+          "Wybierz kategoriÄ™: prawdziwe / opuszczone / mniej4mies / dodatkowe",
         )
         .setRequired(true)
         .addChoices(
@@ -1354,7 +1366,7 @@ const commands = [
     .addIntegerOption((o) =>
       o
         .setName("liczba")
-        .setDescription("Ilość (opcjonalnie)")
+        .setDescription("IloÅ›Ä‡ (opcjonalnie)")
         .setRequired(false),
     )
     .addUserOption((o) =>
@@ -1371,36 +1383,36 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelweryfikacja")
-    .setDescription("Wyślij panel weryfikacji na kanał")
+    .setDescription("WyÅ›lij panel weryfikacji na kanaÅ‚")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("opinia")
-    .setDescription("Podziel sie opinią o naszym sklepie!")
+    .setDescription("Podziel sie opiniÄ… o naszym sklepie!")
     .addIntegerOption((option) =>
       option
         .setName("czas_oczekiwania")
-        .setDescription("Ocena dotycząca czasu oczekiwania (1-5 gwiazdek)")
+        .setDescription("Ocena dotyczÄ…ca czasu oczekiwania (1-5 gwiazdek)")
         .setRequired(true)
         .addChoices(
-          { name: "⭐", value: 1 },
-          { name: "⭐ ⭐", value: 2 },
-          { name: "⭐ ⭐ ⭐", value: 3 },
-          { name: "⭐ ⭐ ⭐ ⭐", value: 4 },
-          { name: "⭐ ⭐ ⭐ ⭐ ⭐", value: 5 },
+          { name: "â­", value: 1 },
+          { name: "â­ â­", value: 2 },
+          { name: "â­ â­ â­", value: 3 },
+          { name: "â­ â­ â­ â­", value: 4 },
+          { name: "â­ â­ â­ â­ â­", value: 5 },
         ),
     )
     .addIntegerOption((option) =>
       option
         .setName("jakosc_produktu")
-        .setDescription("Ocena jakości produktu (1-5)")
+        .setDescription("Ocena jakoÅ›ci produktu (1-5)")
         .setRequired(true)
         .addChoices(
-          { name: "⭐", value: 1 },
-          { name: "⭐ ⭐", value: 2 },
-          { name: "⭐ ⭐ ⭐", value: 3 },
-          { name: "⭐ ⭐ ⭐ ⭐", value: 4 },
-          { name: "⭐ ⭐ ⭐ ⭐ ⭐", value: 5 },
+          { name: "â­", value: 1 },
+          { name: "â­ â­", value: 2 },
+          { name: "â­ â­ â­", value: 3 },
+          { name: "â­ â­ â­ â­", value: 4 },
+          { name: "â­ â­ â­ â­ â­", value: 5 },
         ),
     )
     .addIntegerOption((option) =>
@@ -1409,17 +1421,17 @@ const commands = [
         .setDescription("Ocena ceny produktu (1-5)")
         .setRequired(true)
         .addChoices(
-          { name: "⭐", value: 1 },
-          { name: "⭐ ⭐", value: 2 },
-          { name: "⭐ ⭐ ⭐", value: 3 },
-          { name: "⭐ ⭐ ⭐ ⭐", value: 4 },
-          { name: "⭐ ⭐ ⭐ ⭐ ⭐", value: 5 },
+          { name: "â­", value: 1 },
+          { name: "â­ â­", value: 2 },
+          { name: "â­ â­ â­", value: 3 },
+          { name: "â­ â­ â­ â­", value: 4 },
+          { name: "â­ â­ â­ â­ â­", value: 5 },
         ),
     )
     .addStringOption((option) =>
       option
         .setName("tresc_opinii")
-        .setDescription("Treść opinii")
+        .setDescription("TreÅ›Ä‡ opinii")
         .setRequired(true),
     )
     .toJSON(),
@@ -1427,7 +1439,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("wyczysc")
     .setDescription(
-      "Wyczyść wiadomości na kanale (wszystko / ilosc-wiadomosci)",
+      "WyczyÅ›Ä‡ wiadomoÅ›ci na kanale (wszystko / ilosc-wiadomosci)",
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
@@ -1437,14 +1449,14 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: "Wszystko", value: "wszystko" },
-          { name: "Ilość wiadomości", value: "ilosc" },
+          { name: "IloÅ›Ä‡ wiadomoÅ›ci", value: "ilosc" },
         ),
     )
     .addIntegerOption((option) =>
       option
         .setName("ilosc")
         .setDescription(
-          "Ile wiadomości usunąć (1-100) — wymagane gdy tryb=ilosc",
+          "Ile wiadomoÅ›ci usunÄ…Ä‡ (1-100) â€” wymagane gdy tryb=ilosc",
         )
         .setRequired(false),
     )
@@ -1452,7 +1464,7 @@ const commands = [
   // NEW: /resetlc command - reset legitcheck counter
   new SlashCommandBuilder()
     .setName("resetlc")
-    .setDescription("Reset liczby legitchecków do zera")
+    .setDescription("Reset liczby legitcheckÃ³w do zera")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
@@ -1462,7 +1474,7 @@ const commands = [
     .addStringOption((option) =>
       option
         .setName("co")
-        .setDescription("Co zresetować")
+        .setDescription("Co zresetowaÄ‡")
         .setRequired(true)
         .addChoices(
           { name: "/drop", value: "drop" },
@@ -1475,7 +1487,7 @@ const commands = [
     .addUserOption((option) =>
       option
         .setName("kto")
-        .setDescription("Użytkownik do resetu (domyślnie Ty)")
+        .setDescription("UÅ¼ytkownik do resetu (domyÅ›lnie Ty)")
         .setRequired(false)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -1491,16 +1503,31 @@ const commands = [
     .setDescription("Zwolnij aktualny ticket (sprzedawca)")
     .setDefaultMemberPermissions(null)
     .toJSON(),
+  new SlashCommandBuilder()
+    .setName("autoprzejmij")
+    .setDescription("Automatyczne przejmowanie ticketow zakupowych (wlacz/wylacz)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption((option) =>
+      option
+        .setName("status")
+        .setDescription("Wlacz lub wylacz autoprzejmowanie")
+        .setRequired(true)
+        .addChoices(
+          { name: "WLACZ", value: "wlacz" },
+          { name: "WYLACZ", value: "wylacz" }
+        )
+    )
+    .toJSON(),
   // UPDATED: embed (interactive flow)
   new SlashCommandBuilder()
     .setName("embed")
-    .setDescription("Wyślij wiadomość przez bota (tylko właściciel)")
+    .setDescription("WyÅ›lij wiadomoÅ›Ä‡ przez bota (tylko wÅ‚aÅ›ciciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addChannelOption((o) =>
       o
         .setName("kanal")
         .setDescription(
-          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
+          "KanaÅ‚ docelowy (opcjonalnie). JeÅ›li nie podasz, uÅ¼yty zostanie aktualny kanaÅ‚.",
         )
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildText),
@@ -1509,39 +1536,39 @@ const commands = [
   // RENAMED: sprawdz-zaproszenia (was sprawdz-zapro)
   new SlashCommandBuilder()
     .setName("sprawdz-zaproszenia")
-    .setDescription("Sprawdź ile posiadasz zaproszeń")
+    .setDescription("SprawdÅº ile posiadasz zaproszeÅ„")
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczenie")
-    .setDescription("Dodaj kwote do rozliczeń (sprzedawca)")
+    .setDescription("Dodaj kwote do rozliczeÅ„ (sprzedawca)")
     .setDefaultMemberPermissions(null)
     .addIntegerOption((option) =>
       option
         .setName("kwota")
-        .setDescription("Kwota w zł")
+        .setDescription("Kwota w zÅ‚")
         .setRequired(true)
     )
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
-        .setDescription("Użytkownik (opcjonalnie, domyślnie ty)")
+        .setDescription("UÅ¼ytkownik (opcjonalnie, domyÅ›lnie ty)")
         .setRequired(false)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczeniazaplacil")
-    .setDescription("Oznacz rozliczenie jako zapłacone (tylko właściciel)")
+    .setDescription("Oznacz rozliczenie jako zapÅ‚acone (tylko wÅ‚aÅ›ciciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
-        .setDescription("Użytkownik do oznaczenia")
+        .setDescription("UÅ¼ytkownik do oznaczenia")
         .setRequired(true)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczeniezakoncz")
-    .setDescription("Wyślij podsumowanie rozliczeń (tylko właściciel)")
+    .setDescription("WyÅ›lij podsumowanie rozliczeÅ„ (tylko wÅ‚aÅ›ciciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
@@ -1551,23 +1578,23 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("statusbota")
-    .setDescription("Pokaż szczegółowy status bota")
+    .setDescription("PokaÅ¼ szczegÃ³Å‚owy status bota")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczenieustaw")
-    .setDescription("Ustaw tygodniową sumę rozliczenia dla użytkownika (tylko właściciel)")
+    .setDescription("Ustaw tygodniowÄ… sumÄ™ rozliczenia dla uÅ¼ytkownika (tylko wÅ‚aÅ›ciciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
-        .setDescription("Użytkownik")
+        .setDescription("UÅ¼ytkownik")
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("akcja")
-        .setDescription("Dodaj lub odejmij kwotę")
+        .setDescription("Dodaj lub odejmij kwotÄ™")
         .setRequired(true)
         .addChoices(
           { name: "Dodaj", value: "dodaj" },
@@ -1587,13 +1614,13 @@ const commands = [
   new SlashCommandBuilder()
     .setName("utworz-konkurs")
     .setDescription(
-      "Utwórz konkurs z przyciskiem do udziału i losowaniem zwycięzców",
+      "UtwÃ³rz konkurs z przyciskiem do udziaÅ‚u i losowaniem zwyciÄ™zcÃ³w",
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("end-giveaways")
-    .setDescription("Zakończ wszystkie aktywne konkursy (tylko właściciel serwera)")
+    .setDescription("ZakoÅ„cz wszystkie aktywne konkursy (tylko wÅ‚aÅ›ciciel serwera)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
 ];
@@ -1611,12 +1638,12 @@ function humanizeMs(ms) {
   return `${sec}s`;
 }
 
-// Helper: sprawdź czy użytkownik jest admin lub sprzedawca
+// Helper: sprawdÅº czy uÅ¼ytkownik jest admin lub sprzedawca
 function isAdminOrSeller(member) {
   if (!member) return false;
   const SELLER_ROLE_ID = "1350786945944391733";
 
-  // Sprawdź czy ma rolę sprzedawcy
+  // SprawdÅº czy ma rolÄ™ sprzedawcy
   if (
     member.roles &&
     member.roles.cache &&
@@ -1625,7 +1652,7 @@ function isAdminOrSeller(member) {
     return true;
   }
 
-  // Sprawdź Administrator
+  // SprawdÅº Administrator
   if (
     member.permissions &&
     member.permissions.has(PermissionFlagsBits.Administrator)
@@ -1697,8 +1724,8 @@ function calculateFeePln(basePln, methodRaw) {
   let feeLabel = `${percent}%`;
 
   if ((methodRaw || "").toString().toLowerCase().includes("mypsc")) {
-    fee = Math.max(fee, 10); // min 10 zł
-    feeLabel = `${percent}% (min 10zł)`;
+    fee = Math.max(fee, 10); // min 10 zÅ‚
+    feeLabel = `${percent}% (min 10zÅ‚)`;
   }
 
   return { fee, feeLabel, percent };
@@ -1736,7 +1763,7 @@ async function findBotMessageWithEmbed(channel, matchFn) {
         try {
           if (matchFn(emb)) return msg;
         } catch (e) {
-          // match function error — skip
+          // match function error â€” skip
         }
       }
     }
@@ -1845,7 +1872,7 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
               // fallback: skip component if something unexpected
             }
           } else {
-            // non-interactive component (unlikely) — skip
+            // non-interactive component (unlikely) â€” skip
           }
         }
       }
@@ -1870,7 +1897,7 @@ async function registerCommands() {
   try {
     console.log("Rejestrowanie slash commands...");
 
-    // Prefer ustawienie BOT_ID przez zmienną środowiskową
+    // Prefer ustawienie BOT_ID przez zmiennÄ… Å›rodowiskowÄ…
     const BOT_ID = process.env.DISCORD_BOT_ID || "1449397101032112139";
 
     // Rejestruj komendy na konkretnym serwerze (szybsze, natychmiastowe)
@@ -1884,15 +1911,15 @@ async function registerCommands() {
       console.log(`Komendy zarejestrowane dla guild ${DEFAULT_GUILD_ID}`);
     } catch (e) {
       console.warn(
-        "Nie udało się zarejestrować komend na serwerze:",
+        "Nie udaÅ‚o siÄ™ zarejestrowaÄ‡ komend na serwerze:",
         e.message || e,
       );
     }
 
-    // Opcjonalnie: rejestruj globalnie tylko gdy jawnie to włączysz (globalne propagują się długo)
+    // Opcjonalnie: rejestruj globalnie tylko gdy jawnie to wÅ‚Ä…czysz (globalne propagujÄ… siÄ™ dÅ‚ugo)
     if (process.env.REGISTER_GLOBAL === "true") {
       try {
-        // Krótka przerwa żeby Discord mógł przepuścić zmiany (opcjonalne)
+        // KrÃ³tka przerwa Å¼eby Discord mÃ³gÅ‚ przepuÅ›ciÄ‡ zmiany (opcjonalne)
         await new Promise((r) => setTimeout(r, 1500));
         await rest.put(Routes.applicationCommands(BOT_ID), {
           body: commands,
@@ -1900,17 +1927,17 @@ async function registerCommands() {
         console.log("Globalne slash commands zarejestrowane!");
       } catch (e) {
         console.warn(
-          "Nie udało się zarejestrować globalnych komend:",
+          "Nie udaÅ‚o siÄ™ zarejestrowaÄ‡ globalnych komend:",
           e.message || e,
         );
       }
     } else {
       console.log(
-        "Pominięto rejestrację globalnych komend (ustaw REGISTER_GLOBAL=true aby włączyć).",
+        "PominiÄ™to rejestracjÄ™ globalnych komend (ustaw REGISTER_GLOBAL=true aby wÅ‚Ä…czyÄ‡).",
       );
     }
   } catch (error) {
-    console.error("Błąd rejestracji komend:", error);
+    console.error("BÅ‚Ä…d rejestracji komend:", error);
   }
 }
 
@@ -1934,13 +1961,13 @@ async function applyDefaultsForGuild(guildId) {
     const opinie = guild.channels.cache.find(
       (c) =>
         c.type === ChannelType.GuildText &&
-        (c.name === "⭐-×┃opinie-klientow" ||
+        (c.name === "â­-Ã—â”ƒopinie-klientow" ||
           normalize(c.name).includes("opinie") ||
           normalize(c.name).includes("opinie-klientow")),
     );
     if (opinie) {
       opinieChannels.set(guildId, opinie.id);
-      console.log(`Ustawiono domyślny kanał opinii: ${opinie.id}`);
+      console.log(`Ustawiono domyÅ›lny kanaÅ‚ opinii: ${opinie.id}`);
     }
 
     // find drop channel by name
@@ -1952,7 +1979,7 @@ async function applyDefaultsForGuild(guildId) {
     );
     if (drop) {
       dropChannels.set(guildId, drop.id);
-      console.log(`Ustawiono domyślny kanał drop: ${drop.id}`);
+      console.log(`Ustawiono domyÅ›lny kanaÅ‚ drop: ${drop.id}`);
     }
 
     // find verification role by exact name OR fallback to searching for "klient"
@@ -1968,11 +1995,11 @@ async function applyDefaultsForGuild(guildId) {
       verificationRoles.set(guildId, role.id);
       scheduleSavePersistentState();
       console.log(
-        `Ustawiono domyślną rolę weryfikacji: ${role.id} (${role.name})`,
+        `Ustawiono domyÅ›lnÄ… rolÄ™ weryfikacji: ${role.id} (${role.name})`,
       );
     } else {
       console.log(
-        `Nie znaleziono domyślnej roli weryfikacji w guild ${guildId}. Szukana nazwa: "${DEFAULT_NAMES.verificationRoleName}" lub zawierająca "klient".`,
+        `Nie znaleziono domyÅ›lnej roli weryfikacji w guild ${guildId}. Szukana nazwa: "${DEFAULT_NAMES.verificationRoleName}" lub zawierajÄ…ca "klient".`,
       );
     }
 
@@ -1988,14 +2015,14 @@ async function applyDefaultsForGuild(guildId) {
       );
       if (cat) {
         categoriesMap[key] = cat.id;
-        console.log(`Ustawiono kategorię ${key} -> ${cat.id}`);
+        console.log(`Ustawiono kategoriÄ™ ${key} -> ${cat.id}`);
       }
     }
     if (Object.keys(categoriesMap).length > 0) {
       ticketCategories.set(guildId, categoriesMap);
     }
   } catch (error) {
-    console.error("Błąd ustawiania domyślnych zasobów:", error);
+    console.error("BÅ‚Ä…d ustawiania domyÅ›lnych zasobÃ³w:", error);
   }
 }
 
@@ -2004,7 +2031,7 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[READY] Bot jest na ${c.guilds.cache.size} serwerach`);
   console.log(`[READY] Bot jest online i gotowy do pracy!`);
   
-  // loadPersistentState() już wywołane na początku pliku
+  // loadPersistentState() juÅ¼ wywoÅ‚ane na poczÄ…tku pliku
 
   // --- Webhook startowy do Discorda ---
   try {
@@ -2014,26 +2041,26 @@ client.once(Events.ClientReady, async (c) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: `🟢 Bot **${c.user.tag}** został uruchomiony i działa poprawnie.`
+          content: `ðŸŸ¢ Bot **${c.user.tag}** zostaÅ‚ uruchomiony i dziaÅ‚a poprawnie.`
         })
       });
-      console.log("Wysłano webhook startowy.");
+      console.log("WysÅ‚ano webhook startowy.");
     } else {
-      console.log("Brak UPTIME_WEBHOOK w zmiennych środowiskowych.");
+      console.log("Brak UPTIME_WEBHOOK w zmiennych Å›rodowiskowych.");
     }
   } catch (err) {
-    console.error("Błąd wysyłania webhooka startowego:", err);
+    console.error("BÅ‚Ä…d wysyÅ‚ania webhooka startowego:", err);
   }
 
   // Ustaw status - gra w NewShop
   try {
-    c.user.setActivity(`LegitRepy: ${legitRepCount} 🛒`, { type: 0 });
+    c.user.setActivity(`LegitRepy: ${legitRepCount} ðŸ›’`, { type: 0 });
     setInterval(
-      () => c.user.setActivity(`LegitRepy: ${legitRepCount} 🛒`, { type: 0 }),
+      () => c.user.setActivity(`LegitRepy: ${legitRepCount} ðŸ›’`, { type: 0 }),
       60000,
     );
   } catch (e) {
-    // aktywność może być niedostępna na bocie, ignoruj błąd
+    // aktywnoÅ›Ä‡ moÅ¼e byÄ‡ niedostÄ™pna na bocie, ignoruj bÅ‚Ä…d
   }
 
   await registerCommands();
@@ -2050,10 +2077,10 @@ client.once(Events.ClientReady, async (c) => {
   try {
     const repChannel = await c.channels.fetch(REP_CHANNEL_ID).catch(() => null);
     if (repChannel && repChannel.name) {
-      const match = repChannel.name.match(/➔(\d+)$/);
+      const match = repChannel.name.match(/âž”(\d+)$/);
       if (match) {
         legitRepCount = parseInt(match[1], 10);
-        console.log(`Odczytano liczbę repów z kanału: ${legitRepCount}`);
+        console.log(`Odczytano liczbÄ™ repÃ³w z kanaÅ‚u: ${legitRepCount}`);
         scheduleSavePersistentState();
       }
     }
@@ -2064,13 +2091,13 @@ client.once(Events.ClientReady, async (c) => {
         return (
           emb.description &&
           typeof emb.description === "string" &&
-          emb.description.includes("New Shop × LEGIT CHECK")
+          emb.description.includes("New Shop Ã— LEGIT CHECK")
         );
       });
       if (found) {
         repLastInfoMessage.set(repChannel.id, found.id);
         console.log(
-          `[ready] Znalazłem istniejącą wiadomość info-rep: ${found.id}`,
+          `[ready] ZnalazÅ‚em istniejÄ…cÄ… wiadomoÅ›Ä‡ info-rep: ${found.id}`,
         );
       }
     }
@@ -2087,14 +2114,14 @@ client.once(Events.ClientReady, async (c) => {
               (emb) =>
                 typeof emb.description === "string" &&
                 (emb.description.includes(
-                  "Użyj **komendy** </opinia:1464015495392133321>",
+                  "UÅ¼yj **komendy** </opinia:1464015495392133321>",
                 ) ||
-                  emb.description.includes("Użyj **komendy** `/opinia`")),
+                  emb.description.includes("UÅ¼yj **komendy** `/opinia`")),
             );
             if (found) {
               lastOpinionInstruction.set(ch.id, found.id);
               console.log(
-                `[ready] Znalazłem istniejącą instrukcję opinii: ${found.id} w kanale ${ch.id}`,
+                `[ready] ZnalazÅ‚em istniejÄ…cÄ… instrukcjÄ™ opinii: ${found.id} w kanale ${ch.id}`,
               );
             }
           }
@@ -2113,13 +2140,13 @@ client.once(Events.ClientReady, async (c) => {
               chd,
               (emb) =>
                 typeof emb.description === "string" &&
-                emb.description.includes("Użyj **komendy** </drop:1464015494876102748>"),
+                emb.description.includes("UÅ¼yj **komendy** </drop:1464015494876102748>"),
             );
             if (foundDrop) {
               lastDropInstruction.set(chd.id, foundDrop.id);
               scheduleSavePersistentState();
               console.log(
-                `[ready] Znalazłem istniejącą instrukcję drop: ${foundDrop.id} w kanale ${chd.id}`,
+                `[ready] ZnalazÅ‚em istniejÄ…cÄ… instrukcjÄ™ drop: ${foundDrop.id} w kanale ${chd.id}`,
               );
             }
           }
@@ -2134,7 +2161,7 @@ client.once(Events.ClientReady, async (c) => {
           g.channels.cache.find(
             (c) =>
               c.type === ChannelType.GuildText &&
-              (c.name === "📨-×┃zaproszenia" ||
+              (c.name === "ðŸ“¨-Ã—â”ƒzaproszenia" ||
                 c.name.toLowerCase().includes("zaproszen") ||
                 c.name.toLowerCase().includes("zaproszenia")),
           ) || null;
@@ -2149,7 +2176,7 @@ client.once(Events.ClientReady, async (c) => {
                 .catch(() => null);
               if (savedMsg && savedMsg.author.id === client.user.id) {
                 console.log(
-                  `[ready] Używam zapisanej wiadomości informacyjnej: ${savedId} w kanale ${zapCh.id}`,
+                  `[ready] UÅ¼ywam zapisanej wiadomoÅ›ci informacyjnej: ${savedId} w kanale ${zapCh.id}`,
                 );
                 // Message exists, we're good
                 foundExisting = true;
@@ -2166,7 +2193,7 @@ client.once(Events.ClientReady, async (c) => {
               (emb) =>
                 typeof emb.description === "string" &&
                 (emb.description.includes(
-                  "Użyj **komendy** /sprawdz-zaproszenia",
+                  "UÅ¼yj **komendy** /sprawdz-zaproszenia",
                 ) ||
                   emb.description.includes("sprawdz-zaproszenia")),
             );
@@ -2174,7 +2201,7 @@ client.once(Events.ClientReady, async (c) => {
               lastInviteInstruction.set(zapCh.id, foundInvite.id);
               scheduleSavePersistentState();
               console.log(
-                `[ready] Znalazłem istniejącą instrukcję zaproszeń: ${foundInvite.id} w kanale ${zapCh.id}`,
+                `[ready] ZnalazÅ‚em istniejÄ…cÄ… instrukcjÄ™ zaproszeÅ„: ${foundInvite.id} w kanale ${zapCh.id}`,
               );
             }
           }
@@ -2185,7 +2212,7 @@ client.once(Events.ClientReady, async (c) => {
     });
   } catch (err) {
     console.error(
-      "Błąd odczytywania licznika repów lub wyszukiwania wiadomości:",
+      "BÅ‚Ä…d odczytywania licznika repÃ³w lub wyszukiwania wiadomoÅ›ci:",
       err,
     );
   }
@@ -2211,7 +2238,7 @@ client.once(Events.ClientReady, async (c) => {
       if (!inviteBonusInvites.has(guild.id)) inviteBonusInvites.set(guild.id, new Map());
       console.log(`[invites] Zainicjalizowano invites cache dla ${guild.id}`);
     } catch (err) {
-      console.warn("[invites] Nie udało się pobrać invite'ów dla guild:", err);
+      console.warn("[invites] Nie udaÅ‚o siÄ™ pobraÄ‡ invite'Ã³w dla guild:", err);
     }
   });
 });
@@ -2228,12 +2255,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleButtonInteraction(interaction);
     }
   } catch (error) {
-    console.error("Błąd obsługi interakcji:", error);
+    console.error("BÅ‚Ä…d obsÅ‚ugi interakcji:", error);
   }
 });
 
 async function handleModalSubmit(interaction) {
-  // Sprawdź czy interakcja już została odpowiedziana
+  // SprawdÅº czy interakcja juÅ¼ zostaÅ‚a odpowiedziana
   if (interaction.replied || interaction.deferred) return;
   
   const id = interaction.customId;
@@ -2248,21 +2275,21 @@ async function handleModalSubmit(interaction) {
     if (isNaN(kwota) || kwota <= 0) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Podaj **poprawną** kwotę w PLN.",
+        content: "> `âŒ` Ã— Podaj **poprawnÄ…** kwotÄ™ w PLN.",
       });
     }
 
     if (kwota < 5) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**).",
+        content: "> `âŒ` Ã— Minimalna kwota to **5zÅ‚** (MYPSC **11zÅ‚**).",
       });
     }
 
     if (kwota > 10_000) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Maksymalna kwota to **10 000zł**.",
+        content: "> `âŒ` Ã— Maksymalna kwota to **10 000zÅ‚**.",
       });
     }
 
@@ -2276,15 +2303,15 @@ async function handleModalSubmit(interaction) {
     return interaction.reply({
       flags: [MessageFlags.Ephemeral],
       content:
-        `💰 **Otrzymasz:** ${finalAmount.toLocaleString()}\n` +
-        `📉 Kurs: ${rate}\n` +
-        `💸 Prowizja: ${feePercent}%\n` +
-        `📌 Tryb: ${tryb}\n` +
-        `📌 Metoda: ${metoda}`,
+        `ðŸ’° **Otrzymasz:** ${finalAmount.toLocaleString()}\n` +
+        `ðŸ“‰ Kurs: ${rate}\n` +
+        `ðŸ’¸ Prowizja: ${feePercent}%\n` +
+        `ðŸ“Œ Tryb: ${tryb}\n` +
+        `ðŸ“Œ Metoda: ${metoda}`,
     });
   }
 
-  // --- ILE MUSZĘ DAĆ ---
+  // --- ILE MUSZÄ˜ DAÄ† ---
   if (id === "modal_ile_musze_dac") {
     const walutaStr = interaction.fields.getTextInputValue("waluta");
     const tryb = interaction.fields.getTextInputValue("tryb");
@@ -2294,21 +2321,21 @@ async function handleModalSubmit(interaction) {
     if (isNaN(amount) || amount <= 0) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Podaj **poprawną** ilość waluty (np. 125k / 1m).",
+        content: "> `âŒ` Ã— Podaj **poprawnÄ…** iloÅ›Ä‡ waluty (np. 125k / 1m).",
       });
     }
 
     if (amount < 22_500) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Minimalna ilość to **22,5k** waluty.",
+        content: "> `âŒ` Ã— Minimalna iloÅ›Ä‡ to **22,5k** waluty.",
       });
     }
 
     if (amount > 999_000_000) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Maksymalna ilość to **999 000 000** waluty.",
+        content: "> `âŒ` Ã— Maksymalna iloÅ›Ä‡ to **999 000 000** waluty.",
       });
     }
 
@@ -2322,11 +2349,11 @@ async function handleModalSubmit(interaction) {
     return interaction.reply({
       flags: [MessageFlags.Ephemeral],
       content:
-        `💸 **Musisz zapłacić:** ${finalPln} PLN\n` +
-        `📉 Kurs: ${rate}\n` +
-        `💸 Prowizja: ${feePercent}%\n` +
-        `📌 Tryb: ${tryb}\n` +
-        `📌 Metoda: ${metoda}`,
+        `ðŸ’¸ **Musisz zapÅ‚aciÄ‡:** ${finalPln} PLN\n` +
+        `ðŸ“‰ Kurs: ${rate}\n` +
+        `ðŸ’¸ Prowizja: ${feePercent}%\n` +
+        `ðŸ“Œ Tryb: ${tryb}\n` +
+        `ðŸ“Œ Metoda: ${metoda}`,
     });
   }
 
@@ -2339,7 +2366,7 @@ async function handleModalSubmit(interaction) {
     if (!record) {
       await interaction.reply({
         content:
-          "> `❌` × **Nie mogę** znaleźć zapisanego zadania **weryfikacji** (spróbuj ponownie).",
+          "> `âŒ` Ã— **Nie mogÄ™** znaleÅºÄ‡ zapisanego zadania **weryfikacji** (sprÃ³buj ponownie).",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2348,7 +2375,7 @@ async function handleModalSubmit(interaction) {
     if (record.userId !== interaction.user.id) {
       await interaction.reply({
         content:
-          "> `❌` × **Tylko** użytkownik, który kliknął **przycisk**, może rozwiązać tę zagadkę.",
+          "> `âŒ` Ã— **Tylko** uÅ¼ytkownik, ktÃ³ry kliknÄ…Å‚ **przycisk**, moÅ¼e rozwiÄ…zaÄ‡ tÄ™ zagadkÄ™.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2359,35 +2386,35 @@ async function handleModalSubmit(interaction) {
 
     if (isCorrect) {
       try {
-        // Dodaj rolę weryfikacji
+        // Dodaj rolÄ™ weryfikacji
         const member = await interaction.guild.members.fetch(interaction.user.id);
         await member.roles.add(record.roleId);
 
-        // Wyślij embed potwierdzający
+        // WyÅ›lij embed potwierdzajÄ…cy
         const embed = new EmbedBuilder()
           .setColor(0x00ff00)
-          .setTitle("✅ Weryfikacja pomyślna!")
-          .setDescription(`Gratulacje! Pomyślnie przeszedłeś weryfikację.`)
+          .setTitle("âœ… Weryfikacja pomyÅ›lna!")
+          .setDescription(`Gratulacje! PomyÅ›lnie przeszedÅ‚eÅ› weryfikacjÄ™.`)
           .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
 
-        // Usuń z oczekujących
+        // UsuÅ„ z oczekujÄ…cych
         pendingVerifications.delete(modalId);
 
         console.log(
-          `Użytkownik ${interaction.user.username} przeszedł weryfikację na serwerze ${interaction.guild.id}`,
+          `UÅ¼ytkownik ${interaction.user.username} przeszedÅ‚ weryfikacjÄ™ na serwerze ${interaction.guild.id}`,
         );
       } catch (error) {
-        console.error("Błąd przy nadawaniu roli po weryfikacji:", error);
+        console.error("BÅ‚Ä…d przy nadawaniu roli po weryfikacji:", error);
         await interaction.reply({
-          content: "> `❌` **Wystąpił błąd przy nadawaniu roli.**",
+          content: "> `âŒ` **WystÄ…piÅ‚ bÅ‚Ä…d przy nadawaniu roli.**",
           flags: [MessageFlags.Ephemeral],
         });
       }
     } else {
       await interaction.reply({
-        content: "> `❌` **Niepoprawna odpowiedź.** Spróbuj ponownie.",
+        content: "> `âŒ` **Niepoprawna odpowiedÅº.** SprÃ³buj ponownie.",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -2409,31 +2436,31 @@ async function handleModalSubmit(interaction) {
 
       if (isNaN(kwota) || kwota <= 0) {
         await interaction.reply({
-          content: "> `❌` × Podaj **poprawną** kwotę w PLN.",
+          content: "> `âŒ` Ã— Podaj **poprawnÄ…** kwotÄ™ w PLN.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // globalne minimum: 5zł (MYPSC 11zł dalej w metodach)
+      // globalne minimum: 5zÅ‚ (MYPSC 11zÅ‚ dalej w metodach)
       if (kwota < 5) {
         await interaction.reply({
-          content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**). Podaj większą kwotę.",
+          content: "> `âŒ` Ã— Minimalna kwota to **5zÅ‚** (MYPSC **11zÅ‚**). Podaj wiÄ™kszÄ… kwotÄ™.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // maksymalnie 10 000 zł
+      // maksymalnie 10 000 zÅ‚
       if (kwota > 10_000) {
         await interaction.reply({
-          content: "> `❌` × Maksymalna kwota to **10 000zł**. Podaj mniejszą kwotę.",
+          content: "> `âŒ` Ã— Maksymalna kwota to **10 000zÅ‚**. Podaj mniejszÄ… kwotÄ™.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Zapisz kwotę i pokaż menu z wyborem trybu i metody
+      // Zapisz kwotÄ™ i pokaÅ¼ menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
 
@@ -2448,13 +2475,13 @@ async function handleModalSubmit(interaction) {
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder("Wybierz metodÄ™ pÅ‚atnoÅ›ci...")
         .addOptions(
           { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
           { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zÅ‚)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
           { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
           { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
@@ -2463,9 +2490,9 @@ async function handleModalSubmit(interaction) {
         .setColor(COLOR_BLUE)
         .setDescription(
           "```\n" +
-          "🔢 New Shop × Obliczanie\n" +
+          "ðŸ”¢ New Shop Ã— Obliczanie\n" +
           "```\n" +
-          `> 💵 × **Wybrana kwota:** \`${kwota.toFixed(2)}zł\`\n> ❗ × **Wybierz serwer i metodę płatności __poniżej:__`);
+          `> ðŸ’µ Ã— **Wybrana kwota:** \`${kwota.toFixed(2)}zÅ‚\`\n> â— Ã— **Wybierz serwer i metodÄ™ pÅ‚atnoÅ›ci __poniÅ¼ej:__`);
 
       await interaction.reply({
         embeds: [embed],
@@ -2476,16 +2503,16 @@ async function handleModalSubmit(interaction) {
         flags: [MessageFlags.Ephemeral]
       });
     } catch (error) {
-      console.error("Błąd w modal_ile_otrzymam:", error);
+      console.error("BÅ‚Ä…d w modal_ile_otrzymam:", error);
       await interaction.reply({
-        content: "> `❌` × **Wystąpił** błąd podczas przetwarzania. Spróbuj **ponownie**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas przetwarzania. SprÃ³buj **ponownie**.",
         flags: [MessageFlags.Ephemeral]
       });
     }
     return;
   }
 
-  // KALKULATOR: ile muszę dać?
+  // KALKULATOR: ile muszÄ™ daÄ‡?
   if (interaction.customId === "modal_ile_musze_dac") {
     try {
       const walutaStr = interaction.fields.getTextInputValue("waluta");
@@ -2493,22 +2520,22 @@ async function handleModalSubmit(interaction) {
 
       if (!waluta || waluta <= 0 || waluta > 999_000_000) {
         await interaction.reply({
-          content: "> `❌` × Podaj **poprawną** ilość waluty (1–999 000 000, możesz użyć k/m).",
+          content: "> `âŒ` Ã— Podaj **poprawnÄ…** iloÅ›Ä‡ waluty (1â€“999 000 000, moÅ¼esz uÅ¼yÄ‡ k/m).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // minimalne zakupy dla "ile muszę dać" = 22.5k
+      // minimalne zakupy dla "ile muszÄ™ daÄ‡" = 22.5k
       if (waluta < 22_500) {
         await interaction.reply({
-          content: "> `❌` × Minimalna ilość to **22,5k** waluty. Podaj większą wartość.",
+          content: "> `âŒ` Ã— Minimalna iloÅ›Ä‡ to **22,5k** waluty. Podaj wiÄ™kszÄ… wartoÅ›Ä‡.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Zapisz walutę i pokaż menu z wyborem trybu i metody
+      // Zapisz walutÄ™ i pokaÅ¼ menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
 
@@ -2523,13 +2550,13 @@ async function handleModalSubmit(interaction) {
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder("Wybierz metodÄ™ pÅ‚atnoÅ›ci...")
         .addOptions(
           { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
           { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zÅ‚)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
           { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
           { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
@@ -2538,9 +2565,9 @@ async function handleModalSubmit(interaction) {
         .setColor(COLOR_BLUE)
         .setDescription(
           "```\n" +
-          "🔢 New Shop × Obliczanie\n" +
+          "ðŸ”¢ New Shop Ã— Obliczanie\n" +
           "```\n" +
-          `> 💵 × **Wybrana waluta:** \`${formatShortWaluta(waluta)}\`\n> ❗ × **Wybierz serwer i metodę płatności __poniżej:__`);
+          `> ðŸ’µ Ã— **Wybrana waluta:** \`${formatShortWaluta(waluta)}\`\n> â— Ã— **Wybierz serwer i metodÄ™ pÅ‚atnoÅ›ci __poniÅ¼ej:__`);
 
       await interaction.reply({
         embeds: [embed],
@@ -2551,9 +2578,9 @@ async function handleModalSubmit(interaction) {
         flags: [MessageFlags.Ephemeral]
       });
     } catch (error) {
-      console.error("Błąd w modal_ile_musze_dac:", error);
+      console.error("BÅ‚Ä…d w modal_ile_musze_dac:", error);
       await interaction.reply({
-        content: "> `❌` × **Wystąpił** błąd podczas przetwarzania. Spróbuj **ponownie**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas przetwarzania. SprÃ³buj **ponownie**.",
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -2576,17 +2603,17 @@ async function handleModalSubmit(interaction) {
     if (!codeData) {
       await interaction.reply({
         content:
-          "❌ **Nieprawidłowy kod!**",
+          "âŒ **NieprawidÅ‚owy kod!**",
         flags: [MessageFlags.Ephemeral],
       });
       return;
     }
 
-    // Sprawdź typ kodu
+    // SprawdÅº typ kodu
     if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
       await interaction.reply({
         content:
-          "❌ Kod na 50k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
+          "âŒ Kod na 50k$ moÅ¼na wpisaÄ‡ jedynie klikajÄ…c kategoriÄ™ 'Nagroda za zaproszenia' w TicketPanel i wpisujÄ…c tam kod!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2594,7 +2621,7 @@ async function handleModalSubmit(interaction) {
 
     if (codeData.used) {
       await interaction.reply({
-        content: "> `❌` × **Kod** został już wykorzystany!",
+        content: "> `âŒ` Ã— **Kod** zostaÅ‚ juÅ¼ wykorzystany!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2605,7 +2632,7 @@ async function handleModalSubmit(interaction) {
       await db.deleteActiveCode(enteredCode);
       scheduleSavePersistentState();
       await interaction.reply({
-        content: "> `❌` × **Kod** wygasł!",
+        content: "> `âŒ` Ã— **Kod** wygasÅ‚!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2622,18 +2649,18 @@ async function handleModalSubmit(interaction) {
 
     const redeemEmbed = new EmbedBuilder()
       .setColor(0xd4af37)
-      .setTitle("`📉` WYKORZYSTAŁEŚ KOD RABATOWY")
+      .setTitle("`ðŸ“‰` WYKORZYSTAÅEÅš KOD RABATOWY")
       .setDescription(
         "```\n" +
         enteredCode +
         "\n```\n" +
-        `> 💸 × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
+        `> ðŸ’¸ Ã— **OtrzymaÅ‚eÅ›:** \`-${codeData.discount}%\`\n`,
       )
       .setTimestamp();
 
     await interaction.reply({ embeds: [redeemEmbed] });
     console.log(
-      `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
+      `UÅ¼ytkownik ${interaction.user.username} odebraÅ‚ kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
     );
     return;
   }
@@ -2649,7 +2676,7 @@ async function handleModalSubmit(interaction) {
       .catch(() => null);
     if (!channel) {
       await interaction.reply({
-        content: "> `❌` × **Kanał** nie znaleziony.",
+        content: "> `âŒ` Ã— **KanaÅ‚** nie znaleziony.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2659,7 +2686,7 @@ async function handleModalSubmit(interaction) {
 
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2670,7 +2697,7 @@ async function handleModalSubmit(interaction) {
       !isAdminOrSeller(interaction.member)
     ) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2678,13 +2705,13 @@ async function handleModalSubmit(interaction) {
     try {
       await channel.setName(newName);
       await interaction.reply({
-        content: `✅ Nazwa ticketu zmieniona na: ${newName}`,
+        content: `âœ… Nazwa ticketu zmieniona na: ${newName}`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
-      console.error("Błąd zmiany nazwy ticketu:", err);
+      console.error("BÅ‚Ä…d zmiany nazwy ticketu:", err);
       await interaction.reply({
-        content: "> `❌` × **Nie udało się** zmienić nazwy (sprawdź uprawnienia).",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** zmieniÄ‡ nazwy (sprawdÅº uprawnienia).",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -2701,7 +2728,7 @@ async function handleModalSubmit(interaction) {
       .catch(() => null);
     if (!channel) {
       await interaction.reply({
-        content: "> `❌` × **Kanał** nie znaleziony.",
+        content: "> `âŒ` Ã— **KanaÅ‚** nie znaleziony.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2715,7 +2742,7 @@ async function handleModalSubmit(interaction) {
       !isAdminOrSeller(interaction.member)
     ) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2724,7 +2751,7 @@ async function handleModalSubmit(interaction) {
     const match = userInput.match(/^<@!?(\d+)>$/);
     if (!match) {
       await interaction.reply({
-        content: "> `❌` × **Nieprawidłowy** format użytkownika. Użyj **@mention**.",
+        content: "> `âŒ` Ã— **NieprawidÅ‚owy** format uÅ¼ytkownika. UÅ¼yj **@mention**.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2737,13 +2764,13 @@ async function handleModalSubmit(interaction) {
         ReadMessageHistory: true,
       });
       await interaction.reply({
-        content: `✅ Dodano <@${userIdToAdd}> do ticketu.`,
+        content: `âœ… Dodano <@${userIdToAdd}> do ticketu.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
-      console.error("Błąd dodawania użytkownika do ticketu:", err);
+      console.error("BÅ‚Ä…d dodawania uÅ¼ytkownika do ticketu:", err);
       await interaction.reply({
-        content: "> `❌` × **Nie udało się** dodać użytkownika (sprawdź uprawnienia).",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** dodaÄ‡ uÅ¼ytkownika (sprawdÅº uprawnienia).",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -2760,7 +2787,7 @@ async function handleModalSubmit(interaction) {
       .catch(() => null);
     if (!channel) {
       await interaction.reply({
-        content: "> `❌` × **Kanał** nie znaleziony.",
+        content: "> `âŒ` Ã— **KanaÅ‚** nie znaleziony.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2770,7 +2797,7 @@ async function handleModalSubmit(interaction) {
 
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2781,7 +2808,7 @@ async function handleModalSubmit(interaction) {
       !isAdminOrSeller(interaction.member)
     ) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2790,7 +2817,7 @@ async function handleModalSubmit(interaction) {
     const match = userInput.match(/^<@!?(\d+)>$/);
     if (!match) {
       await interaction.reply({
-        content: "> `❌` × **Nieprawidłowy** format użytkownika. Użyj **@mention**.",
+        content: "> `âŒ` Ã— **NieprawidÅ‚owy** format uÅ¼ytkownika. UÅ¼yj **@mention**.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -2803,13 +2830,13 @@ async function handleModalSubmit(interaction) {
         ReadMessageHistory: false,
       });
       await interaction.reply({
-        content: `✅ Usunięto <@${userIdToRemove}> z ticketu.`,
+        content: `âœ… UsuniÄ™to <@${userIdToRemove}> z ticketu.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
-      console.error("Błąd usuwania użytkownika z ticketu:", err);
+      console.error("BÅ‚Ä…d usuwania uÅ¼ytkownika z ticketu:", err);
       await interaction.reply({
-        content: "> `❌` × **Nie udało się** usunąć użytkownika (sprawdź uprawnienia).",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** usunÄ…Ä‡ uÅ¼ytkownika (sprawdÅº uprawnienia).",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -2834,7 +2861,7 @@ async function handleModalSubmit(interaction) {
 
       if (!enteredCode) {
         await interaction.reply({
-          content: "> `❌` × **Musisz** wpisać kod!",
+          content: "> `âŒ` Ã— **Musisz** wpisaÄ‡ kod!",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -2844,7 +2871,7 @@ async function handleModalSubmit(interaction) {
 
       if (!codeData) {
         await interaction.reply({
-          content: "> `❌` × **Nieprawidłowy** kod!",
+          content: "> `âŒ` Ã— **NieprawidÅ‚owy** kod!",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -2852,7 +2879,7 @@ async function handleModalSubmit(interaction) {
 
       if (codeData.used) {
         await interaction.reply({
-          content: "> `❌` × **Kod** został już wykorzystany!",
+          content: "> `âŒ` Ã— **Kod** zostaÅ‚ juÅ¼ wykorzystany!",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -2862,7 +2889,7 @@ async function handleModalSubmit(interaction) {
         activeCodes.delete(enteredCode);
         scheduleSavePersistentState();
         await interaction.reply({
-          content: "> `❌` × **Kod** wygasł!",
+          content: "> `âŒ` Ã— **Kod** wygasÅ‚!",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -2877,7 +2904,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "odbior-nagrody";
       ticketTypeLabel = "NAGRODA ZA ZAPROSZENIA";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.reward || "Brak"}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> Ã— **Nagroda:** \`${codeData.reward || "Brak"}\``;
       break;
     }
     case "modal_konkurs_odbior": {
@@ -2886,7 +2913,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "konkurs-nagrody";
       ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -2895,7 +2922,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "INNE";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -2911,7 +2938,7 @@ async function handleModalSubmit(interaction) {
     for (const [channelId, ticketData] of ticketOwners.entries()) {
       if (ticketData.userId === user.id) {
         await interaction.reply({
-          content: `❌ Masz już otwarty ticket: <#${channelId}>`,
+          content: `âŒ Masz juÅ¼ otwarty ticket: <#${channelId}>`,
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -2927,7 +2954,7 @@ async function handleModalSubmit(interaction) {
       permissionOverwrites: [
         {
           id: interaction.guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel], // @everyone nie widzi ticketów
+          deny: [PermissionsBitField.Flags.ViewChannel], // @everyone nie widzi ticketÃ³w
         },
         {
           id: interaction.user.id,
@@ -2940,17 +2967,17 @@ async function handleModalSubmit(interaction) {
       ],
     };
 
-    // Dodaj rangi limitów w zależności od kategorii
+    // Dodaj rangi limitÃ³w w zaleÅ¼noÅ›ci od kategorii
     if (parentToUse) {
       const categoryId = parentToUse;
       
-      // Specjalna obsługa dla kategorii "inne" - tylko właściciel i właściciel ticketu widzą
+      // Specjalna obsÅ‚uga dla kategorii "inne" - tylko wÅ‚aÅ›ciciel i wÅ‚aÅ›ciciel ticketu widzÄ…
       if (categoryId === categories["inne"]) {
         createOptions.permissionOverwrites.push(
-          { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // właściciel serwera
+          { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // wÅ‚aÅ›ciciel serwera
         );
       }
-      // Zakup 0-20 - wszystkie rangi widzą
+      // Zakup 0-20 - wszystkie rangi widzÄ…
       else if (categoryId === "1449526840942268526") {
         createOptions.permissionOverwrites.push(
           { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
@@ -2967,7 +2994,7 @@ async function handleModalSubmit(interaction) {
           { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         );
       }
-      // Zakup 50-100 - limit 20 i 50 nie widzą
+      // Zakup 50-100 - limit 20 i 50 nie widzÄ…
       else if (categoryId === "1449451716129984595") {
         createOptions.permissionOverwrites.push(
           { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
@@ -2987,12 +3014,12 @@ async function handleModalSubmit(interaction) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-        `### ・ 👤 × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
-        `### ・ 📋 × Informacje z formularza:\n` +
+        `## \`ðŸ›’ NEW SHOP Ã— ${ticketTypeLabel}\`\n\n` +
+        `### ãƒ» ðŸ‘¤ Ã— Informacje o kliencie:\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **ID:** \`${user.id}\`\n` +
+        `### ãƒ» ðŸ“‹ Ã— Informacje z formularza:\n` +
         `${formInfo}`,
       )
       .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
@@ -3046,13 +3073,13 @@ async function handleModalSubmit(interaction) {
     }).catch(() => { });
 
     await interaction.reply({
-      content: `> ✅ **Utworzono ticket! Przejdź do:** <#${channel.id}>.`,
+      content: `> âœ… **Utworzono ticket! PrzejdÅº do:** <#${channel.id}>.`,
       flags: [MessageFlags.Ephemeral],
     });
   } catch (err) {
-    console.error("Błąd tworzenia ticketu (odbior):", err);
+    console.error("BÅ‚Ä…d tworzenia ticketu (odbior):", err);
     await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketa**.",
+      content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas tworzenia **ticketa**.",
       flags: [MessageFlags.Ephemeral],
     });
   }
@@ -3067,7 +3094,7 @@ async function handleKalkulatorSelect(interaction) {
     const customId = interaction.customId;
     const selectedValue = interaction.values[0];
 
-    // Pobierz aktualne dane użytkownika
+    // Pobierz aktualne dane uÅ¼ytkownika
     const userData = kalkulatorData.get(userId) || {};
 
     // Zaktualizuj odpowiednie pole
@@ -3080,20 +3107,20 @@ async function handleKalkulatorSelect(interaction) {
     // Zapisz dane
     kalkulatorData.set(userId, userData);
 
-    // Jeśli oba pola są wypełnione, oblicz i pokaż wynik
+    // JeÅ›li oba pola sÄ… wypeÅ‚nione, oblicz i pokaÅ¼ wynik
     if (userData.tryb && userData.metoda) {
       await handleKalkulatorSubmit(interaction, userData.typ);
     }
   } catch (error) {
-    console.error("Błąd w handleKalkulatorSelect:", error);
+    console.error("BÅ‚Ä…d w handleKalkulatorSelect:", error);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: "> `❌` × **Wystąpił** błąd podczas przetwarzania wyboru. Spróbuj **ponownie**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas przetwarzania wyboru. SprÃ³buj **ponownie**.",
         flags: [MessageFlags.Ephemeral]
       });
     } else {
       await interaction.followUp({
-        content: "> `❌` × **Wystąpił** błąd podczas przetwarzania wyboru. Spróbuj **ponownie**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas przetwarzania wyboru. SprÃ³buj **ponownie**.",
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -3107,7 +3134,7 @@ async function handleKalkulatorSubmit(interaction, typ) {
 
     if (!userData.tryb || !userData.metoda) {
       await interaction.followUp({
-        content: "> `❌` × **Proszę** wybrać zarówno tryb jak i metodę **płatności**.",
+        content: "> `âŒ` Ã— **ProszÄ™** wybraÄ‡ zarÃ³wno tryb jak i metodÄ™ **pÅ‚atnoÅ›ci**.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -3120,7 +3147,7 @@ async function handleKalkulatorSubmit(interaction, typ) {
       const kwota = userData.kwota;
       if (kwota < minPurchase) {
         await interaction.editReply({
-          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
+          content: `> \`âŒ\` Ã— **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zÅ‚**.`,
           embeds: [],
           components: []
         });
@@ -3133,7 +3160,7 @@ async function handleKalkulatorSubmit(interaction, typ) {
       const kwotaZl = Math.trunc(Number(kwota) || 0);
       const walutaShort = formatShortWaluta(waluta);
 
-      const msg = `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${userData.metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
+      const msg = `> \`ðŸ”¢\` Ã— **PÅ‚acÄ…c nam ${kwotaZl}zÅ‚ (${userData.metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
 
       await interaction.editReply({
         content: msg,
@@ -3162,7 +3189,7 @@ async function handleKalkulatorSubmit(interaction, typ) {
       const totalZl = Math.trunc(Number(totalPln) || 0);
       if (totalZl < minPurchase) {
         await interaction.editReply({
-          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
+          content: `> \`âŒ\` Ã— **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zÅ‚**.`,
           embeds: [],
           components: []
         });
@@ -3171,7 +3198,7 @@ async function handleKalkulatorSubmit(interaction, typ) {
       const walutaInt = Math.floor(Number(waluta) || 0);
       const walutaShort = formatShortWaluta(walutaInt);
 
-      const msg = `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${userData.metoda} prowizja: ${feeLabel})**`;
+      const msg = `> \`ðŸ”¢\` Ã— **Aby otrzymaÄ‡:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapÅ‚aciÄ‡ ${totalZl}zÅ‚ (${userData.metoda} prowizja: ${feeLabel})**`;
 
       await interaction.editReply({
         content: msg,
@@ -3180,18 +3207,18 @@ async function handleKalkulatorSubmit(interaction, typ) {
       });
     }
 
-    // Wyczyść dane użytkownika
+    // WyczyÅ›Ä‡ dane uÅ¼ytkownika
     kalkulatorData.delete(userId);
   } catch (error) {
-    console.error("Błąd w handleKalkulatorSubmit:", error);
+    console.error("BÅ‚Ä…d w handleKalkulatorSubmit:", error);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: "> `❌` × **Wystąpił** błąd podczas obliczania. Spróbuj **ponownie**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas obliczania. SprÃ³buj **ponownie**.",
         flags: [MessageFlags.Ephemeral]
       });
     } else {
       await interaction.followUp({
-        content: "> `❌` × **Wystąpił** błąd podczas obliczania. Spróbuj **ponownie**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas obliczania. SprÃ³buj **ponownie**.",
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -3202,21 +3229,21 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
 
-  // KONKURSY: obsługa przycisków konkursowych
+  // KONKURSY: obsÅ‚uga przyciskÃ³w konkursowych
   if (customId.startsWith("konkurs_join_")) {
     const msgId = customId.replace("konkurs_join_", "");
     
     const modal = new ModalBuilder()
       .setCustomId(`konkurs_join_modal_${msgId}`)
-      .setTitle("Dołącz do konkursu");
+      .setTitle("DoÅ‚Ä…cz do konkursu");
 
 const nickInput = new TextInputBuilder()
   .setCustomId("konkurs_nick")
-  .setLabel("Twój nick z Minecraft (opcjonalnie)")
+  .setLabel("TwÃ³j nick z Minecraft (opcjonalnie)")
   .setStyle(TextInputStyle.Short)
-  .setRequired(false) // <- to sprawia, że pole jest opcjonalne
+  .setRequired(false) // <- to sprawia, Å¼e pole jest opcjonalne
   .setMaxLength(20)
-  .setPlaceholder("Przykład: KosiaraWTF");
+  .setPlaceholder("PrzykÅ‚ad: KosiaraWTF");
 
 
     const row1 = new ActionRowBuilder().addComponents(nickInput);
@@ -3247,7 +3274,7 @@ const nickInput = new TextInputBuilder()
   if (customId.startsWith("cancel_leave_")) {
     const cancelEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription("> `📋` × Anulowano");
+      .setDescription("> `ðŸ“‹` Ã— Anulowano");
     
     await interaction.update({
       embeds: [cancelEmbed],
@@ -3312,7 +3339,7 @@ const nickInput = new TextInputBuilder()
   if (customId === "kalkulator_ile_otrzymam") {
     const modal = new ModalBuilder()
       .setCustomId("modal_ile_otrzymam")
-      .setTitle("New Shop × Obliczanie");
+      .setTitle("New Shop Ã— Obliczanie");
 
     const kwotaInput = new TextInputBuilder()
       .setCustomId("kwota")
@@ -3328,15 +3355,15 @@ const nickInput = new TextInputBuilder()
     await interaction.showModal(modal);
   }
 
-  // KALKULATOR: ile muszę dać?
+  // KALKULATOR: ile muszÄ™ daÄ‡?
   if (customId === "kalkulator_ile_musze_dac") {
     const modal = new ModalBuilder()
       .setCustomId("modal_ile_musze_dac")
-      .setTitle("New Shop × Obliczanie");
+      .setTitle("New Shop Ã— Obliczanie");
 
     const walutaInput = new TextInputBuilder()
       .setCustomId("waluta")
-      .setLabel("Ilość waluty (np. 125k / 1m)")
+      .setLabel("IloÅ›Ä‡ waluty (np. 125k / 1m)")
       .setPlaceholder("np. 125k")
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
@@ -3353,7 +3380,7 @@ const nickInput = new TextInputBuilder()
     const channel = interaction.channel;
     if (!isTicketChannel(channel)) {
       await interaction.reply({
-        content: "> `❌` × Ta **komenda** działa jedynie na **ticketach**!",
+        content: "> `âŒ` Ã— Ta **komenda** dziaÅ‚a jedynie na **ticketach**!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -3361,7 +3388,7 @@ const nickInput = new TextInputBuilder()
 
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -3387,7 +3414,7 @@ const nickInput = new TextInputBuilder()
         embeds: [
           new EmbedBuilder()
             .setColor(COLOR_BLUE)
-            .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+            .setDescription("> \`â„¹ï¸\` Ã— **Ticket zostanie zamkniÄ™ty w ciÄ…gu 5 sekund...**")
         ]
       });
 
@@ -3399,15 +3426,15 @@ const nickInput = new TextInputBuilder()
           ticketMeta,
         ).catch((e) => console.error("archiveTicketOnClose error:", e));
       } catch (e) {
-        console.error("Błąd archiwizacji ticketu (button):", e);
+        console.error("BÅ‚Ä…d archiwizacji ticketu (button):", e);
       }
 
       setTimeout(async () => {
         try {
           await channel.delete();
-          console.log(`Zamknięto ticket ${channel.name}`);
+          console.log(`ZamkniÄ™to ticket ${channel.name}`);
         } catch (error) {
-          console.error("Błąd zamykania ticketu:", error);
+          console.error("BÅ‚Ä…d zamykania ticketu:", error);
         }
       }, 2000);
     } else {
@@ -3415,7 +3442,7 @@ const nickInput = new TextInputBuilder()
       pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
       await interaction.reply({
         content:
-          "> \`⚠️\` **Kliknij ponownie przycisk zamknięcia w ciągu `30` sekund aby potwierdzić __zamknięcie ticketu!__**",
+          "> \`âš ï¸\` **Kliknij ponownie przycisk zamkniÄ™cia w ciÄ…gu `30` sekund aby potwierdziÄ‡ __zamkniÄ™cie ticketu!__**",
         flags: [MessageFlags.Ephemeral],
       });
       // schedule expiry
@@ -3432,7 +3459,7 @@ const nickInput = new TextInputBuilder()
 
     if (interaction.user.id !== ticketUserId) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -3444,7 +3471,7 @@ const nickInput = new TextInputBuilder()
 
     const codeInput = new TextInputBuilder()
       .setCustomId("discount_code")
-      .setLabel("Wpisz kod który wygrałeś w /drop")
+      .setLabel("Wpisz kod ktÃ³ry wygraÅ‚eÅ› w /drop")
       .setStyle(TextInputStyle.Short)
       .setPlaceholder("np. ABC123XYZ0")
       .setRequired(true)
@@ -3461,7 +3488,7 @@ const nickInput = new TextInputBuilder()
     const channel = interaction.channel;
     if (!isTicketChannel(channel)) {
       await interaction.reply({
-        content: "> `❌` × **Ta funkcja** działa jedynie na **ticketach**!",
+        content: "> `âŒ` Ã— **Ta funkcja** dziaÅ‚a jedynie na **ticketach**!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -3470,7 +3497,7 @@ const nickInput = new TextInputBuilder()
     // Only administrator or seller can use settings
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -3479,27 +3506,27 @@ const nickInput = new TextInputBuilder()
     // build embed (left stripe + header like screenshot)
     const settingsEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription("⚙️ × **Wybierz akcję z menu poniżej:**");
+      .setDescription("âš™ï¸ Ã— **Wybierz akcjÄ™ z menu poniÅ¼ej:**");
 
     // select menu with placeholder like the screenshot
     const select = new StringSelectMenuBuilder()
       .setCustomId(`ticket_settings_select_${channel.id}`)
-      .setPlaceholder("❌ × Nie wybrano żadnej z akcji...")
+      .setPlaceholder("âŒ Ã— Nie wybrano Å¼adnej z akcji...")
       .addOptions([
         {
-          label: "Dodaj osobę",
+          label: "Dodaj osobÄ™",
           value: "add",
-          description: "Dodaj użytkownika do ticketu",
+          description: "Dodaj uÅ¼ytkownika do ticketu",
         },
         {
-          label: "Zmień nazwę kanału",
+          label: "ZmieÅ„ nazwÄ™ kanaÅ‚u",
           value: "rename",
-          description: "Zmień nazwę tego ticketu",
+          description: "ZmieÅ„ nazwÄ™ tego ticketu",
         },
         {
-          label: "Usuń osobę",
+          label: "UsuÅ„ osobÄ™",
           value: "remove",
-          description: "Usuń dostęp użytkownika z ticketu",
+          description: "UsuÅ„ dostÄ™p uÅ¼ytkownika z ticketu",
         },
       ]);
 
@@ -3514,7 +3541,7 @@ const nickInput = new TextInputBuilder()
   }
 
   // Claiming a ticket via button - ONLY admin or seller
-  // Ticket claim/unclaim -> wspólna logika (tak samo jak /przejmij i /odprzejmij)
+  // Ticket claim/unclaim -> wspÃ³lna logika (tak samo jak /przejmij i /odprzejmij)
   if (customId.startsWith("ticket_claim_")) {
     const channelId = customId.replace("ticket_claim_", "");
     await ticketClaimCommon(interaction, channelId);
@@ -3534,16 +3561,16 @@ async function handleSlashCommand(interaction) {
 
   switch (commandName) {
     default: {
-      // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
+      // Gate: zwykÅ‚y uÅ¼ytkownik widzi/uruchomi tylko publiczne komendy
       const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
-      // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
+      // Komendy wymagajÄ…ce wÅ‚asnych uprawnieÅ„, ale nie blokowane przez seller/admin gate
       const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
       const SELLER_ROLE_ID = "1350786945944391733";
       const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
       const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
       if (!isAdmin && !isSeller && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
         await interaction.reply({
-          content: "> `❌` × Nie masz uprawnień do tej komendy.",
+          content: "> `âŒ` Ã— Nie masz uprawnieÅ„ do tej komendy.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -3604,6 +3631,9 @@ async function handleSlashCommand(interaction) {
     case "odprzejmij":
       await handleAdminOdprzejmij(interaction);
       break;
+    case "autoprzejmij":
+      await handleAutoPrzejmijCommand(interaction);
+      break;
     case "embed":
       await handleSendMessageCommand(interaction);
       break;
@@ -3648,23 +3678,23 @@ async function handleSlashCommand(interaction) {
 
 // Handler dla komendy /rozliczenie
 async function handleRozliczenieCommand(interaction) {
-  // Sprawdź czy właściciel lub ma odpowiednią rolę
+  // SprawdÅº czy wÅ‚aÅ›ciciel lub ma odpowiedniÄ… rolÄ™
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   const requiredRoleId = "1350786945944391733";
   const hasRole = interaction.member.roles.cache.has(requiredRoleId);
   
   if (!isOwner && !hasRole) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral]
     });
     return;
   }
 
-  // Sprawdź czy komenda jest używana na właściwym kanale
+  // SprawdÅº czy komenda jest uÅ¼ywana na wÅ‚aÅ›ciwym kanale
   if (interaction.channelId !== ROZLICZENIA_CHANNEL_ID) {
     await interaction.reply({
-      content: `❌ Ta komenda może być użyta tylko na kanale rozliczeń! <#${ROZLICZENIA_CHANNEL_ID}>`,
+      content: `âŒ Ta komenda moÅ¼e byÄ‡ uÅ¼yta tylko na kanale rozliczeÅ„! <#${ROZLICZENIA_CHANNEL_ID}>`,
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -3683,32 +3713,32 @@ async function handleRozliczenieCommand(interaction) {
   
   // Zapisz weekly sales do Supabase
   await db.saveWeeklySale(userId, userData.amount, interaction.guild.id, userData.paid || false, userData.paidAt || null);
-  console.log(`[rozliczenie] Użytkownik ${userId} dodał rozliczenie: ${kwota} zł, suma tygodniowa: ${userData.amount} zł`);
+  console.log(`[rozliczenie] UÅ¼ytkownik ${userId} dodaÅ‚ rozliczenie: ${kwota} zÅ‚, suma tygodniowa: ${userData.amount} zÅ‚`);
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
-    .setTitle("\`💱\` Rozliczenie dodane")
+    .setTitle("\`ðŸ’±\` Rozliczenie dodane")
     .setDescription(
-      `> 👤 **Użytkownik:** <@${userId}>\n` +
-      `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
-      `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-      `> \`💸\` × **Prowizja do zapłaty (10%):** ${(userData.amount * ROZLICZENIA_PROWIZJA).toLocaleString("pl-PL")} zł\n`,
+      `> ðŸ‘¤ **UÅ¼ytkownik:** <@${userId}>\n` +
+      `> \`âœ…\` Ã— **Dodano sprzedaÅ¼:** ${kwota.toLocaleString("pl-PL")} zÅ‚\n` +
+      `> \`ðŸ“Š\` Ã— **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zÅ‚\n` +
+      `> \`ðŸ’¸\` Ã— **Prowizja do zapÅ‚aty (10%):** ${(userData.amount * ROZLICZENIA_PROWIZJA).toLocaleString("pl-PL")} zÅ‚\n`,
     )
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
-  console.log(`Użytkownik ${userId} dodał rozliczenie: ${kwota} zł`);
+  console.log(`UÅ¼ytkownik ${userId} dodaÅ‚ rozliczenie: ${kwota} zÅ‚`);
   
-  // Odśwież wiadomość ROZLICZENIA TYGODNIOWE po dodaniu rozliczenia
+  // OdÅ›wieÅ¼ wiadomoÅ›Ä‡ ROZLICZENIA TYGODNIOWE po dodaniu rozliczenia
   setTimeout(sendRozliczeniaMessage, 1000);
 }
 
 // Handler dla komendy /rozliczeniazaplacil
 async function handleRozliczenieZaplacilCommand(interaction) {
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -3717,10 +3747,10 @@ async function handleRozliczenieZaplacilCommand(interaction) {
   const targetUser = interaction.options.getUser("uzytkownik");
   const userId = targetUser.id;
 
-  // Sprawdź czy użytkownik ma rozliczenie
+  // SprawdÅº czy uÅ¼ytkownik ma rozliczenie
   if (!weeklySales.has(userId)) {
     await interaction.reply({
-      content: `❌ Użytkownik <@${userId}> nie ma żadnych rozliczeń!`,
+      content: `âŒ UÅ¼ytkownik <@${userId}> nie ma Å¼adnych rozliczeÅ„!`,
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -3729,7 +3759,7 @@ async function handleRozliczenieZaplacilCommand(interaction) {
   const userData = weeklySales.get(userId);
   const prowizja = userData.amount * ROZLICZENIA_PROWIZJA;
 
-  // Zaktualizuj status zapłaty
+  // Zaktualizuj status zapÅ‚aty
   userData.paid = true;
   userData.paidAt = Date.now();
   weeklySales.set(userId, userData);
@@ -3739,27 +3769,27 @@ async function handleRozliczenieZaplacilCommand(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(0x00ff00) // zielony
-    .setTitle("✅ Rozliczenie oznaczone jako zapłacone")
+    .setTitle("âœ… Rozliczenie oznaczone jako zapÅ‚acone")
     .setDescription(
-      `> \`✅\` × <@${userId}> **Zapłacił** **${prowizja.toLocaleString("pl-PL")} zł**\n` +
-      `> \`📊\` × **Suma sprzedaży:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-      `> \`🕐\` × **Czas zapłaty:** <t:${Math.floor(Date.now() / 1000)}:R>`
+      `> \`âœ…\` Ã— <@${userId}> **ZapÅ‚aciÅ‚** **${prowizja.toLocaleString("pl-PL")} zÅ‚**\n` +
+      `> \`ðŸ“Š\` Ã— **Suma sprzedaÅ¼y:** ${userData.amount.toLocaleString("pl-PL")} zÅ‚\n` +
+      `> \`ðŸ•\` Ã— **Czas zapÅ‚aty:** <t:${Math.floor(Date.now() / 1000)}:R>`
     )
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
-  console.log(`[rozliczenie] Admin ${interaction.user.id} oznaczył rozliczenie użytkownika ${userId} jako zapłacone (${prowizja} zł)`);
+  console.log(`[rozliczenie] Admin ${interaction.user.id} oznaczyÅ‚ rozliczenie uÅ¼ytkownika ${userId} jako zapÅ‚acone (${prowizja} zÅ‚)`);
   
-  // Odśwież wiadomość ROZLICZENIA TYGODNIOWE
+  // OdÅ›wieÅ¼ wiadomoÅ›Ä‡ ROZLICZENIA TYGODNIOWE
   setTimeout(sendRozliczeniaMessage, 1000);
 }
 
 // Handler dla komendy /rozliczeniezakoncz
 async function handleRozliczenieZakonczCommand(interaction) {
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -3769,7 +3799,7 @@ async function handleRozliczenieZakonczCommand(interaction) {
     const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID);
     if (!logsChannel) {
       await interaction.reply({
-        content: "> `❌` × **Nie znaleziono** kanału **rozliczeń**!",
+        content: "> `âŒ` Ã— **Nie znaleziono** kanaÅ‚u **rozliczeÅ„**!",
         flags: [MessageFlags.Ephemeral]
       });
       return;
@@ -3777,7 +3807,7 @@ async function handleRozliczenieZakonczCommand(interaction) {
 
     if (weeklySales.size === 0) {
       await interaction.reply({
-        content: "> `❌` × **Brak** rozliczeń w tym **tygodniu**!",
+        content: "> `âŒ` Ã— **Brak** rozliczeÅ„ w tym **tygodniu**!",
         flags: [MessageFlags.Ephemeral]
       });
       return;
@@ -3789,11 +3819,11 @@ async function handleRozliczenieZakonczCommand(interaction) {
 
     for (const [userId, data] of weeklySales) {
       const prowizja = data.amount * ROZLICZENIA_PROWIZJA;
-      // Pobierz nazwę użytkownika zamiast pingować
+      // Pobierz nazwÄ™ uÅ¼ytkownika zamiast pingowaÄ‡
       const user = client.users.cache.get(userId);
       const userName = user ? `<@${userId}>` : `<@${userId}>`;
       
-      reportLines.push(`${userName} Do zapłaty ${prowizja.toFixed(2)}zł`);
+      reportLines.push(`${userName} Do zapÅ‚aty ${prowizja.toFixed(2)}zÅ‚`);
       totalSales += data.amount;
     }
 
@@ -3801,19 +3831,19 @@ async function handleRozliczenieZakonczCommand(interaction) {
 
     const reportEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("\`📊\` ROZLICZENIA TYGODNIOWE")
+      .setTitle("\`ðŸ“Š\` ROZLICZENIA TYGODNIOWE")
       .setDescription(
         reportLines.join('\n') + '\n\n' +
-        `> \`📱\` **Przelew na numer:** 880 260 392\n` +
-        `> \`⏳\` **Termin płatności:** do 20:00 dnia dzisiejszego\n` +
-        `> \`🚫\` **Od teraz do czasu zapłaty nie macie dostępu do ticketów**`
+        `> \`ðŸ“±\` **Przelew na numer:** 880 260 392\n` +
+        `> \`â³\` **Termin pÅ‚atnoÅ›ci:** do 20:00 dnia dzisiejszego\n` +
+        `> \`ðŸš«\` **Od teraz do czasu zapÅ‚aty nie macie dostÄ™pu do ticketÃ³w**`
       )
       .setTimestamp()
       .setFooter({ text: "Raport tygodniowy" });
 
     const sentMessage = await logsChannel.send({ embeds: [reportEmbed] });
 
-    // Wyślij osobną wiadomość z pingami osób do zapłaty
+    // WyÅ›lij osobnÄ… wiadomoÅ›Ä‡ z pingami osÃ³b do zapÅ‚aty
     if (weeklySales.size > 0) {
       const pings = [];
       for (const [userId, data] of weeklySales) {
@@ -3821,12 +3851,12 @@ async function handleRozliczenieZakonczCommand(interaction) {
       }
       
       const pingMessage = await logsChannel.send({
-        content: `**Osoby do zapłaty prowizji:** ${pings.join(' ')}`
+        content: `**Osoby do zapÅ‚aty prowizji:** ${pings.join(' ')}`
       });
       
-      // Usuń wiadomość z pingami po 5 sekundach
+      // UsuÅ„ wiadomoÅ›Ä‡ z pingami po 5 sekundach
       setTimeout(() => {
-        pingMessage.delete().catch(err => console.log('Nie udało się usunąć wiadomości z pingami:', err));
+        pingMessage.delete().catch(err => console.log('Nie udaÅ‚o siÄ™ usunÄ…Ä‡ wiadomoÅ›ci z pingami:', err));
       }, 5000);
     }
 
@@ -3835,47 +3865,47 @@ async function handleRozliczenieZakonczCommand(interaction) {
     const totalSalesValue = totalSales;
     const totalProwizjaValue = totalProwizja;
 
-    // Resetuj dane po wysłaniu raportu - TYLKO rozliczenia, NIE zaproszenia!
+    // Resetuj dane po wysÅ‚aniu raportu - TYLKO rozliczenia, NIE zaproszenia!
     weeklySales.clear();
-    console.log("Ręcznie zresetowano rozliczenia po /rozliczeniezakoncz");
+    console.log("RÄ™cznie zresetowano rozliczenia po /rozliczeniezakoncz");
     
-    // Resetuj też w Supabase - usuń WSZYSTKIE rozliczenia
+    // Resetuj teÅ¼ w Supabase - usuÅ„ WSZYSTKIE rozliczenia
     try {
       const { error } = await supabase
         .from("weekly_sales")
         .delete()
-        .neq("user_id", "000000000000000000"); // usuń wszystkie (warunek zawsze prawdziwy)
+        .neq("user_id", "000000000000000000"); // usuÅ„ wszystkie (warunek zawsze prawdziwy)
         
       if (error) {
-        console.error("[Supabase] Błąd resetowania wszystkich weekly_sales:", error);
+        console.error("[Supabase] BÅ‚Ä…d resetowania wszystkich weekly_sales:", error);
       } else {
         console.log("[Supabase] Zresetowano WSZYSTKIE weekly_sales w bazie danych");
       }
     } catch (err) {
-      console.error("Błąd podczas resetowania wszystkich rozliczeń w Supabase:", err);
+      console.error("BÅ‚Ä…d podczas resetowania wszystkich rozliczeÅ„ w Supabase:", err);
     }
     
-    // UWAGA: NIE resetujemy zaproszeń - są one przechowywane w Supabase osobno!
-    console.log("🔒 ZAPROSZENIA ZACHOWANE - nie resetowane!");
+    // UWAGA: NIE resetujemy zaproszeÅ„ - sÄ… one przechowywane w Supabase osobno!
+    console.log("ðŸ”’ ZAPROSZENIA ZACHOWANE - nie resetowane!");
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("✅ Podsumowanie wysłane i zresetowano")
+      .setTitle("âœ… Podsumowanie wysÅ‚ane i zresetowano")
       .setDescription(
-        `> \`✅\` × **Wysłano podsumowanie** na kanał <#${ROZLICZENIA_LOGS_CHANNEL_ID}>\n` +
-        `> \`🔄\` × **Zresetowano statystyki** na nowy tydzień\n` +
-        `> \`📊\` × **Liczba osób:** ${liczbaOsob}\n` +
-        `> \`💰\` × **Łączna sprzedaż:** ${totalSalesValue.toLocaleString("pl-PL")} zł\n` +
-        `> \`💸\` × **Łączna prowizja:** ${parseFloat(totalProwizjaValue).toFixed(2)} zł`
+        `> \`âœ…\` Ã— **WysÅ‚ano podsumowanie** na kanaÅ‚ <#${ROZLICZENIA_LOGS_CHANNEL_ID}>\n` +
+        `> \`ðŸ”„\` Ã— **Zresetowano statystyki** na nowy tydzieÅ„\n` +
+        `> \`ðŸ“Š\` Ã— **Liczba osÃ³b:** ${liczbaOsob}\n` +
+        `> \`ðŸ’°\` Ã— **ÅÄ…czna sprzedaÅ¼:** ${totalSalesValue.toLocaleString("pl-PL")} zÅ‚\n` +
+        `> \`ðŸ’¸\` Ã— **ÅÄ…czna prowizja:** ${parseFloat(totalProwizjaValue).toFixed(2)} zÅ‚`
       )
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-    console.log(`Właściciel ${interaction.user.id} wygenerował podsumowanie rozliczeń`);
+    console.log(`WÅ‚aÅ›ciciel ${interaction.user.id} wygenerowaÅ‚ podsumowanie rozliczeÅ„`);
   } catch (err) {
-    console.error("Błąd generowania podsumowania:", err);
+    console.error("BÅ‚Ä…d generowania podsumowania:", err);
     await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas generowania **podsumowania**!",
+      content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas generowania **podsumowania**!",
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -3883,10 +3913,10 @@ async function handleRozliczenieZakonczCommand(interaction) {
 
 // Handler dla komendy /statusbota
 async function handleStatusBotaCommand(interaction) {
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -3897,24 +3927,24 @@ async function handleStatusBotaCommand(interaction) {
     
     const embed = new EmbedBuilder()
       .setColor(status.statusColor)
-      .setTitle("📊 Status Bota")
+      .setTitle("ðŸ“Š Status Bota")
       .setDescription(`**Status:** ${status.status}`)
       .addFields(
-        { name: "⏱ Uptime", value: status.uptime, inline: true },
-        { name: "📡 Ping", value: `${status.ping}ms (avg: ${status.avgPing}ms)`, inline: true },
-        { name: "🔢 Błędy", value: status.errorCount.toString(), inline: true },
-        { name: "🌐 Serwery", value: status.guilds.toString(), inline: true },
-        { name: "👥 Użytkownicy", value: status.users.toString(), inline: true },
-        { name: "💬 Kanały", value: status.channels.toString(), inline: true }
+        { name: "â± Uptime", value: status.uptime, inline: true },
+        { name: "ðŸ“¡ Ping", value: `${status.ping}ms (avg: ${status.avgPing}ms)`, inline: true },
+        { name: "ðŸ”¢ BÅ‚Ä™dy", value: status.errorCount.toString(), inline: true },
+        { name: "ðŸŒ Serwery", value: status.guilds.toString(), inline: true },
+        { name: "ðŸ‘¥ UÅ¼ytkownicy", value: status.users.toString(), inline: true },
+        { name: "ðŸ’¬ KanaÅ‚y", value: status.channels.toString(), inline: true }
       )
       .setTimestamp()
       .setFooter({ text: "Bot Monitoring System" });
 
     await interaction.reply({ embeds: [embed] });
   } catch (err) {
-    console.error("Błąd komendy /statusbota:", err);
+    console.error("BÅ‚Ä…d komendy /statusbota:", err);
     await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas pobierania statusu **bota**!",
+      content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas pobierania statusu **bota**!",
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -3922,10 +3952,10 @@ async function handleStatusBotaCommand(interaction) {
 
 // Handler dla komendy /rozliczenieustaw
 async function handleRozliczenieUstawCommand(interaction) {
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -3936,7 +3966,7 @@ async function handleRozliczenieUstawCommand(interaction) {
   const kwota = interaction.options.getInteger("kwota");
   const userId = targetUser.id;
 
-  // Inicjalizuj użytkownika jeśli nie istnieje
+  // Inicjalizuj uÅ¼ytkownika jeÅ›li nie istnieje
   if (!weeklySales.has(userId)) {
     weeklySales.set(userId, { amount: 0, lastUpdate: Date.now() });
   }
@@ -3965,26 +3995,26 @@ async function handleRozliczenieUstawCommand(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(0x00ff00)
-    .setTitle("✅ Rozliczenie zaktualizowane")
+    .setTitle("âœ… Rozliczenie zaktualizowane")
     .setDescription(
-      `> \`✅\` × **Zaktualizowano rozliczenie** dla <@${userId}>\n` +
-      `> 👤 **Użytkownik:** ${targetUser.username}\n` +
-      `> 🔄 **Akcja:** ${akcja.charAt(0).toUpperCase() + akcja.slice(1)}\n` +
-      `> 💰 **Kwota zmiany:** ${znakZmiany}${zmiana.toLocaleString("pl-PL")} zł\n` +
-      `> 📈 **Nowa suma:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-      `> 💸 **Prowizja do zapłaty:** ${prowizja.toLocaleString("pl-PL")} zł`
+      `> \`âœ…\` Ã— **Zaktualizowano rozliczenie** dla <@${userId}>\n` +
+      `> ðŸ‘¤ **UÅ¼ytkownik:** ${targetUser.username}\n` +
+      `> ðŸ”„ **Akcja:** ${akcja.charAt(0).toUpperCase() + akcja.slice(1)}\n` +
+      `> ðŸ’° **Kwota zmiany:** ${znakZmiany}${zmiana.toLocaleString("pl-PL")} zÅ‚\n` +
+      `> ðŸ“ˆ **Nowa suma:** ${userData.amount.toLocaleString("pl-PL")} zÅ‚\n` +
+      `> ðŸ’¸ **Prowizja do zapÅ‚aty:** ${prowizja.toLocaleString("pl-PL")} zÅ‚`
     )
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-  console.log(`Właściciel zaktualizował rozliczenie dla ${userId}: ${akcja} ${kwota} zł`);
+  console.log(`WÅ‚aÅ›ciciel zaktualizowaÅ‚ rozliczenie dla ${userId}: ${akcja} ${kwota} zÅ‚`);
 }
 
 async function handleAdminPrzejmij(interaction) {
-  // Sprawdź uprawnienia przed sprawdzaniem kanału
+  // SprawdÅº uprawnienia przed sprawdzaniem kanaÅ‚u
   if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -3993,26 +4023,288 @@ async function handleAdminPrzejmij(interaction) {
   const channel = interaction.channel;
   if (!isTicketChannel(channel)) {
     await interaction.reply({
-      content: "> `❌` × **Użyj** komendy w kanale **ticketu**.",
+      content: "> `âŒ` Ã— **UÅ¼yj** komendy w kanale **ticketu**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
-  await ticketClaimCommon(interaction, channel.id); // quiz odpali się w środku
+  await ticketClaimCommon(interaction, channel.id); // quiz odpali siÄ™ w Å›rodku
 }
-async function handlePanelKalkulatorCommand(interaction) {
-  if (!interaction.guild) {
+async function handleAutoPrzejmijCommand(interaction) {
+  const gld = interaction.guild;
+  if (!gld) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      content: "> `âŒ` Ã— Ta komenda dziala tylko na serwerze.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Sprawdź czy właściciel
+  if (interaction.user.id !== gld.ownerId) {
+    await interaction.reply({
+      content: "> `âŒ` Ã— Tej komendy moze uzyc tylko wlasciciel serwera.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const modeSel = interaction.options.getString("status", true);
+  const gldId = gld.id;
+
+  if (modeSel === "wylacz") {
+    autoPrzejmijSettings.delete(gldId);
+    scheduleSavePersistentState();
+    await interaction.reply({
+      content: "> `âœ…` Ã— Autoprzejmowanie zostalo **wylaczone**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const quizQuestions = [
+    { q: "Ile to 5 * 3?", a: "15" },
+    { q: "Ile to 3 * 3?", a: "9" },
+    { q: "Ile to 4 * 6?", a: "24" },
+    { q: "Ile to 7 + 8?", a: "15" },
+    { q: "Ile to 12 - 5?", a: "7" },
+    { q: "Ile to 9 + 6?", a: "15" },
+    { q: "Ile to 14 - 8?", a: "6" },
+    { q: "Ile to 6 * 4?", a: "24" },
+    { q: "Ile to 5 + 9?", a: "14" },
+  ];
+  const pick = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
+  const modalId = `autoprzejmij_quiz_${gldId}_${interaction.user.id}_${Date.now()}`;
+
+  pendingAutoPrzejmijQuiz.set(modalId, {
+    guildId: gldId,
+    userId: interaction.user.id,
+    ownerId: interaction.user.id,
+    ownerName:
+      interaction.member?.displayName ||
+      interaction.user.globalName ||
+      interaction.user.username,
+    answer: pick.a,
+  });
+
+  const modal = new ModalBuilder()
+    .setCustomId(modalId)
+    .setTitle("Weryfikacja autoprzejmowania");
+  const input = new TextInputBuilder()
+    .setCustomId("autoprzejmij_answer")
+    .setLabel(pick.q)
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(4);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+
+  await interaction.showModal(modal).catch(async () => {
+    pendingAutoPrzejmijQuiz.delete(modalId);
+    await interaction.reply({
+      content: "> `âŒ` Ã— Nie udalo sie otworzyc captcha. Sprobuj ponownie.",
+      flags: [MessageFlags.Ephemeral],
+    }).catch(() => null);
+  });
+  return;
+
+}
+
+function getPurchaseTicketCategoryIdsForGuild(guild) {
+  const guildCats = ticketCategories.get(guild.id) || {};
+  const purchaseCategoryIds = new Set();
+
+  for (const [key, value] of Object.entries(guildCats)) {
+    if (key.startsWith("zakup-") && value) {
+      purchaseCategoryIds.add(String(value));
+    }
+  }
+
+  if (purchaseCategoryIds.size === 0) {
+    for (const ch of guild.channels.cache.values()) {
+      if (
+        ch.type === ChannelType.GuildCategory &&
+        ch.name &&
+        ch.name.toLowerCase().includes("zakup")
+      ) {
+        purchaseCategoryIds.add(String(ch.id));
+      }
+    }
+  }
+
+  return purchaseCategoryIds;
+}
+
+async function runAutoPrzejmijSweep(guild, ownerId, ownerName, targetChannelId = null) {
+  const purchaseCategoryIds = getPurchaseTicketCategoryIdsForGuild(guild);
+  const CLAIMED_CATEGORY_ID = "1457446529395593338";
+  const ARCHIVED_CATEGORY_ID = "1469059216303198261";
+  const ownerMember = await guild.members.fetch(ownerId).catch(() => null);
+
+  const stats = {
+    claimedCount: 0,
+    skippedNonPurchase: 0,
+    skippedClaimed: 0,
+    skippedLocked: 0,
+    skippedArchived: 0,
+    staleRemoved: 0,
+    errorCount: 0,
+    claimedChannels: [],
+    missingPurchaseCategories: purchaseCategoryIds.size === 0,
+  };
+
+  if (stats.missingPurchaseCategories) return stats;
+
+  const nick = (ownerName || ownerMember?.displayName || "Wlasciciel")
+    .toString()
+    .replace(/`/g, "")
+    .trim();
+
+  const fakeInteraction = {
+    user: { id: ownerId, username: nick || "Wlasciciel" },
+    member: ownerMember,
+    guild,
+    replied: true,
+    deferred: true,
+    isButton: () => false,
+    reply: async () => null,
+    followUp: async () => null,
+    editReply: async () => null,
+    deleteReply: async () => null,
+    deferReply: async () => null,
+    deferUpdate: async () => null,
+    showModal: async () => null,
+  };
+
+  for (const [channelId] of ticketOwners.entries()) {
+    if (targetChannelId && channelId !== targetChannelId) continue;
+
+    let channel = guild.channels.cache.get(channelId) || null;
+    if (!channel) channel = await client.channels.fetch(channelId).catch(() => null);
+
+    if (!channel) {
+      ticketOwners.delete(channelId);
+      stats.staleRemoved += 1;
+      continue;
+    }
+
+    if (
+      !channel.guild ||
+      channel.guild.id !== guild.id ||
+      channel.type !== ChannelType.GuildText
+    ) {
+      continue;
+    }
+
+    const parentId = channel.parentId ? String(channel.parentId) : "";
+    if (parentId === ARCHIVED_CATEGORY_ID) {
+      stats.skippedArchived += 1;
+      continue;
+    }
+    if (parentId === CLAIMED_CATEGORY_ID) {
+      stats.skippedClaimed += 1;
+      continue;
+    }
+    if (!purchaseCategoryIds.has(parentId)) {
+      stats.skippedNonPurchase += 1;
+      continue;
+    }
+
+    const result = await ticketClaimCommon(fakeInteraction, channel.id, {
+      skipQuiz: true,
+      bypassPermissionCheck: true,
+      publicClaimerLabel: `\`${nick || "Wlasciciel"}\``,
+    });
+
+    if (result && result.ok) {
+      stats.claimedCount += 1;
+      stats.claimedChannels.push(`<#${channel.id}>`);
+      continue;
+    }
+
+    const reason = result?.reason || "error";
+    if (reason === "already-claimed") {
+      stats.skippedClaimed += 1;
+    } else if (reason === "locked") {
+      stats.skippedLocked += 1;
+    } else if (reason === "channel-not-found") {
+      stats.staleRemoved += 1;
+    } else {
+      stats.errorCount += 1;
+    }
+  }
+
+  if (stats.staleRemoved > 0) scheduleSavePersistentState();
+  return stats;
+}
+
+function formatAutoPrzejmijSummary(stats, statusLine) {
+  const lines = [];
+  if (statusLine) lines.push(statusLine);
+
+  if (stats.missingPurchaseCategories) {
+    lines.push("> `âŒ` Ã— Nie znalazlem kategorii ticketow zakupowych.");
+    return lines.join("\n");
+  }
+
+  lines.push(`> \`âœ…\` Ã— Przejete tickety zakupowe: **${stats.claimedCount}**.`);
+  lines.push(`> \`â­ï¸\` Ã— Pominiete nie-zakupowe: **${stats.skippedNonPurchase}**.`);
+  lines.push(`> \`â­ï¸\` Ã— Pominiete (juz przejete): **${stats.skippedClaimed}**.`);
+  lines.push(`> \`â­ï¸\` Ã— Pominiete (zablokowane): **${stats.skippedLocked}**.`);
+  lines.push(`> \`â­ï¸\` Ã— Pominiete (zrealizowane): **${stats.skippedArchived}**.`);
+
+  if (stats.staleRemoved > 0) {
+    lines.push(`> \`ðŸ§¹\` Ã— Usuniete nieaktualne wpisy: **${stats.staleRemoved}**.`);
+  }
+  if (stats.errorCount > 0) {
+    lines.push(`> \`âš ï¸\` Ã— Bledy podczas przejmowania: **${stats.errorCount}**.`);
+  }
+  if (stats.claimedChannels.length > 0) {
+    const preview = stats.claimedChannels.slice(0, 10).join(", ");
+    const more =
+      stats.claimedChannels.length > 10
+        ? ` (+${stats.claimedChannels.length - 10} wiecej)`
+        : "";
+    lines.push(`> \`ðŸ“Œ\` Ã— Przejete kanaly: ${preview}${more}`);
+  }
+  return lines.join("\n");
+}
+
+async function maybeAutoPrzejmijNewTicket(guild, channelId) {
+  const cfg = autoPrzejmijSettings.get(guild.id);
+  if (!cfg || !cfg.enabled) return;
+
+  if (cfg.ownerId !== guild.ownerId) {
+    autoPrzejmijSettings.delete(guild.id);
+    scheduleSavePersistentState();
+    return;
+  }
+
+  const ownerMember = await guild.members.fetch(cfg.ownerId).catch(() => null);
+  const ownerName = ownerMember?.displayName || cfg.ownerName || "Wlasciciel";
+
+  if (cfg.ownerName !== ownerName) {
+    cfg.ownerName = ownerName;
+    autoPrzejmijSettings.set(guild.id, cfg);
+    scheduleSavePersistentState();
+  }
+
+  await runAutoPrzejmijSweep(guild, cfg.ownerId, ownerName, channelId).catch(
+    (err) => console.error("[autoprzejmij] Auto-claim nowego ticketa nieudany:", err),
+  );
+}
+
+async function handlePanelKalkulatorCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4022,9 +4314,9 @@ async function handlePanelKalkulatorCommand(interaction) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-      "🧮 New Shop × Kalkulator\n" +
+      "ðŸ§® New Shop Ã— Kalkulator\n" +
       "```\n" +
-      "> <a:arrowwhite:1469100658606211233> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
+      "> <a:arrowwhite:1469100658606211233> Ã— **Oblicz w szybki i prosty sposÃ³b ile otrzymasz lub ile musisz daÄ‡ aby dostaÄ‡ okreÅ›lonÄ… iloÅ›Ä‡ __waluty__**",
     );
 
   const btnIleOtrzymam = new ButtonBuilder()
@@ -4034,7 +4326,7 @@ async function handlePanelKalkulatorCommand(interaction) {
 
   const btnIleMuszeDac = new ButtonBuilder()
     .setCustomId("kalkulator_ile_musze_dac")
-    .setLabel("Ile muszę dać?")
+    .setLabel("Ile muszÄ™ daÄ‡?")
     .setStyle(ButtonStyle.Secondary);
 
   const row = new ActionRowBuilder().addComponents(
@@ -4043,7 +4335,7 @@ async function handlePanelKalkulatorCommand(interaction) {
   );
 
   await interaction.reply({
-    content: "> `✅` × **Panel** kalkulatora został wysłany na ten **kanał**.",
+    content: "> `âœ…` Ã— **Panel** kalkulatora zostaÅ‚ wysÅ‚any na ten **kanaÅ‚**.",
     flags: [MessageFlags.Ephemeral],
   });
 
@@ -4051,10 +4343,10 @@ async function handlePanelKalkulatorCommand(interaction) {
 }
 
 async function handleAdminOdprzejmij(interaction) {
-  // Sprawdź uprawnienia przed sprawdzaniem kanału
+  // SprawdÅº uprawnienia przed sprawdzaniem kanaÅ‚u
   if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4063,7 +4355,7 @@ async function handleAdminOdprzejmij(interaction) {
   const channel = interaction.channel;
   if (!isTicketChannel(channel)) {
     await interaction.reply({
-      content: "> `❌` × **Użyj** komendy w kanale **ticketu**.",
+      content: "> `âŒ` Ã— **UÅ¼yj** komendy w kanale **ticketu**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4080,10 +4372,10 @@ async function handleAdminOdprzejmij(interaction) {
   - Bot forwards the submitted content + attachments + embeds to the target channel as a single EMBED with blue color.
 */
 async function handleSendMessageCommand(interaction) {
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4095,7 +4387,7 @@ async function handleSendMessageCommand(interaction) {
 
   if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
     await interaction.reply({
-      content: "> `❌` × **Wybierz** poprawny kanał tekstowy **docelowy**.",
+      content: "> `âŒ` Ã— **Wybierz** poprawny kanaÅ‚ tekstowy **docelowy**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4105,9 +4397,9 @@ async function handleSendMessageCommand(interaction) {
   try {
     await interaction.reply({
       content:
-        "✉️ Napisz w tym kanale (w ciągu 2 minut) wiadomość, którą mam wysłać w docelowym kanale.\n" +
-        `Docelowy kanał: <#${targetChannel.id}>\n\n` +
-        "Możesz wysłać tekst (w tym animowane emoji w formacie `<a:nazwa:id>`), załączyć GIF/obraz, lub wkleić emoji. Wpisz `anuluj`, aby przerwać.",
+        "âœ‰ï¸ Napisz w tym kanale (w ciÄ…gu 2 minut) wiadomoÅ›Ä‡, ktÃ³rÄ… mam wysÅ‚aÄ‡ w docelowym kanale.\n" +
+        `Docelowy kanaÅ‚: <#${targetChannel.id}>\n\n` +
+        "MoÅ¼esz wysÅ‚aÄ‡ tekst (w tym animowane emoji w formacie `<a:nazwa:id>`), zaÅ‚Ä…czyÄ‡ GIF/obraz, lub wkleiÄ‡ emoji. Wpisz `anuluj`, aby przerwaÄ‡.",
       flags: [MessageFlags.Ephemeral],
     });
   } catch (e) {
@@ -4119,7 +4411,7 @@ async function handleSendMessageCommand(interaction) {
   if (!collectChannel || !collectChannel.createMessageCollector) {
     await interaction.followUp({
       content:
-        "❌ Nie mogę uruchomić kolektora w tym kanale. Spróbuj ponownie.",
+        "âŒ Nie mogÄ™ uruchomiÄ‡ kolektora w tym kanale. SprÃ³buj ponownie.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4138,13 +4430,13 @@ async function handleSendMessageCommand(interaction) {
     const alertEmoji = '<a:alert:1474431227972026469>';
     const starEmoji = '<:star:1474431260133691567>';
     const content = contentRaw
-      .replace(/:strzałka:/gi, arrowEmoji)
+      .replace(/:strzaÅ‚ka:/gi, arrowEmoji)
       .replace(/:alertownik:/gi, alertEmoji)
       .replace(/:startownik:/gi, starEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
-          content: "> `❌` × **Anulowano** wysyłanie wiadomości.",
+          content: "> `âŒ` Ã— **Anulowano** wysyÅ‚anie wiadomoÅ›ci.",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (e) { }
@@ -4166,7 +4458,7 @@ async function handleSendMessageCommand(interaction) {
     // Build embed with blue color to send as the message (user requested)
     const sendEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription((content || "`(brak treści)`").replace(/<@!?\d+>|@everyone|@here/g, ''))
+      .setDescription((content || "`(brak treÅ›ci)`").replace(/<@!?\d+>|@everyone|@here/g, ''))
       .setTimestamp();
     
     // Add image to embed if present
@@ -4204,7 +4496,7 @@ async function handleSendMessageCommand(interaction) {
       }
 
       await interaction.followUp({
-        content: `✅ Wiadomość została wysłana do <#${targetChannel.id}>.`,
+        content: `âœ… WiadomoÅ›Ä‡ zostaÅ‚a wysÅ‚ana do <#${targetChannel.id}>.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
@@ -4212,7 +4504,7 @@ async function handleSendMessageCommand(interaction) {
       try {
         await interaction.followUp({
           content:
-            "❌ Nie udało się wysłać wiadomości (sprawdź uprawnienia bota do wysyłania wiadomości/załączników).",
+            "âŒ Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ wiadomoÅ›ci (sprawdÅº uprawnienia bota do wysyÅ‚ania wiadomoÅ›ci/zaÅ‚Ä…cznikÃ³w).",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (e) { }
@@ -4227,7 +4519,7 @@ async function handleSendMessageCommand(interaction) {
       try {
         await interaction.followUp({
           content:
-            "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /sendmessage aby spróbować jeszcze raz.",
+            "âŒ› Nie otrzymaÅ‚em wiadomoÅ›ci w wyznaczonym czasie. UÅ¼yj ponownie /sendmessage aby sprÃ³bowaÄ‡ jeszcze raz.",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (e) { }
@@ -4242,7 +4534,7 @@ async function handleDropCommand(interaction) {
   // Now require guild and configured drop channel
   if (!guildId) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4252,7 +4544,7 @@ async function handleDropCommand(interaction) {
   if (!dropChannelId) {
     await interaction.reply({
       content:
-        "❌ Kanał drop nie został ustawiony. Administrator może ustawić go manualnie lub utworzyć kanał o nazwie domyślnej.",
+        "âŒ KanaÅ‚ drop nie zostaÅ‚ ustawiony. Administrator moÅ¼e ustawiÄ‡ go manualnie lub utworzyÄ‡ kanaÅ‚ o nazwie domyÅ›lnej.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4260,7 +4552,7 @@ async function handleDropCommand(interaction) {
 
   if (interaction.channelId !== dropChannelId) {
     await interaction.reply({
-      content: `> \`❌\` × Użyj tej **komendy** na kanale <#${dropChannelId}>`,
+      content: `> \`âŒ\` Ã— UÅ¼yj tej **komendy** na kanale <#${dropChannelId}>`,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4272,7 +4564,7 @@ async function handleDropCommand(interaction) {
   if (now - lastDrop < DROP_COOLDOWN_MS) {
     const remaining = DROP_COOLDOWN_MS - (now - lastDrop);
     await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy </drop:1464015494876102748> ponownie za \`${humanizeMs(remaining)}\``,
+      content: `> \`âŒ\` Ã— MoÅ¼esz uÅ¼yÄ‡ komendy </drop:1464015494876102748> ponownie za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4331,25 +4623,25 @@ async function handleDropCommand(interaction) {
       .setColor(0xd4af37) // yellow for win
       .setDescription(
         "```\n" +
-        "🎀 New Shop × DROP\n" +
+        "ðŸŽ€ New Shop Ã— DROP\n" +
         "```\n" +
-        `\`👤\` × **Użytkownik:** ${user}\n` +
-        `\`🎉\` × **Gratulacje! Udało ci się wylosować -${result.discount}% na zakupy w naszym sklepie!**\n` +
-        `\`⏰\` × **Zniżka wygasa:** <t:${expiryTimestamp}:R>\n\n` +
-        `📩 **Sprawdź prywatne wiadomości po kod!**`,
+        `\`ðŸ‘¤\` Ã— **UÅ¼ytkownik:** ${user}\n` +
+        `\`ðŸŽ‰\` Ã— **Gratulacje! UdaÅ‚o ci siÄ™ wylosowaÄ‡ -${result.discount}% na zakupy w naszym sklepie!**\n` +
+        `\`â°\` Ã— **ZniÅ¼ka wygasa:** <t:${expiryTimestamp}:R>\n\n` +
+        `ðŸ“© **SprawdÅº prywatne wiadomoÅ›ci po kod!**`,
       )
       .setTimestamp();
 
     const dmEmbed = new EmbedBuilder()
       .setColor(0xd4af37)
-      .setTitle("\`🔑\` Twój kod rabatowy")
+      .setTitle("\`ðŸ”‘\` TwÃ³j kod rabatowy")
       .setDescription(
         "```\n" +
         code +
         "\n```\n" +
-        `> \`💸\` × **Otrzymałeś:** \`-${result.discount}%\`\n` +
-        `> \`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R> \n\n` +
-        `> \`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
+        `> \`ðŸ’¸\` Ã— **OtrzymaÅ‚eÅ›:** \`-${result.discount}%\`\n` +
+        `> \`ðŸ•‘\` Ã— **Kod wygaÅ›nie za:** <t:${expiryTimestamp}:R> \n\n` +
+        `> \`â”\` Ã— Aby zrealizowaÄ‡ kod utwÃ³rz nowy ticket, wybierz kategoriÄ™\n` +
         `> \`Zakup\` i kliknij przycisk \`Kod rabatowy\``,
       )
       .setTimestamp();
@@ -4362,12 +4654,12 @@ async function handleDropCommand(interaction) {
         .setColor(COLOR_YELLOW)
         .setDescription(
           "```\n" +
-          "🎀 New Shop × DROP\n" +
+          "ðŸŽ€ New Shop Ã— DROP\n" +
           "```\n" +
-          `\`👤\` × **Użytkownik:** ${user}\n` +
-          `\`🎉\` × **Gratulacje! Udało ci się wylosować -${result.discount}% na zakupy w sklepie!**\n` +
-          `\`🔑\` × **Twój kod:** ||\`${code}\`|| (kliknij aby odkryć)\n` +
-          `\`⏰\` × **Zniżka wygasa:** <t:${expiryTimestamp}:R>`,
+          `\`ðŸ‘¤\` Ã— **UÅ¼ytkownik:** ${user}\n` +
+          `\`ðŸŽ‰\` Ã— **Gratulacje! UdaÅ‚o ci siÄ™ wylosowaÄ‡ -${result.discount}% na zakupy w sklepie!**\n` +
+          `\`ðŸ”‘\` Ã— **TwÃ³j kod:** ||\`${code}\`|| (kliknij aby odkryÄ‡)\n` +
+          `\`â°\` Ã— **ZniÅ¼ka wygasa:** <t:${expiryTimestamp}:R>`,
         )
         .setTimestamp();
       await interaction.reply({ embeds: [winEmbedWithCode], flags: [MessageFlags.Ephemeral] });
@@ -4377,10 +4669,10 @@ async function handleDropCommand(interaction) {
       .setColor(COLOR_GRAY) // gray for lose
       .setDescription(
         "```\n" +
-        "🎀 New Shop × DROP\n" +
+        "ðŸŽ€ New Shop Ã— DROP\n" +
         "```\n" +
-        `\`👤\` × **Użytkownik:** ${user}\n` +
-        `\`😢\` × **Niestety, tym razem nie udało się! Spróbuj ponownie później...**`,
+        `\`ðŸ‘¤\` Ã— **UÅ¼ytkownik:** ${user}\n` +
+        `\`ðŸ˜¢\` Ã— **Niestety, tym razem nie udaÅ‚o siÄ™! SprÃ³buj ponownie pÃ³Åºniej...**`,
       )
       .setTimestamp();
 
@@ -4410,7 +4702,7 @@ async function handleDropCommand(interaction) {
       const instructionDropEmbed = new EmbedBuilder()
         .setColor(COLOR_YELLOW)
         .setDescription(
-          "`🎁` × Użyj **komendy** </drop:1464015494876102748>, aby wylosować zniżkę na zakupy!",
+          "`ðŸŽ` Ã— UÅ¼yj **komendy** </drop:1464015494876102748>, aby wylosowaÄ‡ zniÅ¼kÄ™ na zakupy!",
         );
 
       try {
@@ -4421,7 +4713,7 @@ async function handleDropCommand(interaction) {
       }
     }
   } catch (e) {
-    console.error("Błąd zarządzania instrukcją drop:", e);
+    console.error("BÅ‚Ä…d zarzÄ…dzania instrukcjÄ… drop:", e);
   }
 }
 
@@ -4430,7 +4722,7 @@ async function handleOpinieKanalCommand(interaction) {
   const guildId = interaction.guildId;
   if (!guildId) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4438,33 +4730,33 @@ async function handleOpinieKanalCommand(interaction) {
 
   opinieChannels.set(guildId, channel.id);
   await interaction.reply({
-    content: `✅ Kanał opinii ustawiony na <#${channel.id}>`,
+    content: `âœ… KanaÅ‚ opinii ustawiony na <#${channel.id}>`,
     flags: [MessageFlags.Ephemeral],
   });
-  console.log(`Kanał opinii ustawiony na ${channel.id} dla serwera ${guildId}`);
+  console.log(`KanaÅ‚ opinii ustawiony na ${channel.id} dla serwera ${guildId}`);
 }
 
 async function handlePanelWeryfikacjaCommand(interaction) {
   const guildId = interaction.guildId;
   if (!guildId) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
   const roleId = "1425935544273338532";
-  // lokalna ścieżka do pliku GIF w folderze attached_assets
+  // lokalna Å›cieÅ¼ka do pliku GIF w folderze attached_assets
   const gifPath = path.join(
     __dirname,
     "attached_assets",
@@ -4473,10 +4765,10 @@ async function handlePanelWeryfikacjaCommand(interaction) {
   let attachment = null;
 
   try {
-    // dołączamy plik i nadajemy mu prostą nazwę, której użyjemy w embed (attachment://standard_1.gif)
+    // doÅ‚Ä…czamy plik i nadajemy mu prostÄ… nazwÄ™, ktÃ³rej uÅ¼yjemy w embed (attachment://standard_1.gif)
     attachment = new AttachmentBuilder(gifPath, { name: "standard_1.gif" });
   } catch (err) {
-    console.warn("Nie udało się załadować lokalnego GIFa:", err);
+    console.warn("Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ lokalnego GIFa:", err);
     attachment = null;
   }
 
@@ -4484,12 +4776,12 @@ async function handlePanelWeryfikacjaCommand(interaction) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-      "🛒 New Shop × WERYFIKACJA\n" +
+      "ðŸ›’ New Shop Ã— WERYFIKACJA\n" +
       "```\n" +
-      `<a:arrowwhite:1469100658606211233> **Kliknij w przycisk** na dole, **aby przejdź prostą** zagadkę\n` +
-      `<a:arrowwhite:1469100658606211233> **matematyczną** i **otrzymać** rolę **klient.**`,
+      `<a:arrowwhite:1469100658606211233> **Kliknij w przycisk** na dole, **aby przejdÅº prostÄ…** zagadkÄ™\n` +
+      `<a:arrowwhite:1469100658606211233> **matematycznÄ…** i **otrzymaÄ‡** rolÄ™ **klient.**`,
     )
-    // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
+    // jeÅ›li plik lokalny zaÅ‚adowany - uÅ¼yj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
       attachment
         ? "attachment://standard_1.gif"
@@ -4499,12 +4791,12 @@ async function handlePanelWeryfikacjaCommand(interaction) {
   const button = new ButtonBuilder()
     .setCustomId(`verify_panel_${interaction.channelId}_${Date.now()}`)
     .setStyle(ButtonStyle.Secondary) // niebieski
-    .setEmoji("📝");
+    .setEmoji("ðŸ“");
 
   const row = new ActionRowBuilder().addComponents(button);
 
   try {
-    // Defer reply na początku, aby uniknąć Unknown interaction
+    // Defer reply na poczÄ…tku, aby uniknÄ…Ä‡ Unknown interaction
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const sendOptions = {
@@ -4517,23 +4809,23 @@ async function handlePanelWeryfikacjaCommand(interaction) {
     await interaction.channel.send(sendOptions);
 
     await interaction.editReply({
-      content: "> `✅` × **Panel** weryfikacji wysłany na ten **kanał**.",
+      content: "> `âœ…` Ã— **Panel** weryfikacji wysÅ‚any na ten **kanaÅ‚**.",
     });
     console.log(
-      `Wysłano panel weryfikacji na kanale ${interaction.channelId} (serwer ${guildId})`,
+      `WysÅ‚ano panel weryfikacji na kanale ${interaction.channelId} (serwer ${guildId})`,
     );
   } catch (err) {
-    console.error("Błąd wysyłania panelu weryfikacji:", err);
+    console.error("BÅ‚Ä…d wysyÅ‚ania panelu weryfikacji:", err);
     try {
       if (interaction.replied || interaction.deferred) {
         await interaction.editReply({
           content:
-            "❌ Nie udało się wysłać panelu weryfikacji (sprawdź uprawnienia lub ścieżkę do pliku).",
+            "âŒ Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ panelu weryfikacji (sprawdÅº uprawnienia lub Å›cieÅ¼kÄ™ do pliku).",
         });
       } else {
         await interaction.reply({
           content:
-            "❌ Nie udało się wysłać panelu weryfikacji (sprawdź uprawnienia lub ścieżkę do pliku).",
+            "âŒ Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ panelu weryfikacji (sprawdÅº uprawnienia lub Å›cieÅ¼kÄ™ do pliku).",
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -4550,36 +4842,36 @@ async function handleTicketCommand(interaction) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-      "🛒 New Shop × TICKET\n" +
+      "ðŸ›’ New Shop Ã— TICKET\n" +
       "```\n" +
-      `📦 × Wybierz odpowiednią kategorię, aby utworzyć ticketa!`,
+      `ðŸ“¦ Ã— Wybierz odpowiedniÄ… kategoriÄ™, aby utworzyÄ‡ ticketa!`,
     );
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("ticket_category")
-    .setPlaceholder("Wybierz kategorię...")
+    .setPlaceholder("Wybierz kategoriÄ™...")
     .addOptions([
       {
-        label: "💰 Zakup",
+        label: "ðŸ’° Zakup",
         value: "zakup",
-        description: "Chcę kupić przedmioty",
+        description: "ChcÄ™ kupiÄ‡ przedmioty",
       },
       {
-        label: "💵 Sprzedaż",
+        label: "ðŸ’µ SprzedaÅ¼",
         value: "sprzedaz",
-        description: "Chcę sprzedać przedmioty",
+        description: "ChcÄ™ sprzedaÄ‡ przedmioty",
       },
       {
-        label: "🎁 Nagroda za zaproszenia",
+        label: "ðŸŽ Nagroda za zaproszenia",
         value: "odbior",
-        description: "Odbiór nagrody za zaproszenia (kod)",
+        description: "OdbiÃ³r nagrody za zaproszenia (kod)",
       },
       {
-        label: "🏆 Nagroda za konkurs",
+        label: "ðŸ† Nagroda za konkurs",
         value: "konkurs_odbior",
-        description: "Odbiór nagrody za konkurs",
+        description: "OdbiÃ³r nagrody za konkurs",
       },
-      { label: "❓ INNE", value: "inne", description: "Kliknij, aby zadać inne pytanie!" },
+      { label: "â“ INNE", value: "inne", description: "Kliknij, aby zadaÄ‡ inne pytanie!" },
     ]);
 
   const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -4592,10 +4884,10 @@ async function handleTicketCommand(interaction) {
 }
 
 async function handleTicketPanelCommand(interaction) {
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4607,42 +4899,42 @@ async function handleTicketPanelCommand(interaction) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-      "🛒 New Shop × TICKET\n" +
+      "ðŸ›’ New Shop Ã— TICKET\n" +
       "```\n" +
-      "`📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!",
+      "`ðŸ“©` Ã— Wybierz odpowiedniÄ… kategoriÄ™, aby utworzyÄ‡ ticketa!",
     );
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("ticket_category")
-    .setPlaceholder("Wybierz kategorię...")
+    .setPlaceholder("Wybierz kategoriÄ™...")
     .addOptions([
       {
-        label: "💰 Zakup",
+        label: "ðŸ’° Zakup",
         value: "zakup",
-        description: "Kliknij, aby dokonać zakupu!",
+        description: "Kliknij, aby dokonaÄ‡ zakupu!",
       },
       {
-        label: "💵 Sprzedaż",
+        label: "ðŸ’µ SprzedaÅ¼",
         value: "sprzedaz",
-        description: "Kliknij, aby dokonać sprzedaży!",
+        description: "Kliknij, aby dokonaÄ‡ sprzedaÅ¼y!",
       },
       {
-        label: "🎁 Nagroda za zaproszenia",
+        label: "ðŸŽ Nagroda za zaproszenia",
         value: "odbior",
-        description: "Kliknij, aby odebrać nagrode za zaproszenia (kod)",
+        description: "Kliknij, aby odebraÄ‡ nagrode za zaproszenia (kod)",
       },
       {
-        label: "🏆 Nagroda za konkurs",
+        label: "ðŸ† Nagroda za konkurs",
         value: "konkurs_odbior",
-        description: "Kliknij, aby odebrać nagrode za konkurs",
+        description: "Kliknij, aby odebraÄ‡ nagrode za konkurs",
       },
-      { label: "❓ INNE", value: "inne", description: "Kliknij, aby zadać inne pytanie!" },
+      { label: "â“ INNE", value: "inne", description: "Kliknij, aby zadaÄ‡ inne pytanie!" },
     ]);
 
   const row = new ActionRowBuilder().addComponents(selectMenu);
 
   await interaction.reply({
-    content: "> `✅` × **Panel** ticketów wysłany!",
+    content: "> `âœ…` Ã— **Panel** ticketÃ³w wysÅ‚any!",
     flags: [MessageFlags.Ephemeral],
   });
 
@@ -4650,10 +4942,10 @@ async function handleTicketPanelCommand(interaction) {
 }
 
 async function handleCloseTicketCommand(interaction) {
-  // Sprawdź uprawnienia przed sprawdzaniem kanału
+  // SprawdÅº uprawnienia przed sprawdzaniem kanaÅ‚u
   if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4663,7 +4955,7 @@ async function handleCloseTicketCommand(interaction) {
 
   if (!isTicketChannel(channel)) {
     await interaction.reply({
-      content: "> `❌` × Ta **komenda** działa jedynie na **ticketach**!",
+      content: "> `âŒ` Ã— Ta **komenda** dziaÅ‚a jedynie na **ticketach**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4688,7 +4980,7 @@ async function handleCloseTicketCommand(interaction) {
       embeds: [
         new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+          .setDescription("> \`â„¹ï¸\` Ã— **Ticket zostanie zamkniÄ™ty w ciÄ…gu 5 sekund...**")
       ]
     });
 
@@ -4699,21 +4991,21 @@ async function handleCloseTicketCommand(interaction) {
         ticketMeta,
       ).catch((e) => console.error("archiveTicketOnClose error:", e));
     } catch (e) {
-      console.error("Błąd archiwizacji ticketu (command):", e);
+      console.error("BÅ‚Ä…d archiwizacji ticketu (command):", e);
     }
 
     setTimeout(async () => {
       try {
         await channel.delete();
       } catch (error) {
-        console.error("Błąd zamykania ticketu:", error);
+        console.error("BÅ‚Ä…d zamykania ticketu:", error);
       }
     }, 2000);
   } else {
     pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
     await interaction.reply({
       content:
-        "> \`⚠️\` Kliknij /zamknij ponownie w ciągu 30 sekund, aby potwierdzić zamknięcie ticketu.",
+        "> \`âš ï¸\` Kliknij /zamknij ponownie w ciÄ…gu 30 sekund, aby potwierdziÄ‡ zamkniÄ™cie ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
     setTimeout(() => pendingTicketClose.delete(chId), 30_000);
@@ -4722,14 +5014,14 @@ async function handleCloseTicketCommand(interaction) {
 
 // ----------------- /ticket-zakoncz handler -----------------
 async function handleTicketZakonczCommand(interaction) {
-  // Sprawdź czy właściciel lub sprzedawca
+  // SprawdÅº czy wÅ‚aÅ›ciciel lub sprzedawca
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   const SELLER_ROLE_ID = "1350786945944391733";
   const hasSellerRole = interaction.member.roles.cache.has(SELLER_ROLE_ID);
   
   if (!isOwner && !hasSellerRole) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4737,10 +5029,10 @@ async function handleTicketZakonczCommand(interaction) {
 
   const channel = interaction.channel;
 
-  // Sprawdź czy komenda jest używana w tickecie
+  // SprawdÅº czy komenda jest uÅ¼ywana w tickecie
   if (!isTicketChannel(channel)) {
     await interaction.reply({
-      content: "> `❌` × Ta **komenda** działa jedynie na **ticketach**!",
+      content: "> `âŒ` Ã— Ta **komenda** dziaÅ‚a jedynie na **ticketach**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4751,13 +5043,13 @@ async function handleTicketZakonczCommand(interaction) {
   const ile = interaction.options.getString("ile");
   const serwer = interaction.options.getString("serwer");
 
-  // Pobierz właściciela ticketu
+  // Pobierz wÅ‚aÅ›ciciela ticketu
   const ticketData = ticketOwners.get(channel.id);
   const ticketOwnerId = ticketData?.userId;
 
   if (!ticketOwnerId) {
     await interaction.reply({
-      content: "> `❌` × **Nie udało się** zidentyfikować właściciela ticketu.",
+      content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** zidentyfikowaÄ‡ wÅ‚aÅ›ciciela ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -4765,15 +5057,15 @@ async function handleTicketZakonczCommand(interaction) {
 
   const legitRepChannelId = "1449840030947217529";
   const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
-  let thankLine = "Dziękujemy za zakup w naszym sklepie";
-  let repVerb = "sprzedał";
+  let thankLine = "DziÄ™kujemy za zakup w naszym sklepie";
+  let repVerb = "sprzedaÅ‚";
   const typLower = typ.toLowerCase();
-  if (typLower === "sprzedaż") {
-    thankLine = "Dziękujemy za sprzedaż w naszym sklepie";
-    repVerb = "kupił";
-  } else if (typLower === "wręczył nagrodę") {
-    thankLine = "Nagroda została nadana";
-    repVerb = "wręczył nagrodę";
+  if (typLower === "sprzedaÅ¼") {
+    thankLine = "DziÄ™kujemy za sprzedaÅ¼ w naszym sklepie";
+    repVerb = "kupiÅ‚";
+  } else if (typLower === "wrÄ™czyÅ‚ nagrodÄ™") {
+    thankLine = "Nagroda zostaÅ‚a nadana";
+    repVerb = "wrÄ™czyÅ‚ nagrodÄ™";
   }
 
   const repMessage = `+rep @${interaction.user.username} ${repVerb} ${ile} ${serwer}`;
@@ -4782,11 +5074,11 @@ async function handleTicketZakonczCommand(interaction) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
+      "âœ… New Shop Ã— WYSTAW LEGIT CHECK\n" +
       "```\n" +
       `${arrowEmoji} **${thankLine}**\n\n` +
-      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
-      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``,
+      `${arrowEmoji} **Aby zamknÄ…Ä‡ ticket wyÅ›lij legit checka na kanaÅ‚**\n<#${legitRepChannelId}>\n\n` +
+      `ðŸ“‹ **WzÃ³r do skopiowania:**\n\`${repMessage}\``,
     )
     .setImage("attachment://standard_5.gif");
 
@@ -4795,11 +5087,11 @@ async function handleTicketZakonczCommand(interaction) {
 
   // Ephemeral potwierdzenie dla sprzedawcy
   await interaction.reply({
-    content: "`✅` × Poprawnie użyto komendy ticket zakończ.",
+    content: "`âœ…` Ã— Poprawnie uÅ¼yto komendy ticket zakoÅ„cz.",
     flags: [MessageFlags.Ephemeral],
   });
 
-  // Wyślij ping właściciela + embed + wzór (bez reply na slash)
+  // WyÅ›lij ping wÅ‚aÅ›ciciela + embed + wzÃ³r (bez reply na slash)
   await interaction.channel.send({ content: `<@${ticketOwnerId}>` });
 
   await interaction.channel.send({
@@ -4811,110 +5103,110 @@ async function handleTicketZakonczCommand(interaction) {
     content: repMessage,
   });
 
-  // Zapisz informację o oczekiwaniu na +rep dla tego ticketu
+  // Zapisz informacjÄ™ o oczekiwaniu na +rep dla tego ticketu
   pendingTicketClose.set(channel.id, {
-    userId: ticketOwnerId, // właściciel ticketu musi wysłać +rep
-    commandUserId: interaction.user.id, // osoba która użyła komendy
-    commandUsername: interaction.user.username, // nick osoby która użyła komendy
+    userId: ticketOwnerId, // wÅ‚aÅ›ciciel ticketu musi wysÅ‚aÄ‡ +rep
+    commandUserId: interaction.user.id, // osoba ktÃ³ra uÅ¼yÅ‚a komendy
+    commandUsername: interaction.user.username, // nick osoby ktÃ³ra uÅ¼yÅ‚a komendy
     awaitingRep: true,
     legitRepChannelId,
     ts: Date.now()
   });
 
-  // Przenieś ticket do kategorii zrealizowanej
+  // PrzenieÅ› ticket do kategorii zrealizowanej
   const ARCHIVED_CATEGORY_ID = "1469059216303198261";
   try {
     if (channel.parentId !== ARCHIVED_CATEGORY_ID) {
       await channel.setParent(ARCHIVED_CATEGORY_ID, { lockPermissions: false });
     }
   } catch (err) {
-    console.error("Nie udało się przenieść ticketu do kategorii zrealizowanej:", err);
+    console.error("Nie udaÅ‚o siÄ™ przenieÅ›Ä‡ ticketu do kategorii zrealizowanej:", err);
   }
 
-  console.log(`Ticket ${channel.id} oczekuje na +rep od użytkownika ${ticketOwnerId} (komenda użyta przez ${interaction.user.username})`);
+  console.log(`Ticket ${channel.id} oczekuje na +rep od uÅ¼ytkownika ${ticketOwnerId} (komenda uÅ¼yta przez ${interaction.user.username})`);
 }
 
 // ----------------- /zamknij-z-powodem handler -----------------
 async function handleZamknijZPowodemCommand(interaction) {
   const channel = interaction.channel;
 
-  // Sprawdź czy komenda jest używana w tickecie
+  // SprawdÅº czy komenda jest uÅ¼ywana w tickecie
   if (!isTicketChannel(channel)) {
     await interaction.reply({
-      content: "> `❌` × Ta **komenda** działa jedynie na **ticketach**!",
+      content: "> `âŒ` Ã— Ta **komenda** dziaÅ‚a jedynie na **ticketach**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Pobierz powód
+  // Pobierz powÃ³d
   const powodPreset = interaction.options.getString("powod");
   const powodCustom = (interaction.options.getString("powod_custom") || "").trim();
   const powod = powodCustom || powodPreset;
 
-  // Pobierz właściciela ticketu
+  // Pobierz wÅ‚aÅ›ciciela ticketu
   const ticketData = ticketOwners.get(channel.id);
   const ticketOwnerId = ticketData?.userId;
 
   if (!ticketOwnerId) {
     await interaction.reply({
-      content: "> `❌` × **Nie udało się** zidentyfikować właściciela ticketu.",
+      content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** zidentyfikowaÄ‡ wÅ‚aÅ›ciciela ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
   try {
-    // Wyślij embed do właściciela ticketu
+    // WyÅ›lij embed do wÅ‚aÅ›ciciela ticketu
     const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(
         "```\n" +
-        "🎫 New Shop × TICKETY\n" +
+        "ðŸŽ« New Shop Ã— TICKETY\n" +
         "```\n" +
-        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> **\`${powod}\`**`
+        `${arrowEmoji} **TwÃ³j ticket zostaÅ‚ zamkniÄ™ty z powodu:**\n> **\`${powod}\`**`
       )
       .setTimestamp();
 
-    // Wyślij DM do właściciela ticketu
+    // WyÅ›lij DM do wÅ‚aÅ›ciciela ticketu
     const ticketOwner = await client.users.fetch(ticketOwnerId).catch(() => null);
     if (ticketOwner) {
       await ticketOwner.send({ embeds: [embed] }).catch(() => null);
     }
 
-    // Wyślij potwierdzenie na kanał (publicznie)
+    // WyÅ›lij potwierdzenie na kanaÅ‚ (publicznie)
     await interaction.reply({
-      content: `> \`✅\` × Ticket zamknięty z powodem: **${powod}**`,
+      content: `> \`âœ…\` Ã— Ticket zamkniÄ™ty z powodem: **${powod}**`,
       flags: [MessageFlags.Ephemeral],
     });
 
     // Zamknij ticket po 2 sekundach
     setTimeout(async () => {
       try {
-        await channel.delete(`Ticket zamknięty przez właściciela z powodem: ${powod}`);
+        await channel.delete(`Ticket zamkniÄ™ty przez wÅ‚aÅ›ciciela z powodem: ${powod}`);
         ticketOwners.delete(channel.id);
         pendingTicketClose.delete(channel.id);
         
-        console.log(`Ticket ${channel.id} został zamknięty przez właściciela z powodem: ${powod}`);
+        console.log(`Ticket ${channel.id} zostaÅ‚ zamkniÄ™ty przez wÅ‚aÅ›ciciela z powodem: ${powod}`);
       } catch (closeErr) {
-        console.error(`Błąd zamykania ticketu ${channel.id}:`, closeErr);
+        console.error(`BÅ‚Ä…d zamykania ticketu ${channel.id}:`, closeErr);
       }
     }, 2000);
 
   } catch (error) {
-    console.error("Błąd podczas zamykania ticketu z powodem:", error);
+    console.error("BÅ‚Ä…d podczas zamykania ticketu z powodem:", error);
     await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu.",
+      content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas zamykania ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
   }
@@ -4933,9 +5225,9 @@ async function handleLegitRepUstawCommand(interaction) {
       await interaction.deferReply({ ephemeral: true });
     }
 
-    // Sprawdź czy właściciel
+    // SprawdÅº czy wÅ‚aÅ›ciciel
     if (interaction.user.id !== interaction.guild.ownerId) {
-      const payload = { content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] };
+      const payload = { content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.", flags: [MessageFlags.Ephemeral] };
       if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
       else await interaction.reply(payload);
       return;
@@ -4944,7 +5236,7 @@ async function handleLegitRepUstawCommand(interaction) {
     const ile = interaction.options.getInteger("ile");
     
     if (ile < 0 || ile > 9999) {
-      const payload = { content: "> `❌` × **Podaj** liczbę od 0 do 9999.", flags: [MessageFlags.Ephemeral] };
+      const payload = { content: "> `âŒ` Ã— **Podaj** liczbÄ™ od 0 do 9999.", flags: [MessageFlags.Ephemeral] };
       if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
       else await interaction.reply(payload);
       return;
@@ -4953,7 +5245,7 @@ async function handleLegitRepUstawCommand(interaction) {
     // Zaktualizuj licznik
     legitRepCount = ile;
     
-    // Zmień nazwę kanału
+    // ZmieÅ„ nazwÄ™ kanaÅ‚u
     const channelId = "1449840030947217529";
     const channel = await client.channels.fetch(channelId).catch((err) => {
       console.error("legit-rep-ustaw fetch channel error", err);
@@ -4961,16 +5253,16 @@ async function handleLegitRepUstawCommand(interaction) {
     });
     
     if (!channel) {
-      const payload = { content: "> `❌` × **Nie znaleziono** kanału legit-rep.", flags: [MessageFlags.Ephemeral] };
+      const payload = { content: "> `âŒ` Ã— **Nie znaleziono** kanaÅ‚u legit-rep.", flags: [MessageFlags.Ephemeral] };
       if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
       else await interaction.reply(payload);
       return;
     }
 
-    const newName = `✅-×┃legit-rep➔${ile}`;
+    const newName = `âœ…-Ã—â”ƒlegit-repâž”${ile}`;
     await channel.setName(newName);
     
-    // Wyślij informacyjną wiadomość
+    // WyÅ›lij informacyjnÄ… wiadomoÅ›Ä‡
     const successPayload = {
       content: `LegitRepy: ${ile}\nLegitChecki: ${ile}`,
       flags: [MessageFlags.Ephemeral],
@@ -4981,10 +5273,10 @@ async function handleLegitRepUstawCommand(interaction) {
     // Zapisz stan
     scheduleSavePersistentState();
     
-    console.log(`Nazwa kanału legit-rep zmieniona na: ${newName} przez ${interaction.user.tag}`);
+    console.log(`Nazwa kanaÅ‚u legit-rep zmieniona na: ${newName} przez ${interaction.user.tag}`);
   } catch (error) {
-    console.error("Błąd podczas ustawiania legit-rep (outer catch):", error);
-    const payload = { content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.", flags: [MessageFlags.Ephemeral] };
+    console.error("BÅ‚Ä…d podczas ustawiania legit-rep (outer catch):", error);
+    const payload = { content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas zmiany nazwy kanaÅ‚u.", flags: [MessageFlags.Ephemeral] };
     if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
     else await interaction.reply(payload);
   }
@@ -4992,10 +5284,10 @@ async function handleLegitRepUstawCommand(interaction) {
 
 // ----------------- /sprawdz-kogo-zaprosil handler -----------------
 async function handleSprawdzKogoZaprosilCommand(interaction) {
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -5004,7 +5296,7 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
   const targetUser = interaction.options.getUser("kto");
   if (!targetUser) {
     await interaction.reply({
-      content: "> `❌` × **Nie udało się** zidentyfikować użytkownika.",
+      content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** zidentyfikowaÄ‡ uÅ¼ytkownika.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -5019,26 +5311,26 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
     
     if (invitedUsers.length === 0) {
       await interaction.reply({
-        content: `> \`ℹ️\` × **Użytkownik** <@${targetUserId}> **nie ma żadnych aktywnych zaproszeń**.`,
+        content: `> \`â„¹ï¸\` Ã— **UÅ¼ytkownik** <@${targetUserId}> **nie ma Å¼adnych aktywnych zaproszeÅ„**.`,
         flags: [MessageFlags.Ephemeral],
       });
       return;
     }
 
-    // Pobierz aktualnych członków serwera
+    // Pobierz aktualnych czÅ‚onkÃ³w serwera
     const guildMembers = await guild.members.fetch();
     const currentMemberIds = new Set(guildMembers.keys());
 
-    // Filtruj tylko osoby które są nadal na serwerze
+    // Filtruj tylko osoby ktÃ³re sÄ… nadal na serwerze
     let invitedList = [];
     
     for (const invitedUser of invitedUsers) {
       try {
-        // Sprawdź czy użytkownik jest nadal na serwerze
+        // SprawdÅº czy uÅ¼ytkownik jest nadal na serwerze
         if (currentMemberIds.has(invitedUser.invited_user_id)) {
           const member = guildMembers.get(invitedUser.invited_user_id);
           
-          // Sprawdź czy konto ma więcej niż 2 miesiące
+          // SprawdÅº czy konto ma wiÄ™cej niÅ¼ 2 miesiÄ…ce
           const accountAge = member.user.createdAt;
           const twoMonthsAgo = new Date(Date.now() - (60 * 24 * 60 * 60 * 1000)); // 60 dni
           
@@ -5054,12 +5346,12 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
           }
         }
       } catch (err) {
-        // Użytkownik opuścił serwer lub konto za młode - nie dodajemy do listy
+        // UÅ¼ytkownik opuÅ›ciÅ‚ serwer lub konto za mÅ‚ode - nie dodajemy do listy
         continue;
       }
     }
 
-    // Usuń duplikaty z listy
+    // UsuÅ„ duplikaty z listy
     const uniqueInvites = [];
     const seenUsers = new Set();
     
@@ -5070,27 +5362,27 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
       }
     }
 
-    // Twórz embed
+    // TwÃ³rz embed
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setTitle("New Shop x Logi")
-      .setDescription(`**Sprawdzasz:** <@${targetUserId}>\nUżytkownik zaprosił **${uniqueInvites.length}** osób`)
+      .setDescription(`**Sprawdzasz:** <@${targetUserId}>\nUÅ¼ytkownik zaprosiÅ‚ **${uniqueInvites.length}** osÃ³b`)
       .addFields({
         name: "--=--=--=--=LISTA=--=--=--=--=--=",
         value: uniqueInvites.length > 0 
           ? uniqueInvites.map(item => 
               `@${item.user.username} (${item.date})`
             ).join('\n')
-          : "Brak aktywnych zaproszeń na serwerze"
+          : "Brak aktywnych zaproszeÅ„ na serwerze"
       })
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
 
   } catch (error) {
-    console.error("Błąd podczas sprawdzania zaproszonych osób:", error);
+    console.error("BÅ‚Ä…d podczas sprawdzania zaproszonych osÃ³b:", error);
     await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas sprawdzania zaproszeń.",
+      content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas sprawdzania zaproszeÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
   }
@@ -5125,7 +5417,7 @@ async function handleSelectMenu(interaction) {
         break;
       default:
         await interaction.reply({
-          content: "> `❌` × **Nie wybrano** żadnej z kategorii!",
+          content: "> `âŒ` Ã— **Nie wybrano** Å¼adnej z kategorii!",
           flags: [MessageFlags.Ephemeral],
         });
     }
@@ -5144,11 +5436,11 @@ async function handleSelectMenu(interaction) {
     if (chosen === "rename") {
       const modal = new ModalBuilder()
         .setCustomId(`modal_rename_${channelId}`)
-        .setTitle("Zmień nazwę ticketu");
+        .setTitle("ZmieÅ„ nazwÄ™ ticketu");
 
       const nameInput = new TextInputBuilder()
         .setCustomId("new_ticket_name")
-        .setLabel("Nowa nazwa kanału (np. ticket-nick)")
+        .setLabel("Nowa nazwa kanaÅ‚u (np. ticket-nick)")
         .setStyle(TextInputStyle.Short)
         .setPlaceholder("ticket-nick")
         .setRequired(true)
@@ -5163,13 +5455,13 @@ async function handleSelectMenu(interaction) {
     if (chosen === "add") {
       const modal = new ModalBuilder()
         .setCustomId(`modal_add_${channelId}`)
-        .setTitle("Dodaj użytkownika do ticketu");
+        .setTitle("Dodaj uÅ¼ytkownika do ticketu");
 
       const userInput = new TextInputBuilder()
         .setCustomId("user_to_add")
-        .setLabel("Wpisz @mention lub ID użytkownika")
+        .setLabel("Wpisz @mention lub ID uÅ¼ytkownika")
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder("@użytkownik lub ID")
+        .setPlaceholder("@uÅ¼ytkownik lub ID")
         .setRequired(true);
 
       modal.addComponents(new ActionRowBuilder().addComponents(userInput));
@@ -5180,13 +5472,13 @@ async function handleSelectMenu(interaction) {
     if (chosen === "remove") {
       const modal = new ModalBuilder()
         .setCustomId(`modal_remove_${channelId}`)
-        .setTitle("Usuń użytkownika z ticketu");
+        .setTitle("UsuÅ„ uÅ¼ytkownika z ticketu");
 
       const userInput = new TextInputBuilder()
         .setCustomId("user_to_remove")
-        .setLabel("Wpisz @mention lub ID użytkownika")
+        .setLabel("Wpisz @mention lub ID uÅ¼ytkownika")
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder("@użytkownik lub ID")
+        .setPlaceholder("@uÅ¼ytkownik lub ID")
         .setRequired(true);
 
       modal.addComponents(new ActionRowBuilder().addComponents(userInput));
@@ -5194,7 +5486,7 @@ async function handleSelectMenu(interaction) {
       return;
     }
 
-    await interaction.reply({ content: "> `❌` × **Nieznana** akcja.", flags: [MessageFlags.Ephemeral] });
+    await interaction.reply({ content: "> `âŒ` Ã— **Nieznana** akcja.", flags: [MessageFlags.Ephemeral] });
     return;
   }
 }
@@ -5207,28 +5499,28 @@ async function showZakupModal(interaction) {
   const serwerInput = new TextInputBuilder()
     .setCustomId("serwer")
     .setLabel("Na jakim serwerze?")
-    .setPlaceholder("Przykład: Anarchia")
+    .setPlaceholder("PrzykÅ‚ad: Anarchia")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
   const kwotaInput = new TextInputBuilder()
     .setCustomId("kwota")
-    .setLabel("Za ile chcesz kupić?")
+    .setLabel("Za ile chcesz kupiÄ‡?")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: 20zł")
+    .setPlaceholder("PrzykÅ‚ad: 20zÅ‚")
     .setRequired(true);
 
   const platnosInput = new TextInputBuilder()
     .setCustomId("platnosc")
-    .setLabel("Jaką metodą płatności płacisz?")
-    .setPlaceholder("Przykład: Blik")
+    .setLabel("JakÄ… metodÄ… pÅ‚atnoÅ›ci pÅ‚acisz?")
+    .setPlaceholder("PrzykÅ‚ad: Blik")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
   const oczekiwanaWalutaInput = new TextInputBuilder()
     .setCustomId("oczekiwana_waluta")
-    .setLabel("Co chciałbyś zakupić")
-    .setPlaceholder("Przykład: Elytra")
+    .setLabel("Co chciaÅ‚byÅ› zakupiÄ‡")
+    .setPlaceholder("PrzykÅ‚ad: Elytra")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
@@ -5251,7 +5543,7 @@ async function showKonkursOdbiorModal(interaction) {
     .setCustomId("konkurs_info")
     .setLabel("Za jaki konkurs oraz jaka nagroda?")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Wygrałem konkurs na elytre")
+    .setPlaceholder("PrzykÅ‚ad: WygraÅ‚em konkurs na elytre")
     .setRequired(true)
     .setMaxLength(128);
 
@@ -5263,23 +5555,24 @@ async function showKonkursOdbiorModal(interaction) {
 async function ticketClaimCommon(interaction, channelId, opts = {}) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
   const skipQuiz = opts.skipQuiz === true;
+  const bypassPermissionCheck = opts.bypassPermissionCheck === true;
 
-  if (!isAdminOrSeller(interaction.member)) {
+  if (!bypassPermissionCheck && !isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
     } else {
       await interaction.followUp({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
-    return;
+    return { ok: false, reason: "permission" };
   }
 
-  // quiz matematyczny przed przejęciem (przycisk + /przejmij)
+  // quiz matematyczny przed przejÄ™ciem (przycisk + /przejmij)
   if (!skipQuiz) {
     const questions = [
       { q: "Ile to 5 * 3?", a: "15" },
@@ -5298,7 +5591,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
 
     const modal = new ModalBuilder()
       .setCustomId(modalId)
-      .setTitle("Weryfikacja przejęcia ticketu");
+      .setTitle("Weryfikacja przejÄ™cia ticketu");
     const input = new TextInputBuilder()
       .setCustomId("claim_answer")
       .setLabel(pick.q)
@@ -5307,10 +5600,10 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setMaxLength(4);
     modal.addComponents(new ActionRowBuilder().addComponents(input));
     await interaction.showModal(modal).catch(() => null);
-    return;
+    return { ok: false, reason: "quiz-required" };
   }
 
-  // szybka odpowiedź, żeby Discord nie wyświetlał błędu interakcji (po quizie)
+  // szybka odpowiedÅº, Å¼eby Discord nie wyÅ›wietlaÅ‚ bÅ‚Ä™du interakcji (po quizie)
   if (!interaction.replied && !interaction.deferred) {
     if (isBtn) {
       await interaction.deferUpdate().catch(() => null);
@@ -5320,7 +5613,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
   }
 
   const replyEphemeral = async (text) => {
-    // jeśli interakcja nie została jeszcze potwierdzona, użyj reply()
+    // jeÅ›li interakcja nie zostaÅ‚a jeszcze potwierdzona, uÅ¼yj reply()
     if (!interaction.replied && !interaction.deferred) {
       await interaction
         .reply({ content: text, flags: [MessageFlags.Ephemeral] })
@@ -5339,51 +5632,51 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     locked: false,
     userId: null,
     ticketMessageId: null,
-    originalCategoryId: null, // Zapisz oryginalną kategorię
+    originalCategoryId: null, // Zapisz oryginalnÄ… kategoriÄ™
   };
 
   if (ticketData.locked) {
     await replyEphemeral(
-      "❌ Ten ticket został zablokowany do przejmowania (ustawienia/zmiana nazwy).",
+      "âŒ Ten ticket zostaÅ‚ zablokowany do przejmowania (ustawienia/zmiana nazwy).",
     );
-    return;
+    return { ok: false, reason: "locked" };
   }
 
   if (ticketData && ticketData.claimedBy) {
     await replyEphemeral(
-      `❌ Ten ticket został już przejęty przez <@${ticketData.claimedBy}>!`,
+      `âŒ Ten ticket zostaÅ‚ juÅ¼ przejÄ™ty przez <@${ticketData.claimedBy}>!`,
     );
-    return;
+    return { ok: false, reason: "already-claimed", claimedBy: ticketData.claimedBy };
   }
 
   const ch = await client.channels.fetch(channelId).catch(() => null);
   if (!ch) {
-    await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
-    return;
+    await replyEphemeral("âŒ Nie mogÄ™ znaleÅºÄ‡ tego kanaÅ‚u.");
+    return { ok: false, reason: "channel-not-found" };
   }
 
   try {
     const claimerId = interaction.user.id;
 
-    // Zapisz oryginalną kategorię przed przeniesieniem
+    // Zapisz oryginalnÄ… kategoriÄ™ przed przeniesieniem
     if (!ticketData.originalCategoryId) {
       ticketData.originalCategoryId = ch.parentId;
     }
 
-    // Przenieś do kategorii TICKETY PRZEJĘTE
+    // PrzenieÅ› do kategorii TICKETY PRZEJÄ˜TE
     const przejetaKategoriaId = "1457446529395593338";
     const przejetaKategoria = await client.channels.fetch(przejetaKategoriaId).catch(() => null);
     
     if (przejetaKategoria) {
       await ch.setParent(przejetaKategoriaId).catch((err) => {
-        console.error("Błąd przenoszenia do kategorii TICKETY PRZEJĘTE:", err);
+        console.error("BÅ‚Ä…d przenoszenia do kategorii TICKETY PRZEJÄ˜TE:", err);
       });
-      console.log(`Przeniesiono ticket ${channelId} do kategorii TICKETY PRZEJĘTE`);
+      console.log(`Przeniesiono ticket ${channelId} do kategorii TICKETY PRZEJÄ˜TE`);
     } else {
-      console.error("Nie znaleziono kategorii TICKETY PRZEJĘTE (1457446529395593338)");
+      console.error("Nie znaleziono kategorii TICKETY PRZEJÄ˜TE (1457446529395593338)");
     }
 
-    // Ustaw uprawnienia dla osoby przejmującej + właściciela ticketu
+    // Ustaw uprawnienia dla osoby przejmujÄ…cej + wÅ‚aÅ›ciciela ticketu
     const permissionOverwrites = [
       {
         id: claimerId,
@@ -5391,11 +5684,11 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       },
       {
         id: interaction.guild.roles.everyone,
-        deny: [PermissionFlagsBits.ViewChannel] // @everyone nie widzi gdy ktoś przejmie
+        deny: [PermissionFlagsBits.ViewChannel] // @everyone nie widzi gdy ktoÅ› przejmie
       }
     ];
 
-    // Dodaj właściciela ticketu do uprawnień
+    // Dodaj wÅ‚aÅ›ciciela ticketu do uprawnieÅ„
     if (ticketData && ticketData.userId) {
       permissionOverwrites.push({
         id: ticketData.userId,
@@ -5405,7 +5698,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
 
     await ch.permissionOverwrites.set(permissionOverwrites);
 
-    // Usuń limity kategorii dla kanału
+    // UsuÅ„ limity kategorii dla kanaÅ‚u
     const limitCategories = [
       "1449448705563557918", // limit 20
       "1449448702925209651", // limit 50
@@ -5424,8 +5717,8 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       }
     }
 
-    // Właściciel ticketu już ma dostęp - nie trzeba nic zmieniać
-    // Usuń limity kategorii dla kanału
+    // WÅ‚aÅ›ciciel ticketu juÅ¼ ma dostÄ™p - nie trzeba nic zmieniaÄ‡
+    // UsuÅ„ limity kategorii dla kanaÅ‚u
 
     ticketData.claimedBy = claimerId;
     ticketOwners.set(channelId, ticketData);
@@ -5435,9 +5728,12 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, claimerId).catch(() => null);
     }
 
+    const publicClaimerLabel =
+      (typeof opts.publicClaimerLabel === "string" && opts.publicClaimerLabel.trim()) ||
+      `<@${claimerId}>`;
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`✅\` × Ticket został przejęty przez <@${claimerId}>`);
+      .setDescription(`> \`âœ…\` Ã— Ticket zostaÅ‚ przejÄ™ty przez ${publicClaimerLabel}`);
 
     try {
       const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
@@ -5452,9 +5748,11 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     if (!isBtn) {
       await interaction.deleteReply().catch(() => null);
     }
+    return { ok: true, reason: "claimed", channelId, claimedBy: claimerId };
   } catch (err) {
-    console.error("Błąd przy przejmowaniu ticketu:", err);
-    await replyEphemeral("❌ Wystąpił błąd podczas przejmowania ticketu.");
+    console.error("BÅ‚Ä…d przy przejmowaniu ticketu:", err);
+    await replyEphemeral("âŒ WystÄ…piÅ‚ bÅ‚Ä…d podczas przejmowania ticketu.");
+    return { ok: false, reason: "error", channelId };
   }
 }
 
@@ -5464,12 +5762,12 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
   if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
     } else {
       await interaction.followUp({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
@@ -5496,17 +5794,17 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     claimedBy: null,
     userId: null,
     ticketMessageId: null,
-    originalCategoryId: null, // Dodaj oryginalną kategorię
+    originalCategoryId: null, // Dodaj oryginalnÄ… kategoriÄ™
   };
 
   const ch = await client.channels.fetch(channelId).catch(() => null);
   if (!ch) {
-    await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
+    await replyEphemeral("âŒ Nie mogÄ™ znaleÅºÄ‡ tego kanaÅ‚u.");
     return;
   }
 
   if (!ticketData.claimedBy) {
-    await replyEphemeral("ℹ️ Ten ticket nie jest przejęty.");
+    await replyEphemeral("â„¹ï¸ Ten ticket nie jest przejÄ™ty.");
     return;
   }
 
@@ -5516,7 +5814,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     !isAdminOrSeller(interaction.member)
   ) {
     await replyEphemeral(
-      "> `❗` Brak wymaganych uprawnień.",
+      "> `â—` Brak wymaganych uprawnieÅ„.",
     );
     return;
   }
@@ -5532,25 +5830,25 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
   try {
     const releaserId = interaction.user.id;
 
-    // Przywróć oryginalną kategorię jeśli istnieje
+    // PrzywrÃ³Ä‡ oryginalnÄ… kategoriÄ™ jeÅ›li istnieje
     if (ticketData.originalCategoryId) {
       const originalCategory = await client.channels.fetch(ticketData.originalCategoryId).catch(() => null);
       
       if (originalCategory) {
         await ch.setParent(ticketData.originalCategoryId).catch((err) => {
-          console.error("Błąd przywracania oryginalnej kategorii:", err);
+          console.error("BÅ‚Ä…d przywracania oryginalnej kategorii:", err);
         });
-        console.log(`Przywrócono ticket ${channelId} do oryginalnej kategorii ${ticketData.originalCategoryId}`);
+        console.log(`PrzywrÃ³cono ticket ${channelId} do oryginalnej kategorii ${ticketData.originalCategoryId}`);
       } else {
         console.error("Nie znaleziono oryginalnej kategorii:", ticketData.originalCategoryId);
       }
     }
 
-    // Przywróć uprawnienia w zależności od oryginalnej kategorii
+    // PrzywrÃ³Ä‡ uprawnienia w zaleÅ¼noÅ›ci od oryginalnej kategorii
     if (ticketData.originalCategoryId) {
       const categoryId = ticketData.originalCategoryId;
       
-      // Zakup 0-20 - wszystkie rangi widzą
+      // Zakup 0-20 - wszystkie rangi widzÄ…
       if (categoryId === "1449526840942268526") {
         await ch.permissionOverwrites.set([
           { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -5569,7 +5867,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         ]);
       }
-      // Zakup 50-100 - limit 20 i 50 nie widzą
+      // Zakup 50-100 - limit 20 i 50 nie widzÄ…
       else if (categoryId === "1449451716129984595") {
         await ch.permissionOverwrites.set([
           { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -5584,7 +5882,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         ]);
       }
-      // Sprzedaż - wszystkie rangi widzą
+      // SprzedaÅ¼ - wszystkie rangi widzÄ…
       else if (categoryId === "1449455848043708426") {
         await ch.permissionOverwrites.set([
           { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -5594,7 +5892,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         ]);
       }
-      // Inne - wszystkie rangi widzą
+      // Inne - wszystkie rangi widzÄ…
       else if (categoryId === "1449527585271976131") {
         await ch.permissionOverwrites.set([
           { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -5606,7 +5904,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       }
     }
 
-    // Przywróć dostęp właścicielowi ticketu - zawsze musi widzieć
+    // PrzywrÃ³Ä‡ dostÄ™p wÅ‚aÅ›cicielowi ticketu - zawsze musi widzieÄ‡
     if (ticketData && ticketData.userId) {
       await ch.permissionOverwrites.edit(ticketData.userId, {
         ViewChannel: true,
@@ -5615,7 +5913,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       }).catch(() => null);
     }
 
-    // Usuń uprawnienia osoby przejmującej
+    // UsuÅ„ uprawnienia osoby przejmujÄ…cej
     if (ticketData.claimedBy) {
       await ch.permissionOverwrites.delete(ticketData.claimedBy).catch(() => null);
     }
@@ -5628,10 +5926,10 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, null).catch(() => null);
     }
 
-    // log do logi-ticket + backup wiadomości przed czyszczeniem
+    // log do logi-ticket + backup wiadomoÅ›ci przed czyszczeniem
     try {
       const logCh = await getLogiTicketChannel(interaction.guild);
-      // backup wiadomości przed usunięciem
+      // backup wiadomoÅ›ci przed usuniÄ™ciem
       let backupAttachment = null;
       try {
         const messages = await ch.messages.fetch({ limit: 100 }).catch(() => null);
@@ -5641,7 +5939,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
             const ts = new Date(m.createdTimestamp).toISOString();
             const author = `${m.author.tag} (${m.author.id})`;
             const content = (m.content || "").replace(/\n/g, " ");
-            const attachments = m.attachments?.size ? ` [załączniki: ${Array.from(m.attachments.values()).map((a) => a.url).join(", ")}]` : "";
+            const attachments = m.attachments?.size ? ` [zaÅ‚Ä…czniki: ${Array.from(m.attachments.values()).map((a) => a.url).join(", ")}]` : "";
             return `[${ts}] ${author}: ${content}${attachments}`;
           });
           const buf = Buffer.from(lines.join("\n"), "utf8");
@@ -5654,8 +5952,8 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       if (logCh) {
         const logEmbed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription(`> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>`)
-          .setFooter({ text: `Kanał: ${ch.name}` })
+          .setDescription(`> \`ðŸ”“\` Ã— Ticket zwolniony przez <@${interaction.user.id}>`)
+          .setFooter({ text: `KanaÅ‚: ${ch.name}` })
           .setTimestamp();
         const payload = { embeds: [logEmbed] };
         if (backupAttachment) payload.files = [backupAttachment];
@@ -5665,7 +5963,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       console.error("Log unclaim failed:", e);
     }
 
-    // wyczyść historię kanału od czasu przejęcia do teraz (zostawiając samą wiadomość o przejęciu)
+    // wyczyÅ›Ä‡ historiÄ™ kanaÅ‚u od czasu przejÄ™cia do teraz (zostawiajÄ…c samÄ… wiadomoÅ›Ä‡ o przejÄ™ciu)
     try {
       let claimMsg = null;
       if (ticketData.lastClaimMsgId) {
@@ -5685,32 +5983,32 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
         }
       }
     } catch (e) {
-      console.error("Nie udało się wyczyścić historii kanału po odprzejęciu:", e);
+      console.error("Nie udaÅ‚o siÄ™ wyczyÅ›ciÄ‡ historii kanaÅ‚u po odprzejÄ™ciu:", e);
     }
 
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>`);
+      .setDescription(`> \`ðŸ”“\` Ã— Ticket zostaÅ‚ zwolniony przez <@${interaction.user.id}>`);
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
       await interaction.deleteReply().catch(() => null);
     }
   } catch (err) {
-    console.error("Błąd przy unclaim:", err);
-    await replyEphemeral("> \`❌\` Wystąpił błąd podczas odprzejmowania ticketu.");
+    console.error("BÅ‚Ä…d przy unclaim:", err);
+    await replyEphemeral("> \`âŒ\` WystÄ…piÅ‚ bÅ‚Ä…d podczas odprzejmowania ticketu.");
   }
 }
 
 async function showSprzedazModal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId("modal_sprzedaz")
-    .setTitle("Informacje dot. zgłoszenia.");
+    .setTitle("Informacje dot. zgÅ‚oszenia.");
 
   const coInput = new TextInputBuilder()
     .setCustomId("co_sprzedac")
-    .setLabel("Co chcesz sprzedać?")
-    .setPlaceholder("Przykład: 100k$")
+    .setLabel("Co chcesz sprzedaÄ‡?")
+    .setPlaceholder("PrzykÅ‚ad: 100k$")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
@@ -5718,14 +6016,14 @@ async function showSprzedazModal(interaction) {
     .setCustomId("serwer")
     .setLabel("Na jakim serwerze?")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Anarchia")
+    .setPlaceholder("PrzykÅ‚ad: Anarchia")
     .setRequired(true);
 
   const ileInput = new TextInputBuilder()
     .setCustomId("ile")
     .setLabel("Ile oczekujesz?")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: 20zł")
+    .setPlaceholder("PrzykÅ‚ad: 20zÅ‚")
     .setRequired(true);
 
   modal.addComponents(
@@ -5744,9 +6042,9 @@ async function showOdbiorModal(interaction) {
 
   const codeInput = new TextInputBuilder()
     .setCustomId("reward_code")
-    .setLabel("Wpisz kod aby odberać nagrode!")
+    .setLabel("Wpisz kod aby odberaÄ‡ nagrode!")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Tutaj wpisz kod który otrzymałeś na pv")
+    .setPlaceholder("Tutaj wpisz kod ktÃ³ry otrzymaÅ‚eÅ› na pv")
     .setRequired(true)
     .setMaxLength(64);
 
@@ -5758,7 +6056,7 @@ async function showOdbiorModal(interaction) {
 async function showInneModal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId("modal_inne")
-    .setTitle("Informacje dot. zgłoszenia.");
+    .setTitle("Informacje dot. zgÅ‚oszenia.");
 
   const sprawaInput = new TextInputBuilder()
     .setCustomId("sprawa")
@@ -5778,21 +6076,89 @@ async function handleModalSubmit(interaction) {
 
   const cid = interaction.customId || "";
 
-  // quiz do przejęcia ticketu
+  // quiz do przejÄ™cia ticketu
   if (cid.startsWith("claim_quiz_")) {
     const data = pendingClaimQuiz.get(cid);
     if (!data || data.userId !== interaction.user.id) {
-      await interaction.reply({ content: "> `❌` × Ta weryfikacja wygasła. Kliknij **Przejmij** ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      await interaction.reply({ content: "> `âŒ` Ã— Ta weryfikacja wygasÅ‚a. Kliknij **Przejmij** ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
       return;
     }
     const answer = (interaction.fields.getTextInputValue("claim_answer") || "").trim();
     if (answer !== data.answer) {
-      await interaction.reply({ content: "> `❌` × Zła odpowiedź. Spróbuj ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      await interaction.reply({ content: "> `âŒ` Ã— ZÅ‚a odpowiedÅº. SprÃ³buj ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
       pendingClaimQuiz.delete(cid);
       return;
     }
     pendingClaimQuiz.delete(cid);
     await ticketClaimCommon(interaction, data.channelId, { skipQuiz: true });
+    return;
+  }
+
+  // captcha dla /autoprzejmij wlacz
+  if (cid.startsWith("autoprzejmij_quiz_")) {
+    const data = pendingAutoPrzejmijQuiz.get(cid);
+    if (!data || data.userId !== interaction.user.id) {
+      await interaction
+        .reply({
+          content: "> `âŒ` Ã— Ta weryfikacja wygasla. Uzyj **/autoprzejmij status:wlacz** ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        })
+        .catch(() => null);
+      return;
+    }
+
+    const answer = (interaction.fields.getTextInputValue("autoprzejmij_answer") || "").trim();
+    if (answer !== data.answer) {
+      pendingAutoPrzejmijQuiz.delete(cid);
+      await interaction
+        .reply({
+          content: "> `âŒ` Ã— Zla odpowiedz. Sprobuj ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        })
+        .catch(() => null);
+      return;
+    }
+
+    pendingAutoPrzejmijQuiz.delete(cid);
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+
+    const cfg = {
+      enabled: true,
+      ownerId: data.ownerId,
+      ownerName: data.ownerName || interaction.member?.displayName || interaction.user.username,
+      enabledAt: Date.now(),
+    };
+    autoPrzejmijSettings.set(data.guildId, cfg);
+    scheduleSavePersistentState();
+
+    const stats = await runAutoPrzejmijSweep(
+      interaction.guild,
+      cfg.ownerId,
+      cfg.ownerName,
+      null,
+    ).catch((err) => {
+      console.error("[autoprzejmij] Blad sweep po wlaczeniu:", err);
+      return {
+        claimedCount: 0,
+        skippedNonPurchase: 0,
+        skippedClaimed: 0,
+        skippedLocked: 0,
+        skippedArchived: 0,
+        staleRemoved: 0,
+        errorCount: 1,
+        claimedChannels: [],
+        missingPurchaseCategories: false,
+      };
+    });
+
+    await interaction
+      .editReply({
+        content: formatAutoPrzejmijSummary(
+          stats,
+          "> `âœ…` Ã— Autoprzejmowanie zostalo **wlaczone**.",
+        ),
+      })
+      .catch(() => null);
     return;
   }
 
@@ -5811,13 +6177,13 @@ async function handleModalSubmit(interaction) {
 
       if (isNaN(kwota) || kwota <= 0) {
         await interaction.reply({
-          content: "> `❌` × Podaj **poprawną** kwotę w PLN.",
+          content: "> `âŒ` Ã— Podaj **poprawnÄ…** kwotÄ™ w PLN.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Zapisz kwotę i pokaż menu z wyborem trybu i metody
+      // Zapisz kwotÄ™ i pokaÅ¼ menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
 
@@ -5832,13 +6198,13 @@ async function handleModalSubmit(interaction) {
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder("Wybierz metodÄ™ pÅ‚atnoÅ›ci...")
         .addOptions(
           { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
           { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zÅ‚)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
           { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
           { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
@@ -5847,9 +6213,9 @@ async function handleModalSubmit(interaction) {
         .setColor(COLOR_BLUE)
         .setDescription(
           "```\n" +
-          "🔢 New Shop × Obliczanie\n" +
+          "ðŸ”¢ New Shop Ã— Obliczanie\n" +
           "```\n" +
-          `> \`💵\` × **Wybrana kwota:** \`${kwota.toFixed(2)}zł\`\n> \`❗\` × Wybierz serwer i metodę płatności __poniżej:__`);
+          `> \`ðŸ’µ\` Ã— **Wybrana kwota:** \`${kwota.toFixed(2)}zÅ‚\`\n> \`â—\` Ã— Wybierz serwer i metodÄ™ pÅ‚atnoÅ›ci __poniÅ¼ej:__`);
 
       await interaction.reply({
         embeds: [embed],
@@ -5860,16 +6226,16 @@ async function handleModalSubmit(interaction) {
         flags: [MessageFlags.Ephemeral]
       });
     } catch (error) {
-      console.error("Błąd w modal_ile_otrzymam:", error);
+      console.error("BÅ‚Ä…d w modal_ile_otrzymam:", error);
       await interaction.reply({
-        content: "> `❌` × **Wystąpił** błąd podczas przetwarzania. Spróbuj **ponownie**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas przetwarzania. SprÃ³buj **ponownie**.",
         flags: [MessageFlags.Ephemeral]
       });
     }
     return;
   }
 
-  // KALKULATOR: ile muszę dać?
+  // KALKULATOR: ile muszÄ™ daÄ‡?
   if (interaction.customId === "modal_ile_musze_dac") {
     try {
       const walutaStr = interaction.fields.getTextInputValue("waluta");
@@ -5877,13 +6243,13 @@ async function handleModalSubmit(interaction) {
 
       if (!waluta || waluta <= 0 || waluta > 999_000_000) {
         await interaction.reply({
-          content: "> `❌` × Podaj **poprawną** ilość waluty (1–999 000 000, możesz użyć k/m).",
+          content: "> `âŒ` Ã— Podaj **poprawnÄ…** iloÅ›Ä‡ waluty (1â€“999 000 000, moÅ¼esz uÅ¼yÄ‡ k/m).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Zapisz walutę i pokaż menu z wyborem trybu i metody
+      // Zapisz walutÄ™ i pokaÅ¼ menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
 
@@ -5898,13 +6264,13 @@ async function handleModalSubmit(interaction) {
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder("Wybierz metodÄ™ pÅ‚atnoÅ›ci...")
         .addOptions(
           { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
           { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
           { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
+          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zÅ‚)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
           { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
           { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
         );
@@ -5913,9 +6279,9 @@ async function handleModalSubmit(interaction) {
         .setColor(COLOR_BLUE)
         .setDescription(
           "```\n" +
-          "🔢 New Shop × Obliczanie\n" +
+          "ðŸ”¢ New Shop Ã— Obliczanie\n" +
           "```\n" +
-          `> \`💲\` × **Wybrana ilość waluty:** \`${formatShortWaluta(waluta)}\`\n> \`❗\` × Wybierz serwer i metodę płatności __poniżej:__`);
+          `> \`ðŸ’²\` Ã— **Wybrana iloÅ›Ä‡ waluty:** \`${formatShortWaluta(waluta)}\`\n> \`â—\` Ã— Wybierz serwer i metodÄ™ pÅ‚atnoÅ›ci __poniÅ¼ej:__`);
 
       await interaction.reply({
         embeds: [embed],
@@ -5926,9 +6292,9 @@ async function handleModalSubmit(interaction) {
         flags: [MessageFlags.Ephemeral]
       });
     } catch (error) {
-      console.error("Błąd w modal_ile_musze_dac:", error);
+      console.error("BÅ‚Ä…d w modal_ile_musze_dac:", error);
       await interaction.reply({
-        content: "> \`❌\` **Wystąpił błąd podczas przetwarzania. Spróbuj ponownie.**",
+        content: "> \`âŒ\` **WystÄ…piÅ‚ bÅ‚Ä…d podczas przetwarzania. SprÃ³buj ponownie.**",
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -5950,7 +6316,7 @@ async function handleModalSubmit(interaction) {
     if (!record) {
       await interaction.reply({
         content:
-          "> \`❌\` **Nie mogę znaleźć zapisanego zadania weryfikacji (spróbuj ponownie).**",
+          "> \`âŒ\` **Nie mogÄ™ znaleÅºÄ‡ zapisanego zadania weryfikacji (sprÃ³buj ponownie).**",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -5959,7 +6325,7 @@ async function handleModalSubmit(interaction) {
     if (record.userId !== interaction.user.id) {
       await interaction.reply({
         content:
-          "> \`❌\` **Tylko użytkownik, który kliknął przycisk, może rozwiązać tę zagadkę.**",
+          "> \`âŒ\` **Tylko uÅ¼ytkownik, ktÃ³ry kliknÄ…Å‚ przycisk, moÅ¼e rozwiÄ…zaÄ‡ tÄ™ zagadkÄ™.**",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -5972,7 +6338,7 @@ async function handleModalSubmit(interaction) {
 
     if (Number.isNaN(numeric)) {
       await interaction.reply({
-        content: "\`❌\` **Nieprawidłowa odpowiedź (powinna być liczbą).**",
+        content: "\`âŒ\` **NieprawidÅ‚owa odpowiedÅº (powinna byÄ‡ liczbÄ…).**",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -5980,7 +6346,7 @@ async function handleModalSubmit(interaction) {
 
     if (numeric !== record.answer) {
       await interaction.reply({
-        content: "> \`❌\` × **Źle! Nieprawidłowy wynik. Spróbuj jeszcze raz.**",
+        content: "> \`âŒ\` Ã— **Å¹le! NieprawidÅ‚owy wynik. SprÃ³buj jeszcze raz.**",
         flags: [MessageFlags.Ephemeral],
       });
       // remove record so they can request a new puzzle
@@ -6018,7 +6384,7 @@ async function handleModalSubmit(interaction) {
         verificationRoles.set(guild.id, roleId);
         scheduleSavePersistentState();
         console.log(
-          `Dynamicznie ustawiono rolę weryfikacji dla guild ${guild.id}: ${role.name} (${roleId})`,
+          `Dynamicznie ustawiono rolÄ™ weryfikacji dla guild ${guild.id}: ${role.name} (${roleId})`,
         );
       } else {
         console.log(
@@ -6030,7 +6396,7 @@ async function handleModalSubmit(interaction) {
     if (!roleId) {
       await interaction.reply({
         content:
-          "✅ Poprawnie! Niestety rola weryfikacji nie została znaleziona. Skontaktuj się z administracją.",
+          "âœ… Poprawnie! Niestety rola weryfikacji nie zostaÅ‚a znaleziona. Skontaktuj siÄ™ z administracjÄ….",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6039,17 +6405,17 @@ async function handleModalSubmit(interaction) {
     try {
       // give role
       const member = await guild.members.fetch(interaction.user.id);
-      await member.roles.add(roleId, "Przejście weryfikacji");
+      await member.roles.add(roleId, "PrzejÅ›cie weryfikacji");
 
       // prepare DM embed (as requested)
       const dmEmbed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
         .setDescription(
           "```\n" +
-          "🛒 New Shop × WERYFIKACJA\n" +
+          "ðŸ›’ New Shop Ã— WERYFIKACJA\n" +
           "```\n" +
-          "`✨` Gratulacje!\n\n" +
-          "`📝` Pomyślnie przeszedłeś weryfikacje na naszym serwerze discord życzymy udanych zakupów!",
+          "`âœ¨` Gratulacje!\n\n" +
+          "`ðŸ“` PomyÅ›lnie przeszedÅ‚eÅ› weryfikacje na naszym serwerze discord Å¼yczymy udanych zakupÃ³w!",
         )
         .setTimestamp();
 
@@ -6058,24 +6424,24 @@ async function handleModalSubmit(interaction) {
         await interaction.user.send({ embeds: [dmEmbed] });
         // ephemeral confirmation (not public)
         await interaction.reply({
-          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
+          content: "> \`âœ…\` Ã— ZostaÅ‚eÅ› pomyÅ›lnie zweryfikowany",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (dmError) {
-        console.error("Nie udało się wysłać DM po weryfikacji:", dmError);
+        console.error("Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ DM po weryfikacji:", dmError);
         await interaction.reply({
-          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
+          content: "> \`âœ…\` Ã— ZostaÅ‚eÅ› pomyÅ›lnie zweryfikowany",
           flags: [MessageFlags.Ephemeral],
         });
       }
 
       console.log(
-        `Użytkownik ${interaction.user.username} przeszedł weryfikację na serwerze ${guild.id}`,
+        `UÅ¼ytkownik ${interaction.user.username} przeszedÅ‚ weryfikacjÄ™ na serwerze ${guild.id}`,
       );
     } catch (error) {
-      console.error("Błąd przy nadawaniu roli po weryfikacji:", error);
+      console.error("BÅ‚Ä…d przy nadawaniu roli po weryfikacji:", error);
       await interaction.reply({
-        content: "> \`❌\` **Wystąpił błąd przy nadawaniu roli.**",
+        content: "> \`âŒ\` **WystÄ…piÅ‚ bÅ‚Ä…d przy nadawaniu roli.**",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -6092,17 +6458,17 @@ async function handleModalSubmit(interaction) {
     if (!codeData) {
       await interaction.reply({
         content:
-          "❌ **Nieprawidłowy kod!**",
+          "âŒ **NieprawidÅ‚owy kod!**",
         flags: [MessageFlags.Ephemeral],
       });
       return;
     }
 
-    // Sprawdź typ kodu
+    // SprawdÅº typ kodu
     if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
       await interaction.reply({
         content:
-          "❌ Kod na 50k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
+          "âŒ Kod na 50k$ moÅ¼na wpisaÄ‡ jedynie klikajÄ…c kategoriÄ™ 'Nagroda za zaproszenia' w TicketPanel i wpisujÄ…c tam kod!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6110,7 +6476,7 @@ async function handleModalSubmit(interaction) {
 
     if (codeData.used) {
       await interaction.reply({
-        content: "> `❌` × **Kod** został już wykorzystany!",
+        content: "> `âŒ` Ã— **Kod** zostaÅ‚ juÅ¼ wykorzystany!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6121,7 +6487,7 @@ async function handleModalSubmit(interaction) {
       await db.deleteActiveCode(enteredCode);
       scheduleSavePersistentState();
       await interaction.reply({
-        content: "> `❌` × **Kod** wygasł!",
+        content: "> `âŒ` Ã— **Kod** wygasÅ‚!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6138,18 +6504,18 @@ async function handleModalSubmit(interaction) {
 
     const redeemEmbed = new EmbedBuilder()
       .setColor(0xd4af37)
-      .setTitle("\`📉\` WYKORZYSTAŁEŚ KOD RABATOWY")
+      .setTitle("\`ðŸ“‰\` WYKORZYSTAÅEÅš KOD RABATOWY")
       .setDescription(
         "```\n" +
         enteredCode +
         "\n```\n" +
-        `> \`💸\` × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
+        `> \`ðŸ’¸\` Ã— **OtrzymaÅ‚eÅ›:** \`-${codeData.discount}%\`\n`,
       )
       .setTimestamp();
 
     await interaction.reply({ embeds: [redeemEmbed] });
     console.log(
-      `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
+      `UÅ¼ytkownik ${interaction.user.username} odebraÅ‚ kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
     );
     return;
   }
@@ -6165,7 +6531,7 @@ async function handleModalSubmit(interaction) {
       .catch(() => null);
     if (!channel) {
       await interaction.reply({
-        content: "> `❌` × **Błąd** z próbą odnalezienia **kanału**.",
+        content: "> `âŒ` Ã— **BÅ‚Ä…d** z prÃ³bÄ… odnalezienia **kanaÅ‚u**.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6178,7 +6544,7 @@ async function handleModalSubmit(interaction) {
 
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6189,7 +6555,7 @@ async function handleModalSubmit(interaction) {
       !isAdminOrSeller(interaction.member)
     ) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6201,13 +6567,13 @@ async function handleModalSubmit(interaction) {
       // send DM to user
 
       await interaction.reply({
-        content: `✅ Zmieniono nazwę ticketu na \`${newName}\`.`,
+        content: `âœ… Zmieniono nazwÄ™ ticketu na \`${newName}\`.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
-      console.error("Błąd zmiany nazwy ticketu:", err);
+      console.error("BÅ‚Ä…d zmiany nazwy ticketu:", err);
       await interaction.reply({
-        content: "> `❌` × **Nie udało się** zmienić nazwy **ticketu**.",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** zmieniÄ‡ nazwy **ticketu**.",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -6224,7 +6590,7 @@ async function handleModalSubmit(interaction) {
       .catch(() => null);
     if (!channel) {
       await interaction.reply({
-        content: "> `❌` × **Kanał** nie znaleziony.",
+        content: "> `âŒ` Ã— **KanaÅ‚** nie znaleziony.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6234,7 +6600,7 @@ async function handleModalSubmit(interaction) {
 
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6245,7 +6611,7 @@ async function handleModalSubmit(interaction) {
       !isAdminOrSeller(interaction.member)
     ) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6256,7 +6622,7 @@ async function handleModalSubmit(interaction) {
       userInput.match(/<@!?(\d+)>/) || userInput.match(/(\d{17,20})/);
     if (!match) {
       await interaction.reply({
-        content: "> `❌` × **Nieprawidłowy** format użytkownika. Podaj **@mention** lub **ID**.",
+        content: "> `âŒ` Ã— **NieprawidÅ‚owy** format uÅ¼ytkownika. Podaj **@mention** lub **ID**.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6269,13 +6635,13 @@ async function handleModalSubmit(interaction) {
         ReadMessageHistory: true,
       });
       await interaction.reply({
-        content: `✅ Dodano <@${userIdToAdd}> do ticketu.`,
+        content: `âœ… Dodano <@${userIdToAdd}> do ticketu.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
-      console.error("Błąd dodawania użytkownika do ticketu:", err);
+      console.error("BÅ‚Ä…d dodawania uÅ¼ytkownika do ticketu:", err);
       await interaction.reply({
-        content: "> `❌` × **Nie udało się** dodać użytkownika (sprawdź uprawnienia).",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** dodaÄ‡ uÅ¼ytkownika (sprawdÅº uprawnienia).",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -6292,7 +6658,7 @@ async function handleModalSubmit(interaction) {
       .catch(() => null);
     if (!channel) {
       await interaction.reply({
-        content: "> `❌` × **Kanał** nie znaleziony.",
+        content: "> `âŒ` Ã— **KanaÅ‚** nie znaleziony.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6302,7 +6668,7 @@ async function handleModalSubmit(interaction) {
 
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6313,7 +6679,7 @@ async function handleModalSubmit(interaction) {
       !isAdminOrSeller(interaction.member)
     ) {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6323,7 +6689,7 @@ async function handleModalSubmit(interaction) {
       userInput.match(/<@!?(\d+)>/) || userInput.match(/(\d{17,20})/);
     if (!match) {
       await interaction.reply({
-        content: "> `❌` × **Nieprawidłowy** format użytkownika. Podaj **@mention** lub **ID**.",
+        content: "> `âŒ` Ã— **NieprawidÅ‚owy** format uÅ¼ytkownika. Podaj **@mention** lub **ID**.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -6334,13 +6700,13 @@ async function handleModalSubmit(interaction) {
         .delete(userIdToRemove)
         .catch(() => null);
       await interaction.reply({
-        content: `✅ Usunięto <@${userIdToRemove}> z ticketu.`,
+        content: `âœ… UsuniÄ™to <@${userIdToRemove}> z ticketu.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
-      console.error("Błąd usuwania użytkownika z ticketu:", err);
+      console.error("BÅ‚Ä…d usuwania uÅ¼ytkownika z ticketu:", err);
       await interaction.reply({
-        content: "> `❌` × **Nie udało się** usunąć użytkownika (sprawdź uprawnienia).",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** usunÄ…Ä‡ uÅ¼ytkownika (sprawdÅº uprawnienia).",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -6367,10 +6733,10 @@ async function handleModalSubmit(interaction) {
         "oczekiwana_waluta",
       );
 
-      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
+      const lettersOnly = /^[A-Za-zÄ„Ä…Ä†Ä‡Ä˜Ä™ÅÅ‚ÅƒÅ„Ã“Ã³ÅšÅ›Å¹ÅºÅ»Å¼\s-]+$/;
       if (!lettersOnly.test(serwer)) {
         await interaction.reply({
-          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
+          content: "> `âŒ` Ã— Wpisz nazwÄ™ serwera literami (bez cyfr).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6378,20 +6744,20 @@ async function handleModalSubmit(interaction) {
       let kwotaNum = parseFloat(kwotaRaw.replace(/,/g, '.'));
       if (Number.isNaN(kwotaNum)) {
         await interaction.reply({
-          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5` (zł).",
+          content: "> `âŒ` Ã— Podaj kwotÄ™ jako liczbÄ™, np. `20` lub `20.5` (zÅ‚).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
       if (!lettersOnly.test(platnosc)) {
         await interaction.reply({
-          content: "> `❌` × Napisz metodę płatności literami, bez cyfr.",
+          content: "> `âŒ` Ã— Napisz metodÄ™ pÅ‚atnoÅ›ci literami, bez cyfr.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Użyj już sparsowanej kwoty (kwotaNum) – zapewnia liczbową wartość
+      // UÅ¼yj juÅ¼ sparsowanej kwoty (kwotaNum) â€“ zapewnia liczbowÄ… wartoÅ›Ä‡
       if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
 
       // routing to categories: treat >100 as 100-200+ (user requested)
@@ -6417,16 +6783,16 @@ async function handleModalSubmit(interaction) {
 
       if (kwotaNum < 5) {
         await interaction.reply({
-          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
+          content: "> `âŒ` Ã— Minimalna kwota zakupu to **5zÅ‚**.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${platnosc}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Serwer:** \`${serwer}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **Kwota:** \`${kwotaNum}zÅ‚\`\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **Metoda pÅ‚atnoÅ›ci:** \`${platnosc}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **ChciaÅ‚by zakupiÄ‡:** \`${oczekiwanaWaluta}\``;
       break;
     }
     case "modal_sprzedaz": {
@@ -6434,24 +6800,24 @@ async function handleModalSubmit(interaction) {
       const serwer = interaction.fields.getTextInputValue("serwer");
       const ile = interaction.fields.getTextInputValue("ile");
       const kwotaSprzedaz = parseFloat(ile.replace(/,/g, '.'));
-      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
+      const lettersOnly = /^[A-Za-zÄ„Ä…Ä†Ä‡Ä˜Ä™ÅÅ‚ÅƒÅ„Ã“Ã³ÅšÅ›Å¹ÅºÅ»Å¼\s-]+$/;
       if (!lettersOnly.test(serwer)) {
         await interaction.reply({
-          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
+          content: "> `âŒ` Ã— Wpisz nazwÄ™ serwera literami (bez cyfr).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
       if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
         await interaction.reply({
-          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
+          content: "> `âŒ` Ã— Minimalna kwota sprzedaÅ¼y to **10zÅ‚**.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
       if (Number.isNaN(kwotaSprzedaz)) {
         await interaction.reply({
-          content: "> `❌` × Podaj kwotę jako liczbę, np. `25` lub `25.5` (zł).",
+          content: "> `âŒ` Ã— Podaj kwotÄ™ jako liczbÄ™, np. `25` lub `25.5` (zÅ‚).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6459,16 +6825,16 @@ async function handleModalSubmit(interaction) {
 
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
-      ticketTypeLabel = "SPRZEDAŻ";
+      ticketTypeLabel = "SPRZEDAÅ»";
       if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
         await interaction.reply({
-          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
+          content: "> `âŒ` Ã— Minimalna kwota sprzedaÅ¼y to **10zÅ‚**.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${co}\`\n> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n> <a:arrowwhite:1469100658606211233> × **Oczekiwana kwota:** \`${ile}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Co chce sprzedaÄ‡:** \`${co}\`\n> <a:arrowwhite:1469100658606211233> Ã— **Serwer:** \`${serwer}\`\n> <a:arrowwhite:1469100658606211233> Ã— **Oczekiwana kwota:** \`${ile}\``;
       break;
     }
     case "modal_odbior": {
@@ -6478,7 +6844,7 @@ async function handleModalSubmit(interaction) {
 
       if (!enteredCode) {
         await interaction.reply({
-          content: "> `❌` × **Nie podałeś** kodu.",
+          content: "> `âŒ` Ã— **Nie podaÅ‚eÅ›** kodu.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6489,20 +6855,20 @@ async function handleModalSubmit(interaction) {
       if (!codeData) {
         await interaction.reply({
           content:
-            "> \`❌\` **Nieprawidłowy kod!**",
+            "> \`âŒ\` **NieprawidÅ‚owy kod!**",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Sprawdź czy to kod na nagrodę
+      // SprawdÅº czy to kod na nagrodÄ™
       if (
         codeData.type !== "invite_cash" &&
         codeData.type !== "invite_reward"
       ) {
         await interaction.reply({
           content:
-            "❌ Ten kod nie jest kodem nagrody za zaproszenia. Użyj go w odpowiedniej kategorii.",
+            "âŒ Ten kod nie jest kodem nagrody za zaproszenia. UÅ¼yj go w odpowiedniej kategorii.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6510,7 +6876,7 @@ async function handleModalSubmit(interaction) {
 
       if (codeData.used) {
         await interaction.reply({
-          content: "> `❌` × **Ten kod** został już użyty.",
+          content: "> `âŒ` Ã— **Ten kod** zostaÅ‚ juÅ¼ uÅ¼yty.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -6520,29 +6886,29 @@ async function handleModalSubmit(interaction) {
         activeCodes.delete(enteredCode);
         scheduleSavePersistentState();
         await interaction.reply({
-          content: "> `❌` × **Ten kod** wygasł.",
+          content: "> `âŒ` Ã— **Ten kod** wygasÅ‚.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Sprawdź czy kod należy do użytkownika
+      // SprawdÅº czy kod naleÅ¼y do uÅ¼ytkownika
       if (String(codeData.oderId) !== String(interaction.user.id)) {
         await interaction.reply({
           content:
-            "❌ Ten kod nie należy do Ciebie — zrealizować może tylko właściciel kodu (ten, który otrzymał go w DM).",
+            "âŒ Ten kod nie naleÅ¼y do Ciebie â€” zrealizowaÄ‡ moÅ¼e tylko wÅ‚aÅ›ciciel kodu (ten, ktÃ³ry otrzymaÅ‚ go w DM).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      // Oznacz kod jako użyty
+      // Oznacz kod jako uÅ¼yty
       codeData.used = true;
       activeCodes.delete(enteredCode);
       await db.deleteActiveCode(enteredCode);
       scheduleSavePersistentState();
 
-      // Stwórz ticket typu ODBIÓR NAGRODY
+      // StwÃ³rz ticket typu ODBIÃ“R NAGRODY
       const ticketNumber = getNextTicketNumber(interaction.guildId);
       const categories = ticketCategories.get(interaction.guildId) || {};
       const user = interaction.user;
@@ -6554,10 +6920,10 @@ async function handleModalSubmit(interaction) {
         ? Math.floor(codeData.expiresAt / 1000)
         : null;
       const expiryLine = expiryTs
-        ? `\n> <a:arrowwhite:1469100658606211233> × **Kod wygasa za:** <t:${expiryTs}:R>`
+        ? `\n> <a:arrowwhite:1469100658606211233> Ã— **Kod wygasa za:** <t:${expiryTs}:R>`
         : "";
 
-      const formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
+      const formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> Ã— **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
 
       try {
         let parentToUse = categoryId;
@@ -6591,10 +6957,10 @@ async function handleModalSubmit(interaction) {
         };
         if (parentToUse) createOptions.parent = parentToUse;
 
-        // Specjalna obsługa dla kategorii "inne" - dodaj uprawnienia dla właściciela
+        // Specjalna obsÅ‚uga dla kategorii "inne" - dodaj uprawnienia dla wÅ‚aÅ›ciciela
         if (parentToUse && parentToUse === categories["inne"]) {
           createOptions.permissionOverwrites.push(
-            { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // właściciel serwera
+            { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // wÅ‚aÅ›ciciel serwera
           );
         }
 
@@ -6603,12 +6969,12 @@ async function handleModalSubmit(interaction) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-            `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
-            `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-            `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
-            `### ・ \`📋\` × Informacje z formularza:\n` +
+        `## \`ðŸ›’ NEW SHOP Ã— ${ticketTypeLabel}\`\n\n` +
+            `### ãƒ» \`ðŸ‘¤\` Ã— Informacje o kliencie:\n` +
+            `> <a:arrowwhite:1469100658606211233> Ã— **Ping:** <@${user.id}>\n` +
+            `> <a:arrowwhite:1469100658606211233> Ã— **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+            `> <a:arrowwhite:1469100658606211233> Ã— **ID:** \`${user.id}\`\n` +
+            `### ãƒ» \`ðŸ“‹\` Ã— Informacje z formularza:\n` +
             `${formInfo}`,
           )
           .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
@@ -6662,13 +7028,13 @@ async function handleModalSubmit(interaction) {
         }).catch(() => { });
 
         await interaction.reply({
-          content: `> \`✅\` × Ticket został stworzony <#${channel.id}>.`,
+          content: `> \`âœ…\` Ã— Ticket zostaÅ‚ stworzony <#${channel.id}>.`,
           flags: [MessageFlags.Ephemeral],
         });
       } catch (err) {
-        console.error("Błąd tworzenia ticketu (odbior):", err);
+        console.error("BÅ‚Ä…d tworzenia ticketu (odbior):", err);
         await interaction.reply({
-          content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketa**.",
+          content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas tworzenia **ticketa**.",
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -6680,7 +7046,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "konkurs-nagrody";
       ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -6689,7 +7055,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "INNE";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> Ã— **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -6710,19 +7076,19 @@ async function handleModalSubmit(interaction) {
           .catch(() => null);
         if (existingChannel) {
           await interaction.reply({
-            content: `❌ Masz już otwarty ticket: <#${chanId}> — zamknij go zanim otworzysz nowy.`,
+            content: `âŒ Masz juÅ¼ otwarty ticket: <#${chanId}> â€” zamknij go zanim otworzysz nowy.`,
             flags: [MessageFlags.Ephemeral],
           });
           return;
         } else {
-          // stale entry — remove it
+          // stale entry â€” remove it
           ticketOwners.delete(chanId);
           scheduleSavePersistentState();
         }
       }
     }
 
-    // find a fallback category when categoryId undefined — attempt some heuristics
+    // find a fallback category when categoryId undefined â€” attempt some heuristics
     let parentToUse = null;
     if (categoryId) {
       parentToUse = categoryId;
@@ -6755,7 +7121,7 @@ async function handleModalSubmit(interaction) {
       permissionOverwrites: [
         {
           id: interaction.guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel], // @everyone nie widzi ticketów
+          deny: [PermissionsBitField.Flags.ViewChannel], // @everyone nie widzi ticketÃ³w
         },
         {
           id: interaction.user.id,
@@ -6768,11 +7134,11 @@ async function handleModalSubmit(interaction) {
       ],
     };
 
-    // Dodaj rangi limitów w zależności od kategorii
+    // Dodaj rangi limitÃ³w w zaleÅ¼noÅ›ci od kategorii
     if (parentToUse) {
       const categoryId = parentToUse;
       
-      // Zakup 0-20 - wszystkie rangi widzą
+      // Zakup 0-20 - wszystkie rangi widzÄ…
       if (categoryId === "1449526840942268526") {
         createOptions.permissionOverwrites.push(
           { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
@@ -6789,7 +7155,7 @@ async function handleModalSubmit(interaction) {
           { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         );
       }
-      // Zakup 50-100 - limit 20 i 50 nie widzą
+      // Zakup 50-100 - limit 20 i 50 nie widzÄ…
       else if (categoryId === "1449451716129984595") {
         createOptions.permissionOverwrites.push(
           { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
@@ -6802,7 +7168,7 @@ async function handleModalSubmit(interaction) {
           { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         );
       }
-      // Sprzedaż - wszystkie rangi widzą
+      // SprzedaÅ¼ - wszystkie rangi widzÄ…
       else if (categoryId === "1449455848043708426") {
         createOptions.permissionOverwrites.push(
           { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
@@ -6811,10 +7177,10 @@ async function handleModalSubmit(interaction) {
           { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         );
       }
-      // Inne - tylko właściciel serwera widzi (oprócz właściciela ticketu)
+      // Inne - tylko wÅ‚aÅ›ciciel serwera widzi (oprÃ³cz wÅ‚aÅ›ciciela ticketu)
       else if (categoryId === "1449527585271976131") {
         createOptions.permissionOverwrites.push(
-          { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // właściciel serwera
+          { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // wÅ‚aÅ›ciciel serwera
         );
       }
     }
@@ -6826,12 +7192,12 @@ async function handleModalSubmit(interaction) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-        `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
-        `### ・ \`📋\` × Informacje z formularza:\n` +
+        `## \`ðŸ›’ NEW SHOP Ã— ${ticketTypeLabel}\`\n\n` +
+        `### ãƒ» \`ðŸ‘¤\` Ã— Informacje o kliencie:\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> Ã— **ID:** \`${user.id}\`\n` +
+        `### ãƒ» \`ðŸ“‹\` Ã— Informacje z formularza:\n` +
         `${formInfo}`,
       )
       .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 })) // avatar user po prawej
@@ -6899,17 +7265,25 @@ async function handleModalSubmit(interaction) {
         ticketMessageId: sentMsg.id,
       }).catch((e) => console.error("logTicketCreation error:", e));
     } catch (e) {
-      console.error("Błąd logowania utworzenia ticketu:", e);
+      console.error("BÅ‚Ä…d logowania utworzenia ticketu:", e);
     }
 
     await interaction.reply({
-      content: `> \`✅\` × Ticket został stworzony <#${channel.id}>`,
+      content: `> \`âœ…\` Ã— Ticket zostaÅ‚ stworzony <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
+
+    if (ticketType && ticketType.startsWith("zakup-")) {
+      setTimeout(() => {
+        maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) => {
+          console.error("[autoprzejmij] Blad auto-przejecia nowego ticketu:", err);
+        });
+      }, 500);
+    }
   } catch (error) {
-    console.error("Błąd tworzenia ticketu:", error);
+    console.error("BÅ‚Ä…d tworzenia ticketu:", error);
     await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketu**.",
+      content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas tworzenia **ticketu**.",
       flags: [MessageFlags.Ephemeral],
     });
   }
@@ -6937,7 +7311,7 @@ client.on(Events.MessageCreate, async (message) => {
         if (member && typeof member.timeout === "function") {
           const ms = 30 * 60 * 1000;
           await member
-            .timeout(ms, "Wysłanie linku Discord invite/discord.gg")
+            .timeout(ms, "WysÅ‚anie linku Discord invite/discord.gg")
             .catch(() => null);
         } else if (member && member.manageable) {
           // fallback: try to add a muted role named 'Muted' (best-effort)
@@ -6971,7 +7345,7 @@ client.on(Events.MessageCreate, async (message) => {
           }
         }
       } catch (err) {
-        console.error("Nie udało się dać muta/timeout po wysłaniu linka:", err);
+        console.error("Nie udaÅ‚o siÄ™ daÄ‡ muta/timeout po wysÅ‚aniu linka:", err);
       }
 
       // notify channel briefly
@@ -6982,7 +7356,7 @@ client.on(Events.MessageCreate, async (message) => {
             new EmbedBuilder()
               .setColor(COLOR_RED)
               .setDescription(
-                "• `❗` __**Wysyłanie linków Discord jest zabronione otrzymujesz mute na 30 minut**__",
+                "â€¢ `â—` __**WysyÅ‚anie linkÃ³w Discord jest zabronione otrzymujesz mute na 30 minut**__",
               ),
           ],
         });
@@ -6993,7 +7367,7 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
   } catch (e) {
-    console.error("Błąd podczas sprawdzania linków zaproszeń:", e);
+    console.error("BÅ‚Ä…d podczas sprawdzania linkÃ³w zaproszeÅ„:", e);
   }
 
   // ANTI-MASS-PING: delete message and timeout user for 1 hour if 5+ pings in one message
@@ -7018,7 +7392,7 @@ client.on(Events.MessageCreate, async (message) => {
         
         if (member && typeof member.timeout === "function") {
           const ms = 60 * 60 * 1000; // 1 hour
-          await member.timeout(ms, "Masowy ping - 5+ oznaczeń w jednej wiadomości");
+          await member.timeout(ms, "Masowy ping - 5+ oznaczeÅ„ w jednej wiadomoÅ›ci");
         } else {
           // fallback: try to add a muted role named 'Muted' (best-effort)
           let mutedRole = guild.roles.cache.find(
@@ -7037,14 +7411,14 @@ client.on(Events.MessageCreate, async (message) => {
           }
           
           if (mutedRole) {
-            await member.roles.add(mutedRole, "Masowy ping - 5+ oznaczeń");
+            await member.roles.add(mutedRole, "Masowy ping - 5+ oznaczeÅ„");
             
             // schedule removal in 1 hour
             setTimeout(async () => {
               try {
                 const guildMember = await guild.members.fetch(member.id).catch(() => null);
                 if (guildMember) {
-                  await guildMember.roles.remove(mutedRole, "Automatyczne usunięcie mute po 1h");
+                  await guildMember.roles.remove(mutedRole, "Automatyczne usuniÄ™cie mute po 1h");
                 }
               } catch (e) {
                 // ignore
@@ -7053,7 +7427,7 @@ client.on(Events.MessageCreate, async (message) => {
           }
         }
       } catch (err) {
-        console.error("Nie udało się dać muta/timeout po masowym pingu:", err);
+        console.error("Nie udaÅ‚o siÄ™ daÄ‡ muta/timeout po masowym pingu:", err);
       }
 
       // notify channel briefly
@@ -7064,7 +7438,7 @@ client.on(Events.MessageCreate, async (message) => {
             new EmbedBuilder()
               .setColor(COLOR_RED)
               .setDescription(
-                "• `❗`  **__Masowy ping jest niedozwolony otrzymujesz mute na 1 godzine__**",
+                "â€¢ `â—`  **__Masowy ping jest niedozwolony otrzymujesz mute na 1 godzine__**",
               ),
           ],
         });
@@ -7075,20 +7449,20 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
   } catch (e) {
-    console.error("Błąd podczas sprawdzania masowych pingów:", e);
+    console.error("BÅ‚Ä…d podczas sprawdzania masowych pingÃ³w:", e);
   }
 
   // Invalid-channel embeds (customized)
   const opinInvalidEmbed = new EmbedBuilder()
     .setColor(COLOR_RED)
     .setDescription(
-      `• \`❗\` __**Na tym kanale można wystawiać tylko opinie!**__`,
+      `â€¢ \`â—\` __**Na tym kanale moÅ¼na wystawiaÄ‡ tylko opinie!**__`,
     );
 
   const dropInvalidEmbed = new EmbedBuilder()
     .setColor(COLOR_RED)
     .setDescription(
-      `• \`❗\` __**Na tym kanale można losować tylko zniżki!**__`,
+      `â€¢ \`â—\` __**Na tym kanale moÅ¼na losowaÄ‡ tylko zniÅ¼ki!**__`,
     );
 
   try {
@@ -7098,7 +7472,7 @@ client.on(Events.MessageCreate, async (message) => {
 
       const dropChannelId = dropChannels.get(guildId);
       if (dropChannelId && message.channel.id === dropChannelId) {
-        // Usuń każdą wiadomość użytkownika (także wpisane "/drop"), zostaw tylko slash-command
+        // UsuÅ„ kaÅ¼dÄ… wiadomoÅ›Ä‡ uÅ¼ytkownika (takÅ¼e wpisane "/drop"), zostaw tylko slash-command
         if (!message.author.bot) {
           await message.delete().catch(() => null);
           return;
@@ -7117,7 +7491,7 @@ client.on(Events.MessageCreate, async (message) => {
         ? message.guild.channels.cache.find(
           (c) =>
             c.type === ChannelType.GuildText &&
-            (c.name === "❓-×┃sprawdz-zapro" ||
+            (c.name === "â“-Ã—â”ƒsprawdz-zapro" ||
               c.name.includes("sprawdz-zapro") ||
               c.name.includes("sprawdz-zaproszenia")),
         )
@@ -7131,7 +7505,7 @@ client.on(Events.MessageCreate, async (message) => {
       }
     }
   } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguł kanałów drop/opinia/zaproszenia:", e);
+    console.error("BÅ‚Ä…d przy egzekwowaniu reguÅ‚ kanaÅ‚Ã³w drop/opinia/zaproszenia:", e);
   }
 
   // Enforce zaproszenia-check-only channel rule:
@@ -7141,7 +7515,7 @@ client.on(Events.MessageCreate, async (message) => {
       ? message.guild.channels.cache.find(
         (c) =>
           c.type === ChannelType.GuildText &&
-          (c.name === "❓-×┃sprawdz-zapro" ||
+          (c.name === "â“-Ã—â”ƒsprawdz-zapro" ||
             c.name.includes("sprawdz-zapro") ||
             c.name.includes("sprawdz-zaproszenia")),
       )
@@ -7163,7 +7537,7 @@ client.on(Events.MessageCreate, async (message) => {
       }
     }
   } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguły kanału zaproszenia:", e);
+    console.error("BÅ‚Ä…d przy egzekwowaniu reguÅ‚y kanaÅ‚u zaproszenia:", e);
   }
 
   // If any message is sent in the specific legitcheck-rep channel
@@ -7172,7 +7546,7 @@ client.on(Events.MessageCreate, async (message) => {
     message.channel.id === REP_CHANNEL_ID &&
     !message.author.bot
   ) {
-    console.log(`[+rep] Otrzymano wiadomość na kanale legit-rep: ${message.content} od ${message.author.tag}`);
+    console.log(`[+rep] Otrzymano wiadomoÅ›Ä‡ na kanale legit-rep: ${message.content} od ${message.author.tag}`);
     try {
       // ignore empty messages or slash-like content
       if (!message.content || message.content.trim().length === 0) return;
@@ -7192,34 +7566,34 @@ client.on(Events.MessageCreate, async (message) => {
           .setColor(COLOR_BLUE)
           .setDescription(
             "```\n" +
-            "✅ New Shop × LEGIT CHECK\n" +
+            "âœ… New Shop Ã— LEGIT CHECK\n" +
             "```\n" +
             `<a:arrowwhite:1469100658606211233> **__Stop!__**\n` +
-            `<a:arrowwhite:1469100658606211233> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
+            `<a:arrowwhite:1469100658606211233> MoÅ¼esz wystawiÄ‡ nastÄ™pnego **legit repa** za \`${humanizeMs(remaining)}\`!`
           )
           .setTimestamp();
         message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
         return;
       }
 
-      // Wzorzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]
+      // Wzorzec: +rep @sprzedawca [sprzedaÅ‚/kupiÅ‚/wrÄ™czyÅ‚ nagrodÄ™] [ile] [serwer]
       const mentionPattern = /<@!?\d+>|@\S+/;
-      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
+      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedaÅ‚|sprzedal|kupiÅ‚|kupil|wrÄ™czyÅ‚\s+nagrodÄ™|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
       const hasMention = mentionPattern.test(messageContent);
       const isValidRep = repPattern.test(messageContent);
 
-      console.log(`[+rep] Otrzymano wiadomość: "${messageContent}" | hasMention=${hasMention} | valid=${isValidRep}`);
+      console.log(`[+rep] Otrzymano wiadomoÅ›Ä‡: "${messageContent}" | hasMention=${hasMention} | valid=${isValidRep}`);
 
       if (!hasMention) {
         try {
           await message.delete();
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
-            .setDescription(`• \`❗\` × __**Stosuj się do wzoru legit checka!**__`);
+            .setDescription(`â€¢ \`â—\` Ã— __**Stosuj siÄ™ do wzoru legit checka!**__`);
           const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
-          console.error("Błąd usuwania nieoznaczonego legit-rep:", err);
+          console.error("BÅ‚Ä…d usuwania nieoznaczonego legit-rep:", err);
         }
         return;
       }
@@ -7230,13 +7604,13 @@ client.on(Events.MessageCreate, async (message) => {
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
             .setDescription(
-              `• \`❗\` × __**Stosuj się do wzoru legit checka!**__`,
+              `â€¢ \`â—\` Ã— __**Stosuj siÄ™ do wzoru legit checka!**__`,
             );
 
           const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
           setTimeout(() => warnMsg.delete().catch(() => null), 8000);
         } catch (err) {
-          console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
+          console.error("BÅ‚Ä…d usuwania nieprawidÅ‚owego legit-rep:", err);
         }
         return;
       }
@@ -7246,12 +7620,12 @@ client.on(Events.MessageCreate, async (message) => {
       legitRepCooldown.set(message.author.id, now);
       console.log(`+rep otrzymany! Licznik: ${legitRepCount}`);
 
-      // Sprawdź czy istnieje ticket oczekujący na +rep od tego użytkownika
+      // SprawdÅº czy istnieje ticket oczekujÄ…cy na +rep od tego uÅ¼ytkownika
       try {
-        const senderId = message.author.id; // ID osoby która wysłała +rep
-        console.log(`[+rep] Sprawdzam tickety oczekujące na +rep od użytkownika ${senderId}`);
+        const senderId = message.author.id; // ID osoby ktÃ³ra wysÅ‚aÅ‚a +rep
+        console.log(`[+rep] Sprawdzam tickety oczekujÄ…ce na +rep od uÅ¼ytkownika ${senderId}`);
         
-        // Przeszukaj wszystkie tickety oczekujące na +rep
+        // Przeszukaj wszystkie tickety oczekujÄ…ce na +rep
         for (const [ticketChannelId, ticketData] of pendingTicketClose.entries()) {
           console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
           if (
@@ -7259,7 +7633,7 @@ client.on(Events.MessageCreate, async (message) => {
             ticketData.userId === senderId &&
             channel.id === ticketData.legitRepChannelId
           ) {
-            // Sprawdź czy w wiadomości +rep jest wzmianka o sprzedawcy/używającym komendę
+            // SprawdÅº czy w wiadomoÅ›ci +rep jest wzmianka o sprzedawcy/uÅ¼ywajÄ…cym komendÄ™
             const expectedUsername = ticketData.commandUsername;
             const expectedId = ticketData.commandUserId;
             const msgContent = message.content.trim();
@@ -7268,7 +7642,7 @@ client.on(Events.MessageCreate, async (message) => {
             const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
 
             if (mentionMatchesSeller || usernameIncluded) {
-              console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
+              console.log(`Znaleziono ticket ${ticketChannelId} - twÃ³rca ticketu ${senderId} wysÅ‚aÅ‚ +rep dla ${expectedUsername}`);
               const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
                 try {
@@ -7278,19 +7652,19 @@ client.on(Events.MessageCreate, async (message) => {
                     message.author.id,
                     ticketMeta,
                   ).catch((e) => console.error("archiveTicketOnClose error (+rep):", e));
-                  await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
+                  await ticketChannel.delete('Ticket zamkniÄ™ty po otrzymaniu +rep');
                   pendingTicketClose.delete(ticketChannelId);
                   ticketOwners.delete(ticketChannelId);
-                  console.log(`Ticket ${ticketChannelId} został zamknięty po +rep`);
+                  console.log(`Ticket ${ticketChannelId} zostaÅ‚ zamkniÄ™ty po +rep`);
                 } catch (closeErr) {
-                  console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
+                  console.error(`BÅ‚Ä…d zamykania ticketu ${ticketChannelId}:`, closeErr);
                 }
               }
             }
           }
         }
       } catch (ticketErr) {
-        console.error("Błąd sprawdzania ticketów oczekujących na +rep:", ticketErr);
+        console.error("BÅ‚Ä…d sprawdzania ticketÃ³w oczekujÄ…cych na +rep:", ticketErr);
       }
 
       // Use scheduled rename (respect cooldown)
@@ -7304,7 +7678,7 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
       infoCooldowns.set(message.author.id, Date.now());
-      console.log(`Wysyłam embed dla ${message.author.username}`);
+      console.log(`WysyÅ‚am embed dla ${message.author.username}`);
 
       // delete previous info message (if we posted one earlier in this channel) to move new one to bottom
       const prevId = repLastInfoMessage.get(channel.id);
@@ -7316,13 +7690,13 @@ client.on(Events.MessageCreate, async (message) => {
           }
         } catch (delErr) {
           console.warn(
-            "Nie udało się usunąć poprzedniej wiadomości info:",
+            "Nie udaÅ‚o siÄ™ usunÄ…Ä‡ poprzedniej wiadomoÅ›ci info:",
             delErr,
           );
         }
       }
 
-      // ID użytkownika
+      // ID uÅ¼ytkownika
       const userID = "1305200545979437129";
 
       let attachment = null;
@@ -7338,7 +7712,7 @@ client.on(Events.MessageCreate, async (message) => {
         imageUrl = "attachment://legit.gif";
       } catch (err) {
         console.warn(
-          "Nie udało się załadować lokalnego GIFa do legit embed:",
+          "Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ lokalnego GIFa do legit embed:",
           err,
         );
         attachment = null;
@@ -7348,12 +7722,12 @@ client.on(Events.MessageCreate, async (message) => {
         .setColor(COLOR_BLUE) // informational embed left color -> blue (rest is blue)
         .setDescription(
           "```\n" +
-          "✅ New Shop × LEGIT CHECK\n" +
+          "âœ… New Shop Ã— LEGIT CHECK\n" +
           "```\n" +
-          "- `📝` **× Jak napisać:**\n" +
-          `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]\`\n\n` +
-          "- `📋` **× Przykład:**\n" +
-          `> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n` +
+          "- `ðŸ“` **Ã— Jak napisaÄ‡:**\n" +
+          `> \`+rep @sprzedawca [sprzedaÅ‚/kupiÅ‚/wrÄ™czyÅ‚ nagrodÄ™] [co] [serwer]\`\n\n` +
+          "- `ðŸ“‹` **Ã— PrzykÅ‚ad:**\n" +
+          `> **+rep <@1305200545979437129> sprzedaÅ‚ 400k anarchia lf**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
         .setImage(imageUrl);
@@ -7369,10 +7743,10 @@ client.on(Events.MessageCreate, async (message) => {
         const sent = await channel.send(sendOptions);
         repLastInfoMessage.set(channel.id, sent.id);
       } catch (err) {
-        console.error("Błąd wysyłania info embed (nowy):", err);
+        console.error("BÅ‚Ä…d wysyÅ‚ania info embed (nowy):", err);
       }
     } catch (err) {
-      console.error("Błąd wysyłania info embed na legitcheck-rep:", err);
+      console.error("BÅ‚Ä…d wysyÅ‚ania info embed na legitcheck-rep:", err);
     }
   }
 
@@ -7392,7 +7766,7 @@ async function handleOpinionCommand(interaction) {
   const guildId = interaction.guildId;
   if (!guildId || !interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -7403,7 +7777,7 @@ async function handleOpinionCommand(interaction) {
   if (Date.now() - lastUsed < OPINION_COOLDOWN_MS) {
     const remaining = OPINION_COOLDOWN_MS - (Date.now() - lastUsed);
     await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy </opinia:1464015495392133321> ponownie za \`${humanizeMs(remaining)}\``,
+      content: `> \`âŒ\` Ã— MoÅ¼esz uÅ¼yÄ‡ komendy </opinia:1464015495392133321> ponownie za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -7423,7 +7797,7 @@ async function handleOpinionCommand(interaction) {
     const found = interaction.guild.channels.cache.find(
       (c) =>
         c.type === ChannelType.GuildText &&
-        (c.name === "⭐-×┃opinie-klientow" ||
+        (c.name === "â­-Ã—â”ƒopinie-klientow" ||
           normalize(c.name).includes("opinie") ||
           normalize(c.name).includes("opinie-klientow")),
     );
@@ -7435,7 +7809,7 @@ async function handleOpinionCommand(interaction) {
 
   if (!allowedChannelId || interaction.channelId !== allowedChannelId) {
     await interaction.reply({
-      content: `> \`❌\` × Użyj tej **komendy** na kanale <#${allowedChannelId || "⭐-×┃opinie-klientow"}>.`,
+      content: `> \`âŒ\` Ã— UÅ¼yj tej **komendy** na kanale <#${allowedChannelId || "â­-Ã—â”ƒopinie-klientow"}>.`,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -7454,7 +7828,7 @@ async function handleOpinionCommand(interaction) {
   const stars = (n) => {
     const count = Math.max(0, Math.min(5, n || 0));
     if (count === 0) return null;
-    return "⭐".repeat(count);
+    return "â­".repeat(count);
   };
   const starsInline = (n) => {
     const s = stars(n);
@@ -7464,17 +7838,17 @@ async function handleOpinionCommand(interaction) {
   // wrap tresc in inline code backticks so it appears with dark bg in embed
   const safeTresc = tresc ? `\`${tresc}\`` : "`-`";
 
-  // Budujemy opis jako pojedynczy string — używamy tablicy i join(\n) żeby zachować czytelność
+  // Budujemy opis jako pojedynczy string â€” uÅ¼ywamy tablicy i join(\n) Å¼eby zachowaÄ‡ czytelnoÅ›Ä‡
   const description = [
     "```",
-    "✅ New Shop × OPINIA",
+    "âœ… New Shop Ã— OPINIA",
     "```",
-    `> \`👤\` **× Twórca opinii:** <@${interaction.user.id}>`,
-    `> \`📝\` **× Treść:** ${safeTresc}`,
+    `> \`ðŸ‘¤\` **Ã— TwÃ³rca opinii:** <@${interaction.user.id}>`,
+    `> \`ðŸ“\` **Ã— TreÅ›Ä‡:** ${safeTresc}`,
     "",
-    `> \`⌛\` **× Czas oczekiwania:** ${starsInline(czas)}`,
-    `> \`📋\` **× Jakość produktu:** ${starsInline(jakosc)}`,
-    `> \`💸\` **× Cena produktu:** ${starsInline(cena)}`,
+    `> \`âŒ›\` **Ã— Czas oczekiwania:** ${starsInline(czas)}`,
+    `> \`ðŸ“‹\` **Ã— JakoÅ›Ä‡ produktu:** ${starsInline(jakosc)}`,
+    `> \`ðŸ’¸\` **Ã— Cena produktu:** ${starsInline(cena)}`,
   ].join("\n");
 
   // Tworzymy embed z poprawnym description
@@ -7486,17 +7860,17 @@ async function handleOpinionCommand(interaction) {
     )
     .setTimestamp();
 
-  // instrukcja — będzie na żółto i użyje mention dla komendy /opinia
+  // instrukcja â€” bÄ™dzie na Å¼Ã³Å‚to i uÅ¼yje mention dla komendy /opinia
   const instructionEmbed = new EmbedBuilder()
     .setColor(0xffd700)
     .setDescription(
-      "`📊` × Użyj **komendy** </opinia:1464015495392133321>, aby podzielić się opinią o naszym serwerze!",
+      "`ðŸ“Š` Ã— UÅ¼yj **komendy** </opinia:1464015495392133321>, aby podzieliÄ‡ siÄ™ opiniÄ… o naszym serwerze!",
     );
   try {
     const channel = interaction.channel;
 
-    // Spróbuj użyć webhooka do wysłania opinii z nazwą równą displayName użytkownika
-    // (wygląda jakby wysłał użytkownik — ale to nadal webhook)
+    // SprÃ³buj uÅ¼yÄ‡ webhooka do wysÅ‚ania opinii z nazwÄ… rÃ³wnÄ… displayName uÅ¼ytkownika
+    // (wyglÄ…da jakby wysÅ‚aÅ‚ uÅ¼ytkownik â€” ale to nadal webhook)
     let botWebhook = null;
     try {
       const webhooks = await channel.fetchWebhooks();
@@ -7550,9 +7924,9 @@ async function handleOpinionCommand(interaction) {
         (emb) =>
           typeof emb.description === "string" &&
           (emb.description.includes(
-            "Użyj **komendy** </opinia:1464015495392133321>",
+            "UÅ¼yj **komendy** </opinia:1464015495392133321>",
           ) ||
-            emb.description.includes("Użyj **komendy** `/opinia`")),
+            emb.description.includes("UÅ¼yj **komendy** `/opinia`")),
       );
       if (found) instrMsg = found;
     }
@@ -7577,14 +7951,14 @@ async function handleOpinionCommand(interaction) {
     }
 
     await interaction.reply({
-      content: "> `✅` × **Twoja opinia** została opublikowana.",
+      content: "> `âœ…` Ã— **Twoja opinia** zostaÅ‚a opublikowana.",
       flags: [MessageFlags.Ephemeral],
     });
   } catch (err) {
-    console.error("Błąd publikacji opinii:", err);
+    console.error("BÅ‚Ä…d publikacji opinii:", err);
     try {
       await interaction.reply({
-        content: "> `❌` × **Wystąpił** błąd podczas publikacji **opinii**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas publikacji **opinii**.",
         flags: [MessageFlags.Ephemeral],
       });
     } catch (e) {
@@ -7601,10 +7975,10 @@ function sleep(ms) {
 
 /*
   NEW: /wyczysckanal handler
-  - tryb: "wszystko" -> usuwa jak najwięcej wiadomości (pomija pinned)
-  - tryb: "ilosc" -> usuwa określoną ilość (1-100)
+  - tryb: "wszystko" -> usuwa jak najwiÄ™cej wiadomoÅ›ci (pomija pinned)
+  - tryb: "ilosc" -> usuwa okreÅ›lonÄ… iloÅ›Ä‡ (1-100)
   Notes:
-  - Bulk delete nie usuwa wiadomości starszych niż 14 dni; w tym przypadku pojedyncze usuwanie jest używane jako fallback (może być wolne).
+  - Bulk delete nie usuwa wiadomoÅ›ci starszych niÅ¼ 14 dni; w tym przypadku pojedyncze usuwanie jest uÅ¼ywane jako fallback (moÅ¼e byÄ‡ wolne).
   - Command requires ManageMessages permission by default (set in command registration) but we double-check at runtime.
 */
 async function handleWyczyscKanalCommand(interaction) {
@@ -7613,7 +7987,7 @@ async function handleWyczyscKanalCommand(interaction) {
 
   if (!guildId || !interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -7637,7 +8011,7 @@ async function handleWyczyscKanalCommand(interaction) {
       try {
         await interaction.editReply({
           content:
-            "❌ Ta komenda działa tylko na zwykłych kanałach tekstowych (nie w prywatnych wiadomościach).",
+            "âŒ Ta komenda dziaÅ‚a tylko na zwykÅ‚ych kanaÅ‚ach tekstowych (nie w prywatnych wiadomoÅ›ciach).",
         });
       } catch (e) {
         // ignore
@@ -7655,7 +8029,7 @@ async function handleWyczyscKanalCommand(interaction) {
       if (amount <= 0 || amount > 100) {
         try {
           await interaction.editReply({
-            content: "> `❌` × **Podaj** poprawną ilość wiadomości do usunięcia (1-100).",
+            content: "> `âŒ` Ã— **Podaj** poprawnÄ… iloÅ›Ä‡ wiadomoÅ›ci do usuniÄ™cia (1-100).",
           });
         } catch (e) {
           // ignore
@@ -7669,7 +8043,7 @@ async function handleWyczyscKanalCommand(interaction) {
 
       try {
         await interaction.editReply({
-          content: `✅ Usunięto ${deletedCount} wiadomości z tego kanału.`,
+          content: `âœ… UsuniÄ™to ${deletedCount} wiadomoÅ›ci z tego kanaÅ‚u.`,
         });
       } catch (e) {
         // ignore
@@ -7681,7 +8055,7 @@ async function handleWyczyscKanalCommand(interaction) {
       try {
         await interaction.editReply({
           content:
-            "🧹 Rozpoczynam czyszczenie kanału. To może potrwać (usuwam wszystkie nie-przypięte wiadomości)...",
+            "ðŸ§¹ Rozpoczynam czyszczenie kanaÅ‚u. To moÅ¼e potrwaÄ‡ (usuwam wszystkie nie-przypiÄ™te wiadomoÅ›ci)...",
         });
       } catch (e) {
         // ignore
@@ -7727,7 +8101,7 @@ async function handleWyczyscKanalCommand(interaction) {
         } catch (err) {
           // fallback: if bulkDelete fails for any reason, delete individually
           console.warn(
-            "bulkDelete nie powiodło się, przechodzę do indywidualnego usuwania:",
+            "bulkDelete nie powiodÅ‚o siÄ™, przechodzÄ™ do indywidualnego usuwania:",
             err,
           );
           for (const m of toDelete.values()) {
@@ -7748,23 +8122,23 @@ async function handleWyczyscKanalCommand(interaction) {
       }
 
       await interaction.editReply({
-        content: `✅ Czyszczenie zakończone. Usunięto około ${totalDeleted} wiadomości. (Pamiętaj: wiadomości przypięte zostały zachowane, a wiadomości starsze niż 14 dni mogły być usunięte indywidualnie lub pominięte).`,
+        content: `âœ… Czyszczenie zakoÅ„czone. UsuniÄ™to okoÅ‚o ${totalDeleted} wiadomoÅ›ci. (PamiÄ™taj: wiadomoÅ›ci przypiÄ™te zostaÅ‚y zachowane, a wiadomoÅ›ci starsze niÅ¼ 14 dni mogÅ‚y byÄ‡ usuniÄ™te indywidualnie lub pominiÄ™te).`,
       });
       return;
     }
 
     try {
       await interaction.editReply({
-        content: "> `❌` × **Nieznany** tryb. Wybierz '**wszystko**' lub '**ilosc**'.",
+        content: "> `âŒ` Ã— **Nieznany** tryb. Wybierz '**wszystko**' lub '**ilosc**'.",
       });
     } catch (e) {
       // ignore
     }
   } catch (error) {
-    console.error("Błąd wyczyszczenia kanału:", error);
+    console.error("BÅ‚Ä…d wyczyszczenia kanaÅ‚u:", error);
     try {
       await interaction.editReply({
-        content: "> `❌` × **Wystąpił** błąd podczas czyszczenia **kanału**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas czyszczenia **kanaÅ‚u**.",
       });
     } catch (e) {
       // ignore
@@ -7781,7 +8155,7 @@ async function handleWyczyscKanalCommand(interaction) {
 async function scheduleRepChannelRename(channel, count) {
   if (!channel || typeof channel.setName !== "function") return;
 
-  const newName = `✅-×┃legit-rep➔${count}`;
+  const newName = `âœ…-Ã—â”ƒlegit-repâž”${count}`;
   const now = Date.now();
   const since = now - lastChannelRename;
   const remaining = Math.max(0, CHANNEL_RENAME_COOLDOWN - since);
@@ -7792,18 +8166,18 @@ async function scheduleRepChannelRename(channel, count) {
     try {
       await channel.setName(newName);
       lastChannelRename = Date.now();
-      console.log(`Zmieniono nazwę kanału na: ${newName}`);
+      console.log(`Zmieniono nazwÄ™ kanaÅ‚u na: ${newName}`);
     } catch (err) {
-      console.error("Błąd zmiany nazwy kanału (natychmiastowa próba):", err);
+      console.error("BÅ‚Ä…d zmiany nazwy kanaÅ‚u (natychmiastowa prÃ³ba):", err);
     } finally {
       pendingRename = false;
     }
   } else {
     // schedule once (if not already scheduled)
     if (pendingRename) {
-      // already scheduled — we won't schedule another to avoid piling many timeouts.
+      // already scheduled â€” we won't schedule another to avoid piling many timeouts.
       console.log(
-        `Zmiana nazwy kanału już zaplanowana. Nowa nazwa zostanie ustawiona przy najbliższej okazji: ${newName}`,
+        `Zmiana nazwy kanaÅ‚u juÅ¼ zaplanowana. Nowa nazwa zostanie ustawiona przy najbliÅ¼szej okazji: ${newName}`,
       );
       return;
     }
@@ -7811,7 +8185,7 @@ async function scheduleRepChannelRename(channel, count) {
     pendingRename = true;
     const when = lastChannelRename + CHANNEL_RENAME_COOLDOWN;
     const delay = Math.max(0, when - now) + 1000; // add small safety buffer
-    console.log(`Planuję zmianę nazwy kanału na ${newName} za ${delay} ms`);
+    console.log(`PlanujÄ™ zmianÄ™ nazwy kanaÅ‚u na ${newName} za ${delay} ms`);
 
     setTimeout(async () => {
       try {
@@ -7819,7 +8193,7 @@ async function scheduleRepChannelRename(channel, count) {
         lastChannelRename = Date.now();
         console.log(`Zaplanowana zmiana nazwy wykonana: ${newName}`);
       } catch (err) {
-        console.error("Błąd zmiany nazwy kanału (zaplanowana próba):", err);
+        console.error("BÅ‚Ä…d zmiany nazwy kanaÅ‚u (zaplanowana prÃ³ba):", err);
       } finally {
         pendingRename = false;
       }
@@ -7838,24 +8212,24 @@ async function handleResetLCCommand(interaction) {
   if (!interaction.guild) {
     try {
       await interaction.reply({
-        content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+        content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
         flags: [MessageFlags.Ephemeral],
       });
     } catch (e) {
-      console.error("Nie udało się odpowiedzieć (brak guild):", e);
+      console.error("Nie udaÅ‚o siÄ™ odpowiedzieÄ‡ (brak guild):", e);
     }
     return;
   }
 
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     try {
       await interaction.reply({
-        content: "> `❗` × Brak wymaganych uprawnień.",
+        content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
         flags: [MessageFlags.Ephemeral],
       });
     } catch (e) {
-      console.error("Nie udało się odpowiedzieć o braku uprawnień:", e);
+      console.error("Nie udaÅ‚o siÄ™ odpowiedzieÄ‡ o braku uprawnieÅ„:", e);
     }
     return;
   }
@@ -7864,11 +8238,11 @@ async function handleResetLCCommand(interaction) {
   try {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
   } catch (e) {
-    console.warn("Nie udało się deferReply (może już odpowiedziano):", e);
+    console.warn("Nie udaÅ‚o siÄ™ deferReply (moÅ¼e juÅ¼ odpowiedziano):", e);
   }
 
   console.log(
-    `[resetlc] Użytkownik ${interaction.user.tag} (${interaction.user.id}) żąda resetu licznika.`,
+    `[resetlc] UÅ¼ytkownik ${interaction.user.tag} (${interaction.user.id}) Å¼Ä…da resetu licznika.`,
   );
 
   // reset counter
@@ -7881,11 +8255,11 @@ async function handleResetLCCommand(interaction) {
       .catch(() => null);
     if (!channel) {
       console.warn(
-        `[resetlc] Nie znaleziono kanału o ID ${REP_CHANNEL_ID} lub bot nie ma do niego dostępu.`,
+        `[resetlc] Nie znaleziono kanaÅ‚u o ID ${REP_CHANNEL_ID} lub bot nie ma do niego dostÄ™pu.`,
       );
       await interaction.editReply({
         content:
-          "✅ Licznik został zresetowany lokalnie, ale nie udało się znaleźć kanału z licznikiem (sprawdź REP_CHANNEL_ID i uprawnienia bota).",
+          "âœ… Licznik zostaÅ‚ zresetowany lokalnie, ale nie udaÅ‚o siÄ™ znaleÅºÄ‡ kanaÅ‚u z licznikiem (sprawdÅº REP_CHANNEL_ID i uprawnienia bota).",
       });
       return;
     }
@@ -7898,25 +8272,25 @@ async function handleResetLCCommand(interaction) {
     if (remaining === 0 && !pendingRename) {
       try {
         // attempt immediate rename (may fail if missing ManageChannels)
-        await channel.setName(`✅-×┃legit-rep➔${legitRepCount}`);
+        await channel.setName(`âœ…-Ã—â”ƒlegit-repâž”${legitRepCount}`);
         lastChannelRename = Date.now();
         pendingRename = false;
-        console.log(`[resetlc] Kanał ${channel.id} zaktualizowany do 0.`);
+        console.log(`[resetlc] KanaÅ‚ ${channel.id} zaktualizowany do 0.`);
         await interaction.editReply({
           content:
-            "✅ Licznik legitchecków został zresetowany do 0, nazwa kanału została zaktualizowana.",
+            "âœ… Licznik legitcheckÃ³w zostaÅ‚ zresetowany do 0, nazwa kanaÅ‚u zostaÅ‚a zaktualizowana.",
         });
         return;
       } catch (err) {
         console.error(
-          "[resetlc] Błąd przy natychmiastowej zmianie nazwy kanału:",
+          "[resetlc] BÅ‚Ä…d przy natychmiastowej zmianie nazwy kanaÅ‚u:",
           err,
         );
         // fallback to scheduling
         await scheduleRepChannelRename(channel, legitRepCount);
         await interaction.editReply({
           content:
-            "✅ Licznik został zresetowany do 0. Nie udało się natychmiast zaktualizować nazwy kanału — zmiana została zaplanowana.",
+            "âœ… Licznik zostaÅ‚ zresetowany do 0. Nie udaÅ‚o siÄ™ natychmiast zaktualizowaÄ‡ nazwy kanaÅ‚u â€” zmiana zostaÅ‚a zaplanowana.",
         });
         return;
       }
@@ -7925,18 +8299,18 @@ async function handleResetLCCommand(interaction) {
       await scheduleRepChannelRename(channel, legitRepCount);
       await interaction.editReply({
         content:
-          "✅ Licznik został zresetowany do 0. Nazwa kanału zostanie zaktualizowana za kilka minut (szanujemy cooldown Discorda).",
+          "âœ… Licznik zostaÅ‚ zresetowany do 0. Nazwa kanaÅ‚u zostanie zaktualizowana za kilka minut (szanujemy cooldown Discorda).",
       });
       return;
     }
   } catch (err) {
-    console.error("[resetlc] Błąd podczas resetowania licznika:", err);
+    console.error("[resetlc] BÅ‚Ä…d podczas resetowania licznika:", err);
     try {
       await interaction.editReply({
-        content: "> `❌` × **Wystąpił** błąd podczas resetowania **licznika**.",
+        content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas resetowania **licznika**.",
       });
     } catch (e) {
-      console.error("Nie udało się wysłać editReply po błędzie:", e);
+      console.error("Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ editReply po bÅ‚Ä™dzie:", e);
     }
   }
 }
@@ -7948,16 +8322,16 @@ async function handleResetLCCommand(interaction) {
 async function handleZresetujCzasCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**!",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -7988,14 +8362,14 @@ async function handleZresetujCzasCommand(interaction) {
     infoCooldowns.delete(targetId); // reset internal info cooldown for target
 
     await interaction.reply({
-      content: `✅ Zresetowano czas oczekiwania (${targets.join(', ') || 'brak'}) dla <@${targetId}>.`,
+      content: `âœ… Zresetowano czas oczekiwania (${targets.join(', ') || 'brak'}) dla <@${targetId}>.`,
       flags: [MessageFlags.Ephemeral],
     });
-    console.log(`[zco] ${interaction.user.tag} zresetował cooldowny: ${targets.join(', ')} dla ${targetUser.tag}`);
+    console.log(`[zco] ${interaction.user.tag} zresetowaÅ‚ cooldowny: ${targets.join(', ')} dla ${targetUser.tag}`);
   } catch (err) {
-    console.error("[zco] Błąd:", err);
+    console.error("[zco] BÅ‚Ä…d:", err);
     await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas resetowania czasów **oczekiwania**.",
+      content: "> `âŒ` Ã— **WystÄ…piÅ‚** bÅ‚Ä…d podczas resetowania czasÃ³w **oczekiwania**.",
       flags: [MessageFlags.Ephemeral],
     });
   }
@@ -8009,7 +8383,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
       member.guild.channels.cache.find(
         (c) =>
           c.type === ChannelType.GuildText &&
-          (c.name === "👋-×┃lobby" || c.name.toLowerCase().includes("lobby")),
+          (c.name === "ðŸ‘‹-Ã—â”ƒlobby" || c.name.toLowerCase().includes("lobby")),
       ) || null;
 
     // --- Robust invite detection ---
@@ -8018,7 +8392,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
     let isFakeAccount = false;
 
     try {
-      // jeśli ten użytkownik wcześniej opuścił i mieliśmy to zapisane -> usuń "leave" (kompensacja)
+      // jeÅ›li ten uÅ¼ytkownik wczeÅ›niej opuÅ›ciÅ‚ i mieliÅ›my to zapisane -> usuÅ„ "leave" (kompensacja)
       const memberKey = `${member.guild.id}:${member.id}`;
       if (leaveRecords.has(memberKey)) {
         try {
@@ -8069,11 +8443,11 @@ client.on(Events.GuildMemberAdd, async (member) => {
         guildInvites.set(member.guild.id, newMap);
       } else {
         console.warn(
-          `[invites] Nie udało się pobrać invite'ów dla guild ${member.guild.id} — sprawdź uprawnienia bota (MANAGE_GUILD).`,
+          `[invites] Nie udaÅ‚o siÄ™ pobraÄ‡ invite'Ã³w dla guild ${member.guild.id} â€” sprawdÅº uprawnienia bota (MANAGE_GUILD).`,
         );
       }
     } catch (e) {
-      console.error("Błąd podczas wykrywania invite:", e);
+      console.error("BÅ‚Ä…d podczas wykrywania invite:", e);
     }
 
     // Simple fake-account detection (~2 months)
@@ -8109,7 +8483,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
         // too many invites in the window -> mark as not counted
         countThisInvite = false;
         console.log(
-          `[invites][ratelimit] Nie dodaję zaproszenia dla ${inviterId} - przekroczono limit w oknie.`,
+          `[invites][ratelimit] Nie dodajÄ™ zaproszenia dla ${inviterId} - przekroczono limit w oknie.`,
         );
       }
     }
@@ -8139,13 +8513,13 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const totalMap = inviteTotalJoined.get(member.guild.id); // wszystkie joiny
       fakeMap = inviteFakeAccounts.get(member.guild.id); // fake
 
-      // Always increment totalJoined (wszystkie dołączenia przypisane do zapraszającego)
+      // Always increment totalJoined (wszystkie doÅ‚Ä…czenia przypisane do zapraszajÄ…cego)
       const prevTotal = totalMap.get(inviterId) || 0;
       totalMap.set(inviterId, prevTotal + 1);
       inviteTotalJoined.set(member.guild.id, totalMap);
       scheduleSavePersistentState();
 
-      // Liczymy zaproszenia tylko jeśli nie jest właścicielem
+      // Liczymy zaproszenia tylko jeÅ›li nie jest wÅ‚aÅ›cicielem
       if (inviterId !== ownerId) {
         // ZAWSZE liczymy zaproszenia z kont < 2 mies.
         if (!isFakeAccount) {
@@ -8166,7 +8540,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const alreadyGiven = rewardsGivenMap.get(inviterId) || 0;
       const currentCount = gMap.get(inviterId) || 0;
 
-      // ile nagród powinno być przyznanych
+      // ile nagrÃ³d powinno byÄ‡ przyznanych
       const eligibleRewards = Math.floor(
         currentCount / INVITE_REWARD_THRESHOLD,
       );
@@ -8177,17 +8551,17 @@ client.on(Events.GuildMemberAdd, async (member) => {
         inviteRewardsGiven.set(member.guild.id, rewardsGivenMap);
         scheduleSavePersistentState(true); // Natychmiastowy zapis
 
-        // Przygotuj kanał zaproszeń
+        // Przygotuj kanaÅ‚ zaproszeÅ„
         const zapCh =
           member.guild.channels.cache.find(
             (c) =>
               c.type === ChannelType.GuildText &&
-              (c.name === "📨-×┃zaproszenia" ||
+              (c.name === "ðŸ“¨-Ã—â”ƒzaproszenia" ||
                 c.name.toLowerCase().includes("zaproszen") ||
                 c.name.toLowerCase().includes("zaproszenia")),
           ) || null;
 
-        // Dla każdej nagrody
+        // Dla kaÅ¼dej nagrody
         for (let i = 0; i < toGive; i++) {
           const rewardCode = generateCode();
           const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 godziny
@@ -8204,38 +8578,38 @@ client.on(Events.GuildMemberAdd, async (member) => {
           });
           scheduleSavePersistentState();
 
-          // Wyślij DM
+          // WyÅ›lij DM
           try {
             const user = await client.users.fetch(inviterId);
             const dmEmbed = new EmbedBuilder()
               .setColor(0xd4af37)
               .setDescription(
                 "```\n" +
-                "🎀 New Shop × NAGRODA\n" +
+                "ðŸŽ€ New Shop Ã— NAGRODA\n" +
                 "```\n" +
-                `\`👤\` × **Użytkownik:** ${user}\n` +
-                `\`🎉\` × **Gratulacje! Otrzymałeś nagrodę za zaproszenia!**\n` +
-                `\`💸\` × **Kod nagrody:**\n` +
+                `\`ðŸ‘¤\` Ã— **UÅ¼ytkownik:** ${user}\n` +
+                `\`ðŸŽ‰\` Ã— **Gratulacje! OtrzymaÅ‚eÅ› nagrodÄ™ za zaproszenia!**\n` +
+                `\`ðŸ’¸\` Ã— **Kod nagrody:**\n` +
                 "```\n" +
                 rewardCode +
                 "\n```\n" +
-                `\`💰\` × **Wartość:** \`50k\$\`\n` +
-                `\`🕑\` × **Kod wygaśnie za:** <t:${expiryTs}:R>\n\n` +
-                `\`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
-                `\`Odbiór nagrody\` i w polu wpisz otrzymany kod.`
+                `\`ðŸ’°\` Ã— **WartoÅ›Ä‡:** \`50k\$\`\n` +
+                `\`ðŸ•‘\` Ã— **Kod wygaÅ›nie za:** <t:${expiryTs}:R>\n\n` +
+                `\`â”\` Ã— Aby zrealizowaÄ‡ kod utwÃ³rz nowy ticket, wybierz kategoriÄ™\n` +
+                `\`OdbiÃ³r nagrody\` i w polu wpisz otrzymany kod.`
               )
               .setTimestamp();
 
             await user.send({ embeds: [dmEmbed] });
           } catch (e) {
-            console.error("Błąd wysyłania DM z nagrodą:", e);
-            // Fallback: wyślij na kanał zaproszeń
+            console.error("BÅ‚Ä…d wysyÅ‚ania DM z nagrodÄ…:", e);
+            // Fallback: wyÅ›lij na kanaÅ‚ zaproszeÅ„
           }
         }
       }
     }
 
-    // Jeśli konto jest fake (< 4 mies.), dodajemy tylko do licznika fake
+    // JeÅ›li konto jest fake (< 4 mies.), dodajemy tylko do licznika fake
     if (isFakeAccount && inviterId) {
       if (!inviteFakeAccounts.has(member.guild.id))
         inviteFakeAccounts.set(member.guild.id, new Map());
@@ -8257,7 +8631,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
     // persist join/invite state
     scheduleSavePersistentState(true); // Natychmiastowy zapis
 
-    // Powiadomienie na kanale zaproszeń kto kogo dodał
+    // Powiadomienie na kanale zaproszeÅ„ kto kogo dodaÅ‚
     const zapChannelId = "1449159392388972554";
     const zapChannel = member.guild.channels.cache.get(zapChannelId);
 
@@ -8270,13 +8644,13 @@ client.on(Events.GuildMemberAdd, async (member) => {
       try {
         let message;
         if (inviterId === ownerId) {
-          // Zaproszenie przez właściciela - nie liczymy zaproszeń
-          message = `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> (został zaproszony przez właściciela)`;
+          // Zaproszenie przez wÅ‚aÅ›ciciela - nie liczymy zaproszeÅ„
+          message = `> \`âœ‰ï¸\` Ã— <@${inviterId}> zaprosiÅ‚ <@${member.id}> (zostaÅ‚ zaproszony przez wÅ‚aÅ›ciciela)`;
         } else {
           // Normalne zaproszenie
           message = isFakeAccount 
-            ? `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}! (konto ma mniej niż 2 mies.)`
-            : `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}!`;
+            ? `> \`âœ‰ï¸\` Ã— <@${inviterId}> zaprosiÅ‚ <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}! (konto ma mniej niÅ¼ 2 mies.)`
+            : `> \`âœ‰ï¸\` Ã— <@${inviterId}> zaprosiÅ‚ <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}!`;
         }
         await zapChannel.send(message);
       } catch (e) { }
@@ -8288,11 +8662,11 @@ client.on(Events.GuildMemberAdd, async (member) => {
         .setColor(COLOR_BLUE)
         .setDescription(
           "```\n" +
-          "👋 New Shop × LOBBY\n" +
+          "ðŸ‘‹ New Shop Ã— LOBBY\n" +
           "```\n" +
-          `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
-          `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
-          `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`,
+          `> \`ðŸ˜Ž\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
+          `> \`ðŸ§‘â€ðŸ¤â€ðŸ§‘\` **JesteÅ› \`${member.guild.memberCount}\` osobÄ… na naszym serwerze!**\n` +
+          `> \`âœ¨\` **Liczymy, Å¼e zostaniesz z nami na dÅ‚uÅ¼ej!**`,
         )
         .setThumbnail(
           member.user.displayAvatarURL({ dynamic: true, size: 256 }),
@@ -8305,11 +8679,11 @@ client.on(Events.GuildMemberAdd, async (member) => {
         .setColor(COLOR_BLUE)
         .setDescription(
           "```\n" +
-          "👋 New Shop × LOBBY\n" +
+          "ðŸ‘‹ New Shop Ã— LOBBY\n" +
           "```\n" +
-          `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
-          `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
-          `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`,
+          `> \`ðŸ˜Ž\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
+          `> \`ðŸ§‘â€ðŸ¤â€ðŸ§‘\` **JesteÅ› \`${member.guild.memberCount}\` osobÄ… na naszym serwerze!**\n` +
+          `> \`âœ¨\` **Liczymy, Å¼e zostaniesz z nami na dÅ‚uÅ¼ej!**`,
         )
         .setThumbnail(
           member.user.displayAvatarURL({ dynamic: true, size: 256 }),
@@ -8321,7 +8695,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
         .catch(() => null);
     }
   } catch (err) {
-    console.error("Błąd wysyłania powitania / invite tracking:", err);
+    console.error("BÅ‚Ä…d wysyÅ‚ania powitania / invite tracking:", err);
   }
 });
 
@@ -8332,11 +8706,11 @@ client.on(Events.GuildMemberRemove, async (member) => {
     const stored = inviterOfMember.get(key);
     if (!stored) return;
 
-    // backward-compat: jeżeli stary format (string), zamieniamy na obiekt
+    // backward-compat: jeÅ¼eli stary format (string), zamieniamy na obiekt
     let inviterId, counted, wasFake;
     if (typeof stored === "string") {
       inviterId = stored;
-      counted = true; // zakładamy, że wcześniej był liczony
+      counted = true; // zakÅ‚adamy, Å¼e wczeÅ›niej byÅ‚ liczony
       wasFake = false;
     } else {
       inviterId = stored.inviterId;
@@ -8355,7 +8729,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     const gMap = inviteCounts.get(member.guild.id);
     const ownerId = "1305200545979437129";
     
-    // Odejmujemy zaproszenia tylko jeśli nie jest właścicielem
+    // Odejmujemy zaproszenia tylko jeÅ›li nie jest wÅ‚aÅ›cicielem
     if (counted && inviterId !== ownerId) {
       const prev = gMap.get(inviterId) || 0;
       const newCount = Math.max(0, prev - 1);
@@ -8402,7 +8776,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
       member.guild.channels.cache.find(
         (c) =>
           c.type === ChannelType.GuildText &&
-          (c.name === "📨-×┃zaproszenia" ||
+          (c.name === "ðŸ“¨-Ã—â”ƒzaproszenia" ||
             c.name.toLowerCase().includes("zaproszen") ||
             c.name.toLowerCase().includes("zaproszenia")),
       ) || null;
@@ -8416,21 +8790,21 @@ client.on(Events.GuildMemberRemove, async (member) => {
       try {
         let message;
         if (inviterId === ownerId) {
-          // Opuszczenie przez zaproszenie właściciela - nie odejmowaliśmy zaproszeń
-          message = `> \`🚪\` × <@${member.id}> opuścił serwer. (Był zaproszony przez właściciela)`;
+          // Opuszczenie przez zaproszenie wÅ‚aÅ›ciciela - nie odejmowaliÅ›my zaproszeÅ„
+          message = `> \`ðŸšª\` Ã— <@${member.id}> opuÅ›ciÅ‚ serwer. (ByÅ‚ zaproszony przez wÅ‚aÅ›ciciela)`;
         } else {
           // Normalne opuszczenie
-          message = `> \`🚪\` × <@${member.id}> opuścił serwer. Był zaproszony przez <@${inviterId}> który ma teraz **${currentCount}** ${inviteWord}.`;
+          message = `> \`ðŸšª\` Ã— <@${member.id}> opuÅ›ciÅ‚ serwer. ByÅ‚ zaproszony przez <@${inviterId}> ktÃ³ry ma teraz **${currentCount}** ${inviteWord}.`;
         }
         await zapCh.send(message);
       } catch (e) { }
     }
 
     console.log(
-      `Odejmuję zaproszenie od ${inviterId} po leave (counted=${counted}, wasFake=${wasFake}).`,
+      `OdejmujÄ™ zaproszenie od ${inviterId} po leave (counted=${counted}, wasFake=${wasFake}).`,
     );
   } catch (err) {
-    console.error("Błąd przy obsłudze odejścia członka:", err);
+    console.error("BÅ‚Ä…d przy obsÅ‚udze odejÅ›cia czÅ‚onka:", err);
   }
 });
 
@@ -8439,7 +8813,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   // Najpierw sprawdzamy warunki bez defer
   if (!interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Tylko** na **serwerze**.",
+      content: "> `âŒ` Ã— **Tylko** na **serwerze**.",
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -8448,7 +8822,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   const SPRAWDZ_ZAPROSZENIA_CHANNEL_ID = "1449159417445482566";
   if (interaction.channelId !== SPRAWDZ_ZAPROSZENIA_CHANNEL_ID) {
     await interaction.reply({
-      content: "> `❌` × Użyj tej **komendy** na kanale <#1449159417445482566>.",
+      content: "> `âŒ` Ã— UÅ¼yj tej **komendy** na kanale <#1449159417445482566>.",
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -8460,7 +8834,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   if (nowTs - lastTs < 30_000) {
     const remain = Math.ceil((30_000 - (nowTs - lastTs)) / 1000);
     await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy </sprawdz-zaproszenia:1464015495932940398> ponownie za \`${remain}s\` `,
+      content: `> \`âŒ\` Ã— MoÅ¼esz uÅ¼yÄ‡ komendy </sprawdz-zaproszenia:1464015495932940398> ponownie za \`${remain}s\` `,
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -8470,7 +8844,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   // Teraz dopiero defer - tymczasowo ephemeral dla potwierdzenia
   await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
-  // ===== SPRAWDZ-ZAPROSZENIA – PEŁNY SCRIPT =====
+  // ===== SPRAWDZ-ZAPROSZENIA â€“ PEÅNY SCRIPT =====
 
   const preferChannel = interaction.guild.channels.cache.get(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID);
   const guildId = interaction.guild.id;
@@ -8491,18 +8865,18 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   const lMap = inviteLeaves.get(guildId);
   const bonusMap = inviteBonusInvites.get(guildId);
 
-  // Dane użytkownika
+  // Dane uÅ¼ytkownika
   const userId = interaction.user.id;
   const validInvites = gMap.get(userId) || 0;
   const left = lMap.get(userId) || 0;
   const fake = fakeMap.get(userId) || 0;
   const bonus = bonusMap.get(userId) || 0;
 
-  // Zaproszenia wyświetlane (z bonusem)
+  // Zaproszenia wyÅ›wietlane (z bonusem)
   const displayedInvites = validInvites + bonus;
   const inviteWord = getInviteWord(displayedInvites);
 
-  // Brakujące do nagrody
+  // BrakujÄ…ce do nagrody
   let missingToReward = INVITE_REWARD_THRESHOLD - (displayedInvites % INVITE_REWARD_THRESHOLD);
   if (displayedInvites !== 0 && displayedInvites % INVITE_REWARD_THRESHOLD === 0) {
     missingToReward = 0;
@@ -8513,24 +8887,24 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     .setColor(COLOR_BLUE)
     .setDescription(
           "```\n" +
-          "📩 New Shop × ZAPROSZENIA\n" +
+          "ðŸ“© New Shop Ã— ZAPROSZENIA\n" +
           "```\n" +
-      `> \`👤\` × <@${userId}> **posiada:** \`${displayedInvites}\` **${inviteWord}**!\n` +
-      `> \`💸\` × **Brakuje ci zaproszeń do nagrody ${INVITE_REWARD_TEXT}:** \`${missingToReward}\`\n\n` +
-      `> \`👥\` × **Prawdziwe osoby które dołączyły:** \`${displayedInvites}\`\n` +
-      `> \`🚶\` × **Osoby które opuściły serwer:** \`${left}\`\n` +
-      `> \`⚠️\` × **Niespełniające kryteriów (< konto 2 mies.):** \`${fake}\`\n` +
-      `> \`🎁\` × **Dodatkowe zaproszenia:** \`${bonus}\``
+      `> \`ðŸ‘¤\` Ã— <@${userId}> **posiada:** \`${displayedInvites}\` **${inviteWord}**!\n` +
+      `> \`ðŸ’¸\` Ã— **Brakuje ci zaproszeÅ„ do nagrody ${INVITE_REWARD_TEXT}:** \`${missingToReward}\`\n\n` +
+      `> \`ðŸ‘¥\` Ã— **Prawdziwe osoby ktÃ³re doÅ‚Ä…czyÅ‚y:** \`${displayedInvites}\`\n` +
+      `> \`ðŸš¶\` Ã— **Osoby ktÃ³re opuÅ›ciÅ‚y serwer:** \`${left}\`\n` +
+      `> \`âš ï¸\` Ã— **NiespeÅ‚niajÄ…ce kryteriÃ³w (< konto 2 mies.):** \`${fake}\`\n` +
+      `> \`ðŸŽ\` Ã— **Dodatkowe zaproszenia:** \`${bonus}\``
     );
 
   try {
-    // Kanał docelowy
+    // KanaÅ‚ docelowy
     const targetChannel = preferChannel ? preferChannel : interaction.channel;
 
     // Publikacja embeda
     await targetChannel.send({ embeds: [embed] });
 
-    // Odświeżanie instrukcji
+    // OdÅ›wieÅ¼anie instrukcji
     try {
       const zapCh = targetChannel;
       if (zapCh && zapCh.id) {
@@ -8546,7 +8920,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
         const instructionInviteEmbed = new EmbedBuilder()
           .setColor(0xffffff)
           .setDescription(
-            "`📩` × Użyj **komendy** </sprawdz-zaproszenia:1464015495932940398>, aby sprawdzić swoje **zaproszenia**"
+            "`ðŸ“©` Ã— UÅ¼yj **komendy** </sprawdz-zaproszenia:1464015495932940398>, aby sprawdziÄ‡ swoje **zaproszenia**"
           );
 
         const sent = await zapCh.send({ embeds: [instructionInviteEmbed] });
@@ -8554,20 +8928,20 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
         scheduleSavePersistentState();
       }
     } catch (e) {
-      console.warn("Nie udało się odświeżyć instrukcji zaproszeń:", e);
+      console.warn("Nie udaÅ‚o siÄ™ odÅ›wieÅ¼yÄ‡ instrukcji zaproszeÅ„:", e);
     }
 
     await interaction.editReply({
-      content: "> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane."
+      content: "> \`âœ…\` Ã— Informacje o twoich **zaproszeniach** zostaÅ‚y wysÅ‚ane."
     });
 
   } catch (err) {
-    console.error("Błąd przy publikacji sprawdz-zaproszenia:", err);
+    console.error("BÅ‚Ä…d przy publikacji sprawdz-zaproszenia:", err);
     try {
       await interaction.editReply({ embeds: [embed] });
     } catch {
       await interaction.editReply({
-        content: "> \`❌\` × Nie udało się opublikować informacji o **zaproszeniach**."
+        content: "> \`âŒ\` Ã— Nie udaÅ‚o siÄ™ opublikowaÄ‡ informacji o **zaproszeniach**."
       });
     }
   }
@@ -8578,16 +8952,16 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
 async function handleZaprosieniaStatsCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      content: "> `âŒ` Ã— **Ta komenda** dziaÅ‚a tylko na **serwerze**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -8606,7 +8980,7 @@ async function handleZaprosieniaStatsCommand(interaction) {
   if (["prawdziwe", "prawdziwy", "prawdzi"].includes(categoryRaw))
     category = "prawdziwe";
   else if (
-    ["opuszczone", "opuśćone", "opuszcone", "left", "lefts"].includes(
+    ["opuszczone", "opuÅ›Ä‡one", "opuszcone", "left", "lefts"].includes(
       categoryRaw,
     )
   )
@@ -8614,7 +8988,7 @@ async function handleZaprosieniaStatsCommand(interaction) {
   else if (
     [
       "mniej4mies",
-      "mniejniż4mies",
+      "mniejniÅ¼4mies",
       "mniej_niz_4mies",
       "mniej",
       "mniej4",
@@ -8626,7 +9000,7 @@ async function handleZaprosieniaStatsCommand(interaction) {
 
   if (!category) {
     await interaction.reply({
-      content: "> ❌ × **Nieznana** kategoria. Wybierz: `prawdziwe`, `opuszczone`, `mniej4mies`, `dodatkowe`.",
+      content: "> âŒ Ã— **Nieznana** kategoria. Wybierz: `prawdziwe`, `opuszczone`, `mniej4mies`, `dodatkowe`.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -8652,11 +9026,11 @@ async function handleZaprosieniaStatsCommand(interaction) {
       break;
     case "opuszczone":
       targetMap = inviteLeaves.get(guildId);
-      prettyName = "Osoby, które opuściły serwer";
+      prettyName = "Osoby, ktÃ³re opuÅ›ciÅ‚y serwer";
       break;
     case "mniej4mies":
       targetMap = inviteFakeAccounts.get(guildId);
-      prettyName = "Niespełniające kryteriów (< konto 4 mies.)";
+      prettyName = "NiespeÅ‚niajÄ…ce kryteriÃ³w (< konto 4 mies.)";
       break;
     case "dodatkowe":
       targetMap = inviteBonusInvites.get(guildId);
@@ -8681,13 +9055,13 @@ async function handleZaprosieniaStatsCommand(interaction) {
   } else {
     await interaction.reply({
       content:
-        "❌ Nieznana akcja. Wybierz: `dodaj`, `odejmij`, `ustaw`, `wyczysc`.",
+        "âŒ Nieznana akcja. Wybierz: `dodaj`, `odejmij`, `ustaw`, `wyczysc`.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // BEFORE saving: jeśli edytujemy "prawdziwe", sprawdź czy osiągnięto próg i przyznaj nagrody
+  // BEFORE saving: jeÅ›li edytujemy "prawdziwe", sprawdÅº czy osiÄ…gniÄ™to prÃ³g i przyznaj nagrody
   if (category === "prawdziwe") {
     // Inicjalizacja mapy reward levels dla tego guilda
     if (!inviteRewardLevels.has(guildId)) {
@@ -8695,13 +9069,13 @@ async function handleZaprosieniaStatsCommand(interaction) {
     }
     const rewardLevelsMap = inviteRewardLevels.get(guildId);
     
-    // Inicjalizacja setu dla tego użytkownika
+    // Inicjalizacja setu dla tego uÅ¼ytkownika
     if (!rewardLevelsMap.has(user.id)) {
       rewardLevelsMap.set(user.id, new Set());
     }
     const userRewardLevels = rewardLevelsMap.get(user.id);
     
-    // Sprawdź jakie progi zostały osiągnięte (5, 10, 15, 20...)
+    // SprawdÅº jakie progi zostaÅ‚y osiÄ…gniÄ™te (5, 10, 15, 20...)
     const achievedLevels = [];
     for (let level = 5; level <= newVal; level += 5) {
       if (newVal >= level && !userRewardLevels.has(level.toString())) {
@@ -8741,28 +9115,28 @@ async function handleZaprosieniaStatsCommand(interaction) {
         });
 
         generatedCodes.push(rewardCode);
-        // Oznacz ten próg jako odebrany
+        // Oznacz ten prÃ³g jako odebrany
         userRewardLevels.add(level.toString());
-        console.log(`[rewards] Użytkownik ${user.id} otrzymał nagrodę za próg ${level} zaproszeń`);
+        console.log(`[rewards] UÅ¼ytkownik ${user.id} otrzymaÅ‚ nagrodÄ™ za prÃ³g ${level} zaproszeÅ„`);
       }
 
-      // Zaktualizuj liczbę przyznanych nagród (stary system dla kompatybilności)
+      // Zaktualizuj liczbÄ™ przyznanych nagrÃ³d (stary system dla kompatybilnoÅ›ci)
       const rewardsGivenMap = inviteRewardsGiven.get(guildId) || new Map();
       const alreadyGiven = rewardsGivenMap.get(user.id) || 0;
       rewardsGivenMap.set(user.id, alreadyGiven + achievedLevels.length);
       inviteRewardsGiven.set(guildId, rewardsGivenMap);
 
-      // Przygotuj kanał zaproszeń
+      // Przygotuj kanaÅ‚ zaproszeÅ„
       const zapCh =
         interaction.guild.channels.cache.find(
           (c) =>
             c.type === ChannelType.GuildText &&
-            (c.name === "📨-×┃zaproszenia" ||
+            (c.name === "ðŸ“¨-Ã—â”ƒzaproszenia" ||
               c.name.toLowerCase().includes("zaproszen") ||
               c.name.toLowerCase().includes("zaproszenia")),
         ) || null;
 
-      // Wyślij DM z kodami
+      // WyÅ›lij DM z kodami
       try {
         const u = await client.users.fetch(user.id);
         const codesList = generatedCodes.join("\n");
@@ -8772,26 +9146,26 @@ async function handleZaprosieniaStatsCommand(interaction) {
 
         const dmEmbed = new EmbedBuilder()
           .setColor(0xd4af37)
-          .setTitle("\`🔑\` Twój kod za zaproszenia")
+          .setTitle("\`ðŸ”‘\` TwÃ³j kod za zaproszenia")
           .setDescription(
             "```\n" +
             codesList +
             "\n```\n" +
-            `> \`💸\` × **Otrzymałeś:** \`${INVITE_REWARD_TEXT}\`\n` +
-            `> \`🕑\` × **Kod wygaśnie za:** <t:${expiresAtSeconds}:R> \n\n` +
-            `> \`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
-            `> \`Odbiór nagrody\` i w polu wpisz otrzymany kod.`,
+            `> \`ðŸ’¸\` Ã— **OtrzymaÅ‚eÅ›:** \`${INVITE_REWARD_TEXT}\`\n` +
+            `> \`ðŸ•‘\` Ã— **Kod wygaÅ›nie za:** <t:${expiresAtSeconds}:R> \n\n` +
+            `> \`â”\` Ã— Aby zrealizowaÄ‡ kod utwÃ³rz nowy ticket, wybierz kategoriÄ™\n` +
+            `> \`OdbiÃ³r nagrody\` i w polu wpisz otrzymany kod.`,
           )
           .setTimestamp();
 
         await u.send({ embeds: [dmEmbed] }).catch(async () => {
-          // Jeśli DM się nie udało, nie wysyłamy kodów na kanał
-          console.error("Nie udało się wysłać DM z nagrodą do użytkownika", user.id);
+          // JeÅ›li DM siÄ™ nie udaÅ‚o, nie wysyÅ‚amy kodÃ³w na kanaÅ‚
+          console.error("Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ DM z nagrodÄ… do uÅ¼ytkownika", user.id);
         });
 
         // Powiadomienie publiczne
       } catch (e) {
-        console.error("Błąd wysyłania DM z nagrodą:", e);
+        console.error("BÅ‚Ä…d wysyÅ‚ania DM z nagrodÄ…:", e);
       }
     }
   }
@@ -8801,7 +9175,7 @@ async function handleZaprosieniaStatsCommand(interaction) {
   scheduleSavePersistentState();
 
   await interaction.reply({
-    content: `✅ Zaktualizowano **${prettyName}** dla <@${user.id}>: \`${prev}\` → \`${newVal}\`.`,
+    content: `âœ… Zaktualizowano **${prettyName}** dla <@${user.id}>: \`${prev}\` â†’ \`${newVal}\`.`,
     flags: [MessageFlags.Ephemeral],
   });
 }
@@ -8812,31 +9186,31 @@ async function handleHelpCommand(interaction) {
   try {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("\`📋\` × Spis komend")
+      .setTitle("\`ðŸ“‹\` Ã— Spis komend")
       .setDescription(
         [
-          "**`Komendy ogólne:`**",
-          "> \`🎁\` × </drop:1464015494876102748> Wylosuj zniżke na zakupy!",
-          "> \`📩\` × </sprawdz-zaproszenia:1464015495932940398> Sprawdź swoje zaproszenia",
-          "> \`⭐\` × </opinia:1464015495392133321> Podziel się opinią o naszym sklepie",
-          "> \`📋\` × </help:1464015495392133316> — Pokaż tę wiadomość",
+          "**`Komendy ogÃ³lne:`**",
+          "> \`ðŸŽ\` Ã— </drop:1464015494876102748> Wylosuj zniÅ¼ke na zakupy!",
+          "> \`ðŸ“©\` Ã— </sprawdz-zaproszenia:1464015495932940398> SprawdÅº swoje zaproszenia",
+          "> \`â­\` Ã— </opinia:1464015495392133321> Podziel siÄ™ opiniÄ… o naszym sklepie",
+          "> \`ðŸ“‹\` Ã— </help:1464015495392133316> â€” PokaÅ¼ tÄ™ wiadomoÅ›Ä‡",
         ].join("\n"),
       )
 
-    // reply ephemeral so tylko użytkownik widzi
+    // reply ephemeral so tylko uÅ¼ytkownik widzi
     await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
   } catch (err) {
     console.error("handleHelpCommand error:", err);
     try {
       await interaction.reply({
-        content: "> `❌` × **Błąd** podczas wyświetlania **pomocy**.",
+        content: "> `âŒ` Ã— **BÅ‚Ä…d** podczas wyÅ›wietlania **pomocy**.",
         flags: [MessageFlags.Ephemeral],
       });
     } catch (e) { }
   }
 }
 
-// Parser czasu: 1h = 1 godzina, 1d = 1 dzień, 1m = 1 minuta, 1s = 1 sekunda
+// Parser czasu: 1h = 1 godzina, 1d = 1 dzieÅ„, 1m = 1 minuta, 1s = 1 sekunda
 function parseTimeString(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return null;
   const trimmed = timeStr.trim().toLowerCase();
@@ -8860,7 +9234,7 @@ function parseTimeString(timeStr) {
   }
 }
 
-// --- Pomocnicze: formatowanie pozostałego czasu ---
+// --- Pomocnicze: formatowanie pozostaÅ‚ego czasu ---
 function formatTimeDelta(ms) {
   const timestamp = Math.floor((Date.now() + ms) / 1000);
   return `<t:${timestamp}:R>`;
@@ -8882,7 +9256,7 @@ function formatBlockTime(remainingMs) {
   }
 }
 
-// --- Pomocnicze: poprawna forma liczby osób ---
+// --- Pomocnicze: poprawna forma liczby osÃ³b ---
 function getPersonForm(count) {
   if (count === 1) return "osoba";
   if (
@@ -8892,10 +9266,10 @@ function getPersonForm(count) {
   ) {
     return "osoby";
   }
-  return "osób";
+  return "osÃ³b";
 }
 
-// --- Pomocnicze: losowanie zwycięzców ---
+// --- Pomocnicze: losowanie zwyciÄ™zcÃ³w ---
 function pickRandom(arr, n) {
   if (!arr || !arr.length) return [];
   const a = arr.slice();
@@ -8910,28 +9284,28 @@ function pickRandom(arr, n) {
 async function handleDodajKonkursCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Tylko** na **serwerze**.",
+      content: "> `âŒ` Ã— **Tylko** na **serwerze**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Modal: tylko nagroda (jako tytuł), czas, zwycięzcy i wymagane zaproszenia
+  // Modal: tylko nagroda (jako tytuÅ‚), czas, zwyciÄ™zcy i wymagane zaproszenia
   const modal = new ModalBuilder()
     .setCustomId("konkurs_create_modal")
-    .setTitle("Utwórz konkurs");
+    .setTitle("UtwÃ³rz konkurs");
 
   const prizeInput = new TextInputBuilder()
     .setCustomId("konkurs_nagroda")
-    .setLabel("Nagroda (to będzie tytuł konkursu)")
+    .setLabel("Nagroda (to bÄ™dzie tytuÅ‚ konkursu)")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMaxLength(200);
@@ -8941,12 +9315,12 @@ async function handleDodajKonkursCommand(interaction) {
     .setLabel("Czas trwania (np. 1h, 2d, 30m, 60s)")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder("h = godzina, m = minuta, d = dzień, s = sekunda")
+    .setPlaceholder("h = godzina, m = minuta, d = dzieÅ„, s = sekunda")
     .setMaxLength(10);
 
   const winnersInput = new TextInputBuilder()
     .setCustomId("konkurs_zwyciezcy")
-    .setLabel("Liczba zwycięzców")
+    .setLabel("Liczba zwyciÄ™zcÃ³w")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setPlaceholder("1")
@@ -8982,7 +9356,7 @@ async function handleKonkursCreateModal(interaction) {
   if (!timeMs) {
     await interaction.reply({
       content:
-        "❌ Nieprawidłowy format czasu. Użyj np. `1h`, `2d`, `30m`, `60s`",
+        "âŒ NieprawidÅ‚owy format czasu. UÅ¼yj np. `1h`, `2d`, `30m`, `60s`",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -8999,23 +9373,23 @@ async function handleKonkursCreateModal(interaction) {
   const endsAt = Date.now() + timeMs;
   const ts = Math.floor(endsAt / 1000);
 
-  // Początkowy opis z wymaganiami zaproszeń jeśli są
+  // PoczÄ…tkowy opis z wymaganiami zaproszeÅ„ jeÅ›li sÄ…
   let description =
-    `🎁 **•** Nagroda: **${prize}**\n\n` +
-    `🕐 **•** Koniec konkursu: ${formatTimeDelta(timeMs)}\n` +
-    `👑 **•** Liczba zwycięzców: **${winnersCount}**\n` +
-    `👥 **•** Liczba uczestników: **0**`;
+    `ðŸŽ **â€¢** Nagroda: **${prize}**\n\n` +
+    `ðŸ• **â€¢** Koniec konkursu: ${formatTimeDelta(timeMs)}\n` +
+    `ðŸ‘‘ **â€¢** Liczba zwyciÄ™zcÃ³w: **${winnersCount}**\n` +
+    `ðŸ‘¥ **â€¢** Liczba uczestnikÃ³w: **0**`;
 
   if (invitesRequired > 0) {
     const inviteForm = getPersonForm(invitesRequired);
-    description += `\n\n⚠️ Wymagane: dodać ${invitesRequired} ${inviteForm} na serwer`;
+    description += `\n\nâš ï¸ Wymagane: dodaÄ‡ ${invitesRequired} ${inviteForm} na serwer`;
   }
 
-  // Początkowy embed - 🎉 New Shop × KONKURS w czarnym kwadracie
+  // PoczÄ…tkowy embed - ðŸŽ‰ New Shop Ã— KONKURS w czarnym kwadracie
   const embed = new EmbedBuilder()
     .setDescription(
       "```\n" +
-      "🎉 New Shop × KONKURS\n" +
+      "ðŸŽ‰ New Shop Ã— KONKURS\n" +
       "```\n" +
       description
     )
@@ -9025,7 +9399,7 @@ async function handleKonkursCreateModal(interaction) {
   // Placeholder button (will be replaced with proper customId after message is sent)
   const joinBtn = new ButtonBuilder()
     .setCustomId("konkurs_join_pending")
-    .setLabel("Weź udział (0)")
+    .setLabel("WeÅº udziaÅ‚ (0)")
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(false);
 
@@ -9048,8 +9422,8 @@ async function handleKonkursCreateModal(interaction) {
       files: [attachment]
     });
   } catch (err) {
-    console.warn("Nie udało się załadować GIFa przy tworzeniu konkursu:", err);
-    // Fallback: wyślij bez GIFa
+    console.warn("Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ GIFa przy tworzeniu konkursu:", err);
+    // Fallback: wyÅ›lij bez GIFa
     const row = new ActionRowBuilder().addComponents(joinBtn);
     sent = await targetChannel.send({ 
       embeds: [embed], 
@@ -9060,7 +9434,7 @@ async function handleKonkursCreateModal(interaction) {
   if (!sent) {
     try {
       await interaction.editReply({
-        content: "> `❌` × **Nie udało się** utworzyć konkursu (nie wysłano wiadomości w **kanał**).",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** utworzyÄ‡ konkursu (nie wysÅ‚ano wiadomoÅ›ci w **kanaÅ‚**).",
       });
     } catch (e) {
       // ignore
@@ -9082,11 +9456,11 @@ async function handleKonkursCreateModal(interaction) {
   contestParticipants.set(sent.id, new Map());
   scheduleSavePersistentState();
 
-  // ustawiamy poprawny id na przycisku już po wysłaniu
+  // ustawiamy poprawny id na przycisku juÅ¼ po wysÅ‚aniu
   const properCustomId = `konkurs_join_${sent.id}`;
   const joinButtonCorrect = new ButtonBuilder()
     .setCustomId(properCustomId)
-    .setLabel("Weź udział (0)")
+    .setLabel("WeÅº udziaÅ‚ (0)")
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(false);
 
@@ -9099,16 +9473,16 @@ async function handleKonkursCreateModal(interaction) {
 
   try {
     await interaction.editReply({
-      content: `\`✅\` Konkurs opublikowany w <#${targetChannel.id}> i potrwa ${formatTimeDelta(timeMs)} (do <t:${ts}:R>)`,
+      content: `\`âœ…\` Konkurs opublikowany w <#${targetChannel.id}> i potrwa ${formatTimeDelta(timeMs)} (do <t:${ts}:R>)`,
     });
   } catch (err) {
-    console.error("Błąd tworzenia konkursu:", err);
+    console.error("BÅ‚Ä…d tworzenia konkursu:", err);
     try {
       await interaction.editReply({
-        content: "> `❌` × **Nie udało się** utworzyć **konkursu**.",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** utworzyÄ‡ **konkursu**.",
       });
     } catch (e) {
-      console.error("Nie udało się wysłać editReply po błędzie:", e);
+      console.error("Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ editReply po bÅ‚Ä™dzie:", e);
     }
   }
 }
@@ -9117,28 +9491,28 @@ async function handleKonkursCreateModal(interaction) {
 async function handleDodajKonkursCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Tylko** na **serwerze**.",
+      content: "> `âŒ` Ã— **Tylko** na **serwerze**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
-  // Sprawdź czy właściciel
+  // SprawdÅº czy wÅ‚aÅ›ciciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
+      content: "> `â—` Ã— Brak wymaganych uprawnieÅ„.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Modal: tylko nagroda (jako tytuł), czas, zwycięzcy i wymagane zaproszenia
+  // Modal: tylko nagroda (jako tytuÅ‚), czas, zwyciÄ™zcy i wymagane zaproszenia
   const modal = new ModalBuilder()
     .setCustomId("konkurs_create_modal")
-    .setTitle("Utwórz konkurs");
+    .setTitle("UtwÃ³rz konkurs");
 
   const prizeInput = new TextInputBuilder()
     .setCustomId("konkurs_nagroda")
-    .setLabel("Nagroda (to będzie tytuł konkursu)")
+    .setLabel("Nagroda (to bÄ™dzie tytuÅ‚ konkursu)")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMaxLength(200);
@@ -9148,12 +9522,12 @@ async function handleDodajKonkursCommand(interaction) {
     .setLabel("Czas trwania (np. 1h, 2d, 30m, 60s)")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder("h = godzina, m = minuta, d = dzień, s = sekunda")
+    .setPlaceholder("h = godzina, m = minuta, d = dzieÅ„, s = sekunda")
     .setMaxLength(10);
 
   const winnersInput = new TextInputBuilder()
     .setCustomId("konkurs_zwyciezcy")
-    .setLabel("Liczba zwycięzców")
+    .setLabel("Liczba zwyciÄ™zcÃ³w")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setPlaceholder("1")
@@ -9189,7 +9563,7 @@ async function handleKonkursCreateModal(interaction) {
   if (!timeMs) {
     await interaction.reply({
       content:
-        "❌ Nieprawidłowy format czasu. Użyj np. `1h`, `2d`, `30m`, `60s`",
+        "âŒ NieprawidÅ‚owy format czasu. UÅ¼yj np. `1h`, `2d`, `30m`, `60s`",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -9206,23 +9580,23 @@ async function handleKonkursCreateModal(interaction) {
   const endsAt = Date.now() + timeMs;
   const ts = Math.floor(endsAt / 1000);
 
-  // Początkowy opis z wymaganiami zaproszeń jeśli są
+  // PoczÄ…tkowy opis z wymaganiami zaproszeÅ„ jeÅ›li sÄ…
   let description =
-    `🎁 **•** Nagroda: **${prize}**\n\n` +
-    `🕐 **•** Koniec konkursu: ${formatTimeDelta(timeMs)}\n` +
-    `👑 **•** Liczba zwycięzców: **${winnersCount}**\n` +
-    `👥 **•** Liczba uczestników: **0**`;
+    `ðŸŽ **â€¢** Nagroda: **${prize}**\n\n` +
+    `ðŸ• **â€¢** Koniec konkursu: ${formatTimeDelta(timeMs)}\n` +
+    `ðŸ‘‘ **â€¢** Liczba zwyciÄ™zcÃ³w: **${winnersCount}**\n` +
+    `ðŸ‘¥ **â€¢** Liczba uczestnikÃ³w: **0**`;
 
   if (invitesRequired > 0) {
     const inviteForm = getPersonForm(invitesRequired);
-    description += `\n\n \`❗\` **Wymagane: dodać ${invitesRequired} ${inviteForm} na serwer**`;
+    description += `\n\n \`â—\` **Wymagane: dodaÄ‡ ${invitesRequired} ${inviteForm} na serwer**`;
   }
 
-  // Początkowy embed - 🎉 New Shop × KONKURS w czarnym kwadracie
+  // PoczÄ…tkowy embed - ðŸŽ‰ New Shop Ã— KONKURS w czarnym kwadracie
   const embed = new EmbedBuilder()
     .setDescription(
       "```\n" +
-      "🎉 New Shop × KONKURS\n" +
+      "ðŸŽ‰ New Shop Ã— KONKURS\n" +
       "```\n" +
       description
     )
@@ -9232,7 +9606,7 @@ async function handleKonkursCreateModal(interaction) {
   // Placeholder button (will be replaced with proper customId after message is sent)
   const joinBtn = new ButtonBuilder()
     .setCustomId("konkurs_join_pending")
-    .setLabel("Weź udział (0)")
+    .setLabel("WeÅº udziaÅ‚ (0)")
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(false);
 
@@ -9255,8 +9629,8 @@ async function handleKonkursCreateModal(interaction) {
       files: [attachment]
     });
   } catch (err) {
-    console.warn("Nie udało się załadować GIFa przy tworzeniu konkursu:", err);
-    // Fallback: wyślij bez GIFa
+    console.warn("Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ GIFa przy tworzeniu konkursu:", err);
+    // Fallback: wyÅ›lij bez GIFa
     const row = new ActionRowBuilder().addComponents(joinBtn);
     sent = await targetChannel.send({ 
       embeds: [embed], 
@@ -9267,7 +9641,7 @@ async function handleKonkursCreateModal(interaction) {
   if (!sent) {
     try {
       await interaction.editReply({
-        content: "> `❌` × **Nie udało się** utworzyć konkursu (nie wysłano wiadomości w **kanał**).",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** utworzyÄ‡ konkursu (nie wysÅ‚ano wiadomoÅ›ci w **kanaÅ‚**).",
       });
     } catch (e) {
       // ignore
@@ -9289,11 +9663,11 @@ async function handleKonkursCreateModal(interaction) {
   contestParticipants.set(sent.id, new Map());
   scheduleSavePersistentState();
 
-  // ustawiamy poprawny id na przycisku już po wysłaniu
+  // ustawiamy poprawny id na przycisku juÅ¼ po wysÅ‚aniu
   const properCustomId = `konkurs_join_${sent.id}`;
   const joinButtonCorrect = new ButtonBuilder()
     .setCustomId(properCustomId)
-    .setLabel("Weź udział (0)")
+    .setLabel("WeÅº udziaÅ‚ (0)")
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(false);
 
@@ -9306,16 +9680,16 @@ async function handleKonkursCreateModal(interaction) {
 
   try {
     await interaction.editReply({
-      content: `\`✅\` Konkurs opublikowany w <#${targetChannel.id}> i potrwa ${formatTimeDelta(timeMs)} (do <t:${ts}:R>)`,
+      content: `\`âœ…\` Konkurs opublikowany w <#${targetChannel.id}> i potrwa ${formatTimeDelta(timeMs)} (do <t:${ts}:R>)`,
     });
   } catch (err) {
-    console.error("Błąd tworzenia konkursu:", err);
+    console.error("BÅ‚Ä…d tworzenia konkursu:", err);
     try {
       await interaction.editReply({
-        content: "> `❌` × **Nie udało się** utworzyć **konkursu**.",
+        content: "> `âŒ` Ã— **Nie udaÅ‚o siÄ™** utworzyÄ‡ **konkursu**.",
       });
     } catch (e) {
-      console.error("Nie udało się wysłać editReply po błędzie:", e);
+      console.error("Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ editReply po bÅ‚Ä™dzie:", e);
     }
   }
 }
@@ -9327,7 +9701,7 @@ async function handleKonkursJoinModal(interaction, msgId) {
       embeds: [
         new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription("> `❌` × **Konkurs** nie został znaleziony.")
+          .setDescription("> `âŒ` Ã— **Konkurs** nie zostaÅ‚ znaleziony.")
           .setTimestamp(),
       ],
       flags: [MessageFlags.Ephemeral],
@@ -9339,7 +9713,7 @@ async function handleKonkursJoinModal(interaction, msgId) {
       embeds: [
         new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription("> `❌` × **Konkurs** już się zakończył.")
+          .setDescription("> `âŒ` Ã— **Konkurs** juÅ¼ siÄ™ zakoÅ„czyÅ‚.")
           .setTimestamp(),
       ],
       flags: [MessageFlags.Ephemeral],
@@ -9356,7 +9730,7 @@ async function handleKonkursJoinModal(interaction, msgId) {
           new EmbedBuilder()
             .setColor(COLOR_BLUE)
             .setDescription(
-              `❌ Nie masz wystarczającej liczby zaproszeń. Wymagane: ${contest.invitesRequired}`,
+              `âŒ Nie masz wystarczajÄ…cej liczby zaproszeÅ„. Wymagane: ${contest.invitesRequired}`,
             )
             .setTimestamp(),
         ],
@@ -9381,10 +9755,10 @@ async function handleKonkursJoinModal(interaction, msgId) {
 
   const userId = interaction.user.id;
   if (participantsMap.has(userId)) {
-    // Użytkownik już jest zapisany - pytaj czy chce opuścić
+    // UÅ¼ytkownik juÅ¼ jest zapisany - pytaj czy chce opuÅ›ciÄ‡
     const leaveBtn = new ButtonBuilder()
       .setCustomId(`confirm_leave_${msgId}`)
-      .setLabel("Opuść Konkurs")
+      .setLabel("OpuÅ›Ä‡ Konkurs")
       .setStyle(ButtonStyle.Danger);
 
     const cancelBtn = new ButtonBuilder()
@@ -9396,7 +9770,7 @@ async function handleKonkursJoinModal(interaction, msgId) {
 
     const questionEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription("> \`❓\` × Już wziąłeś udział w tym konkursie!");
+      .setDescription("> \`â“\` Ã— JuÅ¼ wziÄ…Å‚eÅ› udziaÅ‚ w tym konkursie!");
 
     await interaction.reply({
       embeds: [questionEmbed],
@@ -9409,7 +9783,7 @@ async function handleKonkursJoinModal(interaction, msgId) {
   participantsMap.set(userId, nick);
   scheduleSavePersistentState();
 
-  // Resetuj licznik wyjść gdy użytkownik ponownie dołącza do konkursu
+  // Resetuj licznik wyjÅ›Ä‡ gdy uÅ¼ytkownik ponownie doÅ‚Ä…cza do konkursu
   const userBlocks = contestLeaveBlocks.get(userId) || {};
   if (userBlocks[msgId]) {
     userBlocks[msgId].leaveCount = 0;
@@ -9420,7 +9794,7 @@ async function handleKonkursJoinModal(interaction, msgId) {
 
   const participantsCount = participantsMap.size;
 
-  // Aktualizuj wiadomość konkursu
+  // Aktualizuj wiadomoÅ›Ä‡ konkursu
   try {
     const ch = await client.channels.fetch(contest.channelId).catch(() => null);
     if (ch) {
@@ -9428,39 +9802,39 @@ async function handleKonkursJoinModal(interaction, msgId) {
       if (origMsg) {
         // Zaktualizuj opis
         let updatedDescription =
-          `🎁 **•** Nagroda: **${contest.prize}**\n\n` +
-          `🕐 **•** Koniec konkursu: ${formatTimeDelta(contest.endsAt - Date.now())}\n` +
-          `👑 **•** Liczba zwycięzców: **${contest.winnersCount}**\n` +
-          `👥 **•** Liczba uczestników: **${participantsCount}**`;
+          `ðŸŽ **â€¢** Nagroda: **${contest.prize}**\n\n` +
+          `ðŸ• **â€¢** Koniec konkursu: ${formatTimeDelta(contest.endsAt - Date.now())}\n` +
+          `ðŸ‘‘ **â€¢** Liczba zwyciÄ™zcÃ³w: **${contest.winnersCount}**\n` +
+          `ðŸ‘¥ **â€¢** Liczba uczestnikÃ³w: **${participantsCount}**`;
         
         
 
         if (contest.invitesRequired > 0) {
           const inviteForm = getPersonForm(contest.invitesRequired);
-          updatedDescription += `\n\n⚠️ Wymagane: dodać ${contest.invitesRequired} ${inviteForm} na serwer`;
+          updatedDescription += `\n\nâš ï¸ Wymagane: dodaÄ‡ ${contest.invitesRequired} ${inviteForm} na serwer`;
         }
 
-        // Pobierz istniejący embed i zachowaj czarny kwadrat
+        // Pobierz istniejÄ…cy embed i zachowaj czarny kwadrat
         const existingEmbed = EmbedBuilder.from(origMsg.embeds[0]);
         const originalDescription = existingEmbed.data.description || '';
         
-        // Wyodrębnij czarny kwadrat z oryginalnego opisu
+        // WyodrÄ™bnij czarny kwadrat z oryginalnego opisu
         const blackBoxMatch = originalDescription.match(/```[\s\S]*?```/);
         const blackBox = blackBoxMatch ? blackBoxMatch[0] : '';
         
-        // Połącz czarny kwadrat z nowym opisem
+        // PoÅ‚Ä…cz czarny kwadrat z nowym opisem
         const fullDescription = blackBox + '\n' + updatedDescription;
         existingEmbed.setDescription(fullDescription);
 
         // Zaktualizuj przycisk
         const joinButton = new ButtonBuilder()
           .setCustomId(`konkurs_join_${msgId}`)
-          .setLabel(`Weź udział (${participantsCount})`)
+          .setLabel(`WeÅº udziaÅ‚ (${participantsCount})`)
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(false);
         const row = new ActionRowBuilder().addComponents(joinButton);
 
-        // Edytuj wiadomość - usuń stare załączniki i dodaj ten sam GIF ponownie
+        // Edytuj wiadomoÅ›Ä‡ - usuÅ„ stare zaÅ‚Ä…czniki i dodaj ten sam GIF ponownie
         try {
           const gifPath = path.join(
             __dirname,
@@ -9476,8 +9850,8 @@ async function handleKonkursJoinModal(interaction, msgId) {
             files: [attachment]
           }).catch(() => null);
         } catch (err) {
-          console.warn("Nie udało się załadować GIFa przy edycji konkursu:", err);
-          // Fallback: usuń załączniki bez GIFa
+          console.warn("Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ GIFa przy edycji konkursu:", err);
+          // Fallback: usuÅ„ zaÅ‚Ä…czniki bez GIFa
           await origMsg.edit({ 
             embeds: [existingEmbed], 
             components: [row],
@@ -9487,13 +9861,13 @@ async function handleKonkursJoinModal(interaction, msgId) {
       }
     }
   } catch (e) {
-    console.warn("Nie udało się zaktualizować embed/btn konkursu:", e);
+    console.warn("Nie udaÅ‚o siÄ™ zaktualizowaÄ‡ embed/btn konkursu:", e);
   }
 
-  // Prosta odpowiedź dla nowego uczestnika
+  // Prosta odpowiedÅº dla nowego uczestnika
   const joinEmbed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
-    .setDescription("> \`✅\` × Poprawnie dołączyłeś do konkursu.");
+    .setDescription("> \`âœ…\` Ã— Poprawnie doÅ‚Ä…czyÅ‚eÅ› do konkursu.");
 
   await interaction.reply({
     embeds: [joinEmbed],
@@ -9533,17 +9907,17 @@ async function endContestByMessageId(messageId) {
       )
       .join("\n");
   } else {
-    winnersDetails = "Brak zwycięzców";
+    winnersDetails = "Brak zwyciÄ™zcÃ³w";
   }
 
   const podsumowanieEmbed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(
        "```\n" +
-      "🎉 Konkurs zakończony 🎉\n" +
+      "ðŸŽ‰ Konkurs zakoÅ„czony ðŸŽ‰\n" +
        "```\n" +
-      `**🎁 **•** Nagroda:** ${meta.prize}\n\n` +
-      `**🏆 **•** Zwycięzcy:**\n${winnersDetails}`,
+      `**ðŸŽ **â€¢** Nagroda:** ${meta.prize}\n\n` +
+      `**ðŸ† **â€¢** ZwyciÄ™zcy:**\n${winnersDetails}`,
     )
     .setTimestamp();
 
@@ -9551,28 +9925,28 @@ async function endContestByMessageId(messageId) {
     try {
       await logChannel.send({ embeds: [podsumowanieEmbed] });
     } catch (e) {
-      console.warn("Nie udało się wysłać do logi-konkurs:", e);
+      console.warn("Nie udaÅ‚o siÄ™ wysÅ‚aÄ‡ do logi-konkurs:", e);
     }
   }
 
-  // Edytuj wiadomość konkursową — EMBED z wynikami + przycisk podsumowujący
+  // Edytuj wiadomoÅ›Ä‡ konkursowÄ… â€” EMBED z wynikami + przycisk podsumowujÄ…cy
   try {
     const origMsg = await channel.messages.fetch(messageId).catch(() => null);
     if (origMsg) {
-      // embed końcowy
+      // embed koÅ„cowy
       const publicWinners =
         winners.length > 0
           ? winners.map(([userId]) => `<@${userId}>`).join("\n")
-          : "Brak zwycięzców";
+          : "Brak zwyciÄ™zcÃ³w";
 
       const finalEmbed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
         .setDescription(
            "```\n" +
-          "🎉 Konkurs zakończony 🎉\n" +
+          "ðŸŽ‰ Konkurs zakoÅ„czony ðŸŽ‰\n" +
            "```\n" +
-          `**🎁 **•** Nagroda:** ${meta.prize}\n\n` +
-          `**🏆 **•** Zwycięzcy:**\n${publicWinners}`,
+          `**ðŸŽ **â€¢** Nagroda:** ${meta.prize}\n\n` +
+          `**ðŸ† **â€¢** ZwyciÄ™zcy:**\n${publicWinners}`,
         )
         .setTimestamp()
         .setImage("attachment://konkurs_end.gif");
@@ -9580,15 +9954,15 @@ async function endContestByMessageId(messageId) {
       const personForm = getPersonForm(participants.length);
       let buttonLabel;
       if (participants.length === 1) {
-        buttonLabel = `Wzięła udział 1 osoba`;
+        buttonLabel = `WziÄ™Å‚a udziaÅ‚ 1 osoba`;
       } else if (
         participants.length % 10 >= 2 &&
         participants.length % 10 <= 4 &&
         (participants.length % 100 < 10 || participants.length % 100 >= 20)
       ) {
-        buttonLabel = `Wzięły udział ${participants.length} ${personForm}`;
+        buttonLabel = `WziÄ™Å‚y udziaÅ‚ ${participants.length} ${personForm}`;
       } else {
-        buttonLabel = `Wzięło udział ${participants.length} ${personForm}`;
+        buttonLabel = `WziÄ™Å‚o udziaÅ‚ ${participants.length} ${personForm}`;
       }
 
       const joinButton = new ButtonBuilder()
@@ -9599,7 +9973,7 @@ async function endContestByMessageId(messageId) {
 
       const row = new ActionRowBuilder().addComponents(joinButton);
 
-      // Dodaj GIF na zakończenie konkursu
+      // Dodaj GIF na zakoÅ„czenie konkursu
       try {
         const gifPath = path.join(
           __dirname,
@@ -9611,7 +9985,7 @@ async function endContestByMessageId(messageId) {
           .edit({ embeds: [finalEmbed], components: [row], files: [attachment] })
           .catch(() => null);
       } catch (err) {
-        console.warn("Nie udało się załadować GIFa na zakończenie konkursu:", err);
+        console.warn("Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ GIFa na zakoÅ„czenie konkursu:", err);
         try {
           finalEmbed.setImage(null);
         } catch (e) {
@@ -9623,7 +9997,7 @@ async function endContestByMessageId(messageId) {
       }
     }
   } catch (err) {
-    console.warn("Nie udało się zedytować wiadomości konkursu na końcu:", err);
+    console.warn("Nie udaÅ‚o siÄ™ zedytowaÄ‡ wiadomoÅ›ci konkursu na koÅ„cu:", err);
   }
 
   contests.delete(messageId);
@@ -9631,13 +10005,13 @@ async function endContestByMessageId(messageId) {
   scheduleSavePersistentState();
 }
 
-// --- Obsługa /end-giveaways ---
+// --- ObsÅ‚uga /end-giveaways ---
 async function handleEndGiveawaysCommand(interaction) {
-  // Sprawdź czy właściciel serwera
+  // SprawdÅº czy wÅ‚aÅ›ciciel serwera
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   if (!isOwner) {
     await interaction.reply({
-      content: "> `❌` × **Tylko właściciel serwera** może użyć tej komendy.",
+      content: "> `âŒ` Ã— **Tylko wÅ‚aÅ›ciciel serwera** moÅ¼e uÅ¼yÄ‡ tej komendy.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -9645,7 +10019,7 @@ async function handleEndGiveawaysCommand(interaction) {
 
   if (!interaction.guild) {
     await interaction.reply({
-      content: "> `❌` × **Tylko** na **serwerze**.",
+      content: "> `âŒ` Ã— **Tylko** na **serwerze**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -9656,13 +10030,13 @@ async function handleEndGiveawaysCommand(interaction) {
   
   if (activeContests.length === 0) {
     await interaction.reply({
-      content: "> `ℹ️` × **Brak aktywnych konkursów** do zakończenia.",
+      content: "> `â„¹ï¸` Ã— **Brak aktywnych konkursÃ³w** do zakoÅ„czenia.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  // Zakończ wszystkie aktywne konkursy
+  // ZakoÅ„cz wszystkie aktywne konkursy
   const endedContests = [];
   const failedContests = [];
 
@@ -9677,7 +10051,7 @@ async function handleEndGiveawaysCommand(interaction) {
         messageId: messageId,
       });
     } catch (error) {
-      console.error(`Błąd podczas kończenia konkursu ${messageId}:`, error);
+      console.error(`BÅ‚Ä…d podczas koÅ„czenia konkursu ${messageId}:`, error);
       failedContests.push({
         prize: meta.prize,
         error: error.message,
@@ -9685,30 +10059,30 @@ async function handleEndGiveawaysCommand(interaction) {
     }
   }
 
-  // Stwórz embed z podsumowaniem
+  // StwÃ³rz embed z podsumowaniem
   const summaryEmbed = new EmbedBuilder()
     .setColor(endedContests.length > 0 ? COLOR_BLUE : COLOR_RED)
-    .setTitle("🏁 Zakończono wszystkie konkursy")
+    .setTitle("ðŸ ZakoÅ„czono wszystkie konkursy")
     .setTimestamp()
     .setFooter({ text: `Wykonane przez: ${interaction.user.tag}` });
 
   let description = "";
   
   if (endedContests.length > 0) {
-    description += `## \`✅\` Pomyślnie zakończone konkursy (${endedContests.length}):\n\n`;
+    description += `## \`âœ…\` PomyÅ›lnie zakoÅ„czone konkursy (${endedContests.length}):\n\n`;
     endedContests.forEach((contest, index) => {
       description += `**${index + 1}. ${contest.prize}**\n`;
-      description += `> ⏱️ Pozostało czasu: \`${contest.timeLeft}\`\n`;
-      description += `> 📍 Kanał: <#${contest.channelId}>\n`;
-      description += `> 🆔 ID wiadomości: \`${contest.messageId}\`\n\n`;
+      description += `> â±ï¸ PozostaÅ‚o czasu: \`${contest.timeLeft}\`\n`;
+      description += `> ðŸ“ KanaÅ‚: <#${contest.channelId}>\n`;
+      description += `> ðŸ†” ID wiadomoÅ›ci: \`${contest.messageId}\`\n\n`;
     });
   }
 
   if (failedContests.length > 0) {
-    description += `## ❌ Nie udało się zakończyć (${failedContests.length}):\n\n`;
+    description += `## âŒ Nie udaÅ‚o siÄ™ zakoÅ„czyÄ‡ (${failedContests.length}):\n\n`;
     failedContests.forEach((contest, index) => {
       description += `**${index + 1}. ${contest.prize}**\n`;
-      description += `> 🚫 Błąd: \`${contest.error}\`\n\n`;
+      description += `> ðŸš« BÅ‚Ä…d: \`${contest.error}\`\n\n`;
     });
   }
 
@@ -9716,16 +10090,16 @@ async function handleEndGiveawaysCommand(interaction) {
 
   await interaction.reply({
     embeds: [summaryEmbed],
-    flags: [MessageFlags.Ephemeral], // Tylko osoba wpisująca widzi odpowiedź
+    flags: [MessageFlags.Ephemeral], // Tylko osoba wpisujÄ…ca widzi odpowiedÅº
   });
 }
 
-// --- Obsługa opuszczenia konkursu ---
+// --- ObsÅ‚uga opuszczenia konkursu ---
 async function handleKonkursLeave(interaction, msgId) {
   const contest = contests.get(msgId);
   if (!contest) {
     await interaction.update({
-      content: "> `❌` × **Konkurs** nie został znaleziony.",
+      content: "> `âŒ` Ã— **Konkurs** nie zostaÅ‚ znaleziony.",
       components: [],
     });
     return;
@@ -9733,7 +10107,7 @@ async function handleKonkursLeave(interaction, msgId) {
 
   const userId = interaction.user.id;
   
-  // Sprawdź blokadę opuszczania konkursu
+  // SprawdÅº blokadÄ™ opuszczania konkursu
   const userBlocks = contestLeaveBlocks.get(userId) || {};
   const contestBlock = userBlocks[msgId];
   
@@ -9742,7 +10116,7 @@ async function handleKonkursLeave(interaction, msgId) {
     const timeString = formatBlockTime(remainingTime);
     
     await interaction.update({
-      content: `> \`⏳\` × Musisz poczekać **${timeString}**, aby ponownie opuścić konkurs.`,
+      content: `> \`â³\` Ã— Musisz poczekaÄ‡ **${timeString}**, aby ponownie opuÅ›ciÄ‡ konkurs.`,
       components: [],
     });
     return;
@@ -9751,7 +10125,7 @@ async function handleKonkursLeave(interaction, msgId) {
   let participantsMap = contestParticipants.get(msgId);
   if (!participantsMap) {
     await interaction.update({
-      content: "> `❌` × **Nie bierzesz** udziału w tym **konkursie**.",
+      content: "> `âŒ` Ã— **Nie bierzesz** udziaÅ‚u w tym **konkursie**.",
       components: [],
     });
     return;
@@ -9759,17 +10133,17 @@ async function handleKonkursLeave(interaction, msgId) {
 
   if (!participantsMap.has(userId)) {
     await interaction.update({
-      content: "> `❌` × **Nie bierzesz** udziału w tym **konkursie**.",
+      content: "> `âŒ` Ã— **Nie bierzesz** udziaÅ‚u w tym **konkursie**.",
       components: [],
     });
     return;
   }
 
-  // Zwiększ licznik wyjść i nałóż blokadę jeśli to drugie wyjście
+  // ZwiÄ™ksz licznik wyjÅ›Ä‡ i naÅ‚Ã³Å¼ blokadÄ™ jeÅ›li to drugie wyjÅ›cie
   const currentLeaveCount = (contestBlock?.leaveCount || 0) + 1;
   
   if (currentLeaveCount >= 2) {
-    // Nałóż blokadę 30 minut
+    // NaÅ‚Ã³Å¼ blokadÄ™ 30 minut
     const blockedUntil = Date.now() + (30 * 60 * 1000); // 30 minut
     
     if (!userBlocks[msgId]) {
@@ -9782,7 +10156,7 @@ async function handleKonkursLeave(interaction, msgId) {
     contestLeaveBlocks.set(userId, userBlocks);
     scheduleSavePersistentState();
   } else {
-    // Pierwsze wyjście - tylko zaktualizuj licznik
+    // Pierwsze wyjÅ›cie - tylko zaktualizuj licznik
     if (!userBlocks[msgId]) {
       userBlocks[msgId] = { leaveCount: 0, blockedUntil: 0 };
     }
@@ -9792,7 +10166,7 @@ async function handleKonkursLeave(interaction, msgId) {
     scheduleSavePersistentState();
   }
 
-  // Usuwamy użytkownika z konkursu
+  // Usuwamy uÅ¼ytkownika z konkursu
   participantsMap.delete(userId);
   scheduleSavePersistentState();
 
@@ -9805,35 +10179,35 @@ async function handleKonkursLeave(interaction, msgId) {
       const origMsg = await ch.messages.fetch(msgId).catch(() => null);
       if (origMsg) {
         let updatedDescription =
-          `🎁 **•** Nagroda: **${contest.prize}**\n\n` +
-          `🕐 **•** Koniec konkursu: ${formatTimeDelta(contest.endsAt - Date.now())}\n` +
-          `👑 **•** Liczba zwycięzców: **${contest.winnersCount}**\n` +
-          `👥 **•** Liczba uczestników: **${participantsCount}**`;
+          `ðŸŽ **â€¢** Nagroda: **${contest.prize}**\n\n` +
+          `ðŸ• **â€¢** Koniec konkursu: ${formatTimeDelta(contest.endsAt - Date.now())}\n` +
+          `ðŸ‘‘ **â€¢** Liczba zwyciÄ™zcÃ³w: **${contest.winnersCount}**\n` +
+          `ðŸ‘¥ **â€¢** Liczba uczestnikÃ³w: **${participantsCount}**`;
 
         if (contest.invitesRequired > 0) {
           const inviteForm = getPersonForm(contest.invitesRequired);
-          updatedDescription += `\n\n⚠️ Wymagane: dodać ${contest.invitesRequired} ${inviteForm} na serwer`;
+          updatedDescription += `\n\nâš ï¸ Wymagane: dodaÄ‡ ${contest.invitesRequired} ${inviteForm} na serwer`;
         }
 
-        // Pobierz istniejący embed i zachowaj czarny kwadrat
+        // Pobierz istniejÄ…cy embed i zachowaj czarny kwadrat
         const embed = origMsg.embeds[0]?.toJSON() || {};
         const originalDescription = embed.description || '';
         
-        // Wyodrębnij czarny kwadrat z oryginalnego opisu
+        // WyodrÄ™bnij czarny kwadrat z oryginalnego opisu
         const blackBoxMatch = originalDescription.match(/```[\s\S]*?```/);
         const blackBox = blackBoxMatch ? blackBoxMatch[0] : '';
         
-        // Połącz czarny kwadrat z nowym opisem
+        // PoÅ‚Ä…cz czarny kwadrat z nowym opisem
         embed.description = blackBox + '\n' + updatedDescription;
 
         const joinButton = new ButtonBuilder()
           .setCustomId(`konkurs_join_${msgId}`)
-          .setLabel(`Weź udział (${participantsCount})`)
+          .setLabel(`WeÅº udziaÅ‚ (${participantsCount})`)
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(false);
         const row = new ActionRowBuilder().addComponents(joinButton);
 
-        // Edytuj wiadomość - usuń stare załączniki i dodaj ten sam GIF ponownie
+        // Edytuj wiadomoÅ›Ä‡ - usuÅ„ stare zaÅ‚Ä…czniki i dodaj ten sam GIF ponownie
         try {
           const gifPath = path.join(
             __dirname,
@@ -9849,8 +10223,8 @@ async function handleKonkursLeave(interaction, msgId) {
             files: [attachment]
           }).catch(() => null);
         } catch (err) {
-          console.warn("Nie udało się załadować GIFa przy edycji konkursu (leave):", err);
-          // Fallback: usuń załączniki bez GIFa
+          console.warn("Nie udaÅ‚o siÄ™ zaÅ‚adowaÄ‡ GIFa przy edycji konkursu (leave):", err);
+          // Fallback: usuÅ„ zaÅ‚Ä…czniki bez GIFa
           await origMsg.edit({ 
             embeds: [embed], 
             components: [row],
@@ -9860,12 +10234,12 @@ async function handleKonkursLeave(interaction, msgId) {
       }
     }
   } catch (e) {
-    console.warn("Nie udało się zaktualizować embed/btn konkursu:", e);
+    console.warn("Nie udaÅ‚o siÄ™ zaktualizowaÄ‡ embed/btn konkursu:", e);
   }
 
   const leaveEmbed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
-    .setDescription("> \`🚪\` × Opuściłeś konkurs.");
+    .setDescription("> \`ðŸšª\` Ã— OpuÅ›ciÅ‚eÅ› konkurs.");
 
   await interaction.update({
     embeds: [leaveEmbed],
@@ -9873,10 +10247,10 @@ async function handleKonkursLeave(interaction, msgId) {
   });
 }
 
-// --- Obsługa anulowania opuszczenia konkursu ---
+// --- ObsÅ‚uga anulowania opuszczenia konkursu ---
 async function handleKonkursCancelLeave(interaction, msgId) {
   await interaction.update({
-    content: "> `📋` × Anulowano",
+    content: "> `ðŸ“‹` Ã— Anulowano",
     components: [],
   });
 }
@@ -9912,13 +10286,13 @@ async function logTicketCreation(guild, ticketChannel, details) {
     if (!logCh) return;
 
     const embed = new EmbedBuilder()
-      .setTitle("🎟️ Ticket utworzony")
+      .setTitle("ðŸŽŸï¸ Ticket utworzony")
       .setColor(COLOR_BLUE)
       .setDescription(
-        `> \`🆔\` × Kanał: <#${ticketChannel.id}>\n` +
-        `> \`👤\` × Właściciel: <@${details.openerId}> (\`${details.openerId}\`)\n` +
-        `> \`📌\` × Typ ticketu: ${details.ticketTypeLabel}\n` +
-        `> \`📄\` × Informacje:\n${details.formInfo}`,
+        `> \`ðŸ†”\` Ã— KanaÅ‚: <#${ticketChannel.id}>\n` +
+        `> \`ðŸ‘¤\` Ã— WÅ‚aÅ›ciciel: <@${details.openerId}> (\`${details.openerId}\`)\n` +
+        `> \`ðŸ“Œ\` Ã— Typ ticketu: ${details.ticketTypeLabel}\n` +
+        `> \`ðŸ“„\` Ã— Informacje:\n${details.formInfo}`,
       )
       .setTimestamp();
 
@@ -9933,7 +10307,7 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta) {
     const guild = ticketChannel.guild;
     const logCh = await getLogiTicketChannel(guild);
     if (!logCh) {
-      console.warn("Brak kanału logi-ticket — pomijam logowanie ticketu.");
+      console.warn("Brak kanaÅ‚u logi-ticket â€” pomijam logowanie ticketu.");
       return;
     }
 
@@ -9970,15 +10344,15 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta) {
       : "brak";
 
     const embed = new EmbedBuilder()
-      .setTitle("🎟️ Ticket zamknięty")
+      .setTitle("ðŸŽŸï¸ Ticket zamkniÄ™ty")
       .setColor(COLOR_BLUE)
       .setDescription(
-        `> \`🆔\` × Kanał: **${ticketChannel.name}** (\`${ticketChannel.id}\`)\n` +
-          `> \`👤\` × Właściciel: ${openerId ? `<@${openerId}> (\`${openerId}\`)` : "unknown"}\n` +
-          `> \`🧑‍💼\` × Przejęty przez: ${claimedById ? `<@${claimedById}> (\`${claimedById}\`)` : "brak"}\n` +
-          `> \`🔒\` × Zamknął: <@${closedById}> (\`${closedById}\`)\n` +
-          `> \`💬\` × Wiadomości: **${messages.length}**\n` +
-          `> \`👥\` × Uczestnicy: ${participantsText}`,
+        `> \`ðŸ†”\` Ã— KanaÅ‚: **${ticketChannel.name}** (\`${ticketChannel.id}\`)\n` +
+          `> \`ðŸ‘¤\` Ã— WÅ‚aÅ›ciciel: ${openerId ? `<@${openerId}> (\`${openerId}\`)` : "unknown"}\n` +
+          `> \`ðŸ§‘â€ðŸ’¼\` Ã— PrzejÄ™ty przez: ${claimedById ? `<@${claimedById}> (\`${claimedById}\`)` : "brak"}\n` +
+          `> \`ðŸ”’\` Ã— ZamknÄ…Å‚: <@${closedById}> (\`${closedById}\`)\n` +
+          `> \`ðŸ’¬\` Ã— WiadomoÅ›ci: **${messages.length}**\n` +
+          `> \`ðŸ‘¥\` Ã— Uczestnicy: ${participantsText}`,
       )
       .setTimestamp();
 
@@ -10033,16 +10407,16 @@ const ROZLICZENIA_CHANNEL_ID = "1449162620807675935";
 const ROZLICZENIA_LOGS_CHANNEL_ID = "1457140136461730075";
 const ROZLICZENIA_PROWIZJA = 0.10; // 10%
 
-// Mapa na sumy sprzedaży w tygodniu
+// Mapa na sumy sprzedaÅ¼y w tygodniu
 const weeklySales = new Map(); // userId -> { amount, lastUpdate }
 
-// Funkcja do wysyłania wiadomości o rozliczeniach
+// Funkcja do wysyÅ‚ania wiadomoÅ›ci o rozliczeniach
 async function sendRozliczeniaMessage() {
   try {
     const channel = await client.channels.fetch(ROZLICZENIA_CHANNEL_ID);
     if (!channel) return;
 
-    // Sprawdź czy istnieje wiadomość informacyjna bota do usunięcia
+    // SprawdÅº czy istnieje wiadomoÅ›Ä‡ informacyjna bota do usuniÄ™cia
     const messages = await channel.messages.fetch({ limit: 50 });
     const botMessage = messages.find(msg =>
       msg.author.id === client.user.id &&
@@ -10050,55 +10424,55 @@ async function sendRozliczeniaMessage() {
       msg.embeds[0].title?.includes("ROZLICZENIA TYGODNIOWE")
     );
 
-    // Jeśli wiadomość istnieje, usuń ją
+    // JeÅ›li wiadomoÅ›Ä‡ istnieje, usuÅ„ jÄ…
     if (botMessage) {
       await botMessage.delete();
-      console.log("Usunięto istniejącą wiadomość informacyjną ROZLICZENIA TYGODNIOWE");
+      console.log("UsuniÄ™to istniejÄ…cÄ… wiadomoÅ›Ä‡ informacyjnÄ… ROZLICZENIA TYGODNIOWE");
     }
 
-    // Wyślij nową wiadomość
+    // WyÅ›lij nowÄ… wiadomoÅ›Ä‡
     const embed = new EmbedBuilder()
       .setColor(0xd4af37)
-      .setTitle("\`💱\` ROZLICZENIA TYGODNIOWE")
+      .setTitle("\`ðŸ’±\` ROZLICZENIA TYGODNIOWE")
       .setDescription(
-        "> \`ℹ️\` **Jeżeli sprzedajecie coś na shopie, wysyłacie tutaj kwotę, za którą dokonaliście sprzedaży. Na koniec każdego tygodnia w niedzielę rano macie czas do godziny 20:00, aby rozliczyć się i zapłacić 10% od łącznej sumy sprzedaży z __całego tygodnia.__**"
+        "> \`â„¹ï¸\` **JeÅ¼eli sprzedajecie coÅ› na shopie, wysyÅ‚acie tutaj kwotÄ™, za ktÃ³rÄ… dokonaliÅ›cie sprzedaÅ¼y. Na koniec kaÅ¼dego tygodnia w niedzielÄ™ rano macie czas do godziny 20:00, aby rozliczyÄ‡ siÄ™ i zapÅ‚aciÄ‡ 10% od Å‚Ä…cznej sumy sprzedaÅ¼y z __caÅ‚ego tygodnia.__**"
       )
-      .setFooter({ text: "Użyj komendy /rozliczenie aby dodać sprzedaż" })
+      .setFooter({ text: "UÅ¼yj komendy /rozliczenie aby dodaÄ‡ sprzedaÅ¼" })
       .setTimestamp();
 
     await channel.send({ embeds: [embed] });
-    console.log("Wysłano wiadomość informacyjną ROZLICZENIA TYGODNIOWE");
+    console.log("WysÅ‚ano wiadomoÅ›Ä‡ informacyjnÄ… ROZLICZENIA TYGODNIOWE");
   } catch (err) {
-    console.error("Błąd wysyłania wiadomości ROZLICZENIA TYGODNIOWE:", err);
+    console.error("BÅ‚Ä…d wysyÅ‚ania wiadomoÅ›ci ROZLICZENIA TYGODNIOWE:", err);
   }
 }
 
-// Funkcja do sprawdzania i resetowania cotygodniowych rozliczeń
+// Funkcja do sprawdzania i resetowania cotygodniowych rozliczeÅ„
 async function checkWeeklyReset() {
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0 = niedziela
   const hour = now.getHours();
 
-  // Reset w niedzielę o 20:01
+  // Reset w niedzielÄ™ o 20:01
   if (dayOfWeek === 0 && hour === 20 && now.getMinutes() === 1) {
     try {
       const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID);
       if (logsChannel && weeklySales.size > 0) {
         let totalSales = 0;
-        let report = "📊 **RAPORT TYGODNIOWY**\n\n";
+        let report = "ðŸ“Š **RAPORT TYGODNIOWY**\n\n";
 
         for (const [userId, data] of weeklySales) {
           const prowizja = data.amount * ROZLICZENIA_PROWIZJA;
-          report += `> 👤 <@${userId}>: Sprzedał: ${data.amount.toLocaleString("pl-PL")} zł | Do zapałaty: ${prowizja.toFixed(2)} zł\n`;
+          report += `> ðŸ‘¤ <@${userId}>: SprzedaÅ‚: ${data.amount.toLocaleString("pl-PL")} zÅ‚ | Do zapaÅ‚aty: ${prowizja.toFixed(2)} zÅ‚\n`;
           totalSales += data.amount;
         }
 
         const totalProwizja = (totalSales * ROZLICZENIA_PROWIZJA).toFixed(2);
-        report += `\n> 💰 **Łączna sprzedaż:** ${totalSales.toLocaleString("pl-PL")} zł\n`;
-        report += `> 💸 **Łączna prowizja (10%):** ${totalProwizja} zł\n`;
-        report += `> 📱 **Przelew na numer:** 880 260 392\n`;
-        report += `> ⏳ **Termin płatności:** do 20:00 dnia dzisiejszego\n`;
-        report += `> 🚫 **Brak płatności = brak dostępu do ticketów**`;
+        report += `\n> ðŸ’° **ÅÄ…czna sprzedaÅ¼:** ${totalSales.toLocaleString("pl-PL")} zÅ‚\n`;
+        report += `> ðŸ’¸ **ÅÄ…czna prowizja (10%):** ${totalProwizja} zÅ‚\n`;
+        report += `> ðŸ“± **Przelew na numer:** 880 260 392\n`;
+        report += `> â³ **Termin pÅ‚atnoÅ›ci:** do 20:00 dnia dzisiejszego\n`;
+        report += `> ðŸš« **Brak pÅ‚atnoÅ›ci = brak dostÄ™pu do ticketÃ³w**`;
 
         await logsChannel.send(report);
       }
@@ -10107,54 +10481,54 @@ async function checkWeeklyReset() {
       weeklySales.clear();
       console.log("Zresetowano cotygodniowe rozliczenia");
     } catch (err) {
-      console.error("Błąd resetowania rozliczeń:", err);
+      console.error("BÅ‚Ä…d resetowania rozliczeÅ„:", err);
     }
   }
 }
 
-// Listener dla nowych wiadomości na kanale rozliczeń
+// Listener dla nowych wiadomoÅ›ci na kanale rozliczeÅ„
 client.on('messageCreate', async (message) => {
-  // Ignoruj wiadomości od botów
+  // Ignoruj wiadomoÅ›ci od botÃ³w
   if (message.author.bot) return;
   
-  // Sprawdź czy wiadomość jest na kanale rozliczeń
+  // SprawdÅº czy wiadomoÅ›Ä‡ jest na kanale rozliczeÅ„
   if (message.channelId === ROZLICZENIA_CHANNEL_ID) {
-    // Jeśli to nie jest komenda rozliczenia, usuń wiadomość
+    // JeÅ›li to nie jest komenda rozliczenia, usuÅ„ wiadomoÅ›Ä‡
     if (!message.content.startsWith('/rozliczenie')) {
       try {
         await message.delete();
         await message.author.send({
           embeds: [{
             color: 0xff0000,
-            title: "❌ Ograniczenie kanału",
-            description: `Na kanale <#${ROZLICZENIA_CHANNEL_ID}> można używać tylko komend rozliczeń!\n\n` +
-                     `**Dostępne komendy:**\n` +
-                     `• \`/rozliczenie [kwota]\` - dodaj sprzedaż`,
-            footer: { text: "NewShop 5k$-1zł🏷️-×┃procenty-sell" }
+            title: "âŒ Ograniczenie kanaÅ‚u",
+            description: `Na kanale <#${ROZLICZENIA_CHANNEL_ID}> moÅ¼na uÅ¼ywaÄ‡ tylko komend rozliczeÅ„!\n\n` +
+                     `**DostÄ™pne komendy:**\n` +
+                     `â€¢ \`/rozliczenie [kwota]\` - dodaj sprzedaÅ¼`,
+            footer: { text: "NewShop 5k$-1zÅ‚ðŸ·ï¸-Ã—â”ƒprocenty-sell" }
           }]
         });
       } catch (err) {
-        console.error("Błąd usuwania wiadomości z kanału rozliczeń:", err);
+        console.error("BÅ‚Ä…d usuwania wiadomoÅ›ci z kanaÅ‚u rozliczeÅ„:", err);
       }
       return;
     }
     
-    // Odśwież wiadomość ROZLICZENIA TYGODNIOWE
-    setTimeout(sendRozliczeniaMessage, 1000); // Małe opóźnienie dla pewności
+    // OdÅ›wieÅ¼ wiadomoÅ›Ä‡ ROZLICZENIA TYGODNIOWE
+    setTimeout(sendRozliczeniaMessage, 1000); // MaÅ‚e opÃ³Åºnienie dla pewnoÅ›ci
   }
 });
 
 // Uruchom sprawdzanie co 5 minut
 setInterval(checkWeeklyReset, 5 * 60 * 1000);
 
-// Wysyłaj wiadomość o rozliczeniach co 12 godzin
+// WysyÅ‚aj wiadomoÅ›Ä‡ o rozliczeniach co 12 godzin
 setInterval(sendRozliczeniaMessage, 12 * 60 * 60 * 1000);
 
-// Wyślij wiadomość przy starcie bota
+// WyÅ›lij wiadomoÅ›Ä‡ przy starcie bota
 setTimeout(sendRozliczeniaMessage, 5000);
 
 // ---------------------------------------------------
-// FULL MONITORING MODE - System statusów i alertów
+// FULL MONITORING MODE - System statusÃ³w i alertÃ³w
 // ---------------------------------------------------
 
 const https = require('https');
@@ -10175,7 +10549,7 @@ function formatUptime(ms) {
   return `${days}d ${hrs % 24}h ${min % 60}m ${sec % 60}s`;
 }
 
-// Funkcja wysyłania embeda na webhook
+// Funkcja wysyÅ‚ania embeda na webhook
 async function sendMonitoringEmbed(title, description, color) {
   const webhookUrl = process.env.UPTIME_WEBHOOK;
   if (!webhookUrl) return;
@@ -10211,13 +10585,13 @@ async function sendMonitoringEmbed(title, description, color) {
     });
 
     req.on('error', (err) => {
-      console.error("Błąd wysyłania monitoringu:", err);
+      console.error("BÅ‚Ä…d wysyÅ‚ania monitoringu:", err);
     });
 
     req.write(payload);
     req.end();
   } catch (err) {
-    console.error("Błąd wysyłania monitoringu:", err);
+    console.error("BÅ‚Ä…d wysyÅ‚ania monitoringu:", err);
   }
 }
 
@@ -10226,21 +10600,21 @@ function getBotStatus() {
   const ping = client.ws?.ping || 0;
   const uptime = Date.now() - startTime;
   
-  let status = "🟢 Stabilny";
+  let status = "ðŸŸ¢ Stabilny";
   let statusColor = 0x00ff00;
   
   if (ping > 400 || errorCount > 5) {
-    status = "🔴 Krytyczny";
+    status = "ðŸ”´ Krytyczny";
     statusColor = 0xff0000;
   } else if (ping > 200 || errorCount > 2) {
-    status = "🟠 Ostrzeżenie";
+    status = "ðŸŸ  OstrzeÅ¼enie";
     statusColor = 0xffaa00;
   }
 
   return { status, statusColor, ping, uptime };
 }
 
-// 1. Heartbeat co 5 minut (bot żyje + ping + uptime)
+// 1. Heartbeat co 5 minut (bot Å¼yje + ping + uptime)
 setInterval(async () => {
   const webhookUrl = process.env.UPTIME_WEBHOOK;
   if (!webhookUrl) return;
@@ -10255,42 +10629,42 @@ setInterval(async () => {
 
   const avgPing = Math.round(pingHistory.reduce((a, b) => a + b, 0) / pingHistory.length);
 
-  const description = `⏱ **Uptime:** ${uptime}\n📡 **Ping:** ${ping}ms (średnio: ${avgPing}ms)\n🔢 **Błędy:** ${errorCount}\n📊 **Status:** ${status}`;
+  const description = `â± **Uptime:** ${uptime}\nðŸ“¡ **Ping:** ${ping}ms (Å›rednio: ${avgPing}ms)\nðŸ”¢ **BÅ‚Ä™dy:** ${errorCount}\nðŸ“Š **Status:** ${status}`;
 
-  await sendMonitoringEmbed("💓 Heartbeat - Bot działa", description, statusColor);
+  await sendMonitoringEmbed("ðŸ’“ Heartbeat - Bot dziaÅ‚a", description, statusColor);
 }, 5 * 60 * 1000); // co 5 minut
 
-// 2. Alert przy błędzie krytycznym (bot padnie)
+// 2. Alert przy bÅ‚Ä™dzie krytycznym (bot padnie)
 process.on("uncaughtException", async (err) => {
-  console.error("🔴 Błąd krytyczny:", err);
+  console.error("ðŸ”´ BÅ‚Ä…d krytyczny:", err);
   
   errorCount++;
   lastErrorTime = Date.now();
 
-  const description = `**Błąd krytyczny detected:**\n\`${err.message}\`\n\n**Stack:**\n\`${err.stack?.substring(0, 1000) || "Brak stack trace"}...\`\n\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
+  const description = `**BÅ‚Ä…d krytyczny detected:**\n\`${err.message}\`\n\n**Stack:**\n\`${err.stack?.substring(0, 1000) || "Brak stack trace"}...\`\n\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
 
-  await sendMonitoringEmbed("🔴 BOT PADŁ - Błąd krytyczny", description, 0xff0000);
+  await sendMonitoringEmbed("ðŸ”´ BOT PADÅ - BÅ‚Ä…d krytyczny", description, 0xff0000);
 
-  // Daj chwilę na wysłanie alertu
+  // Daj chwilÄ™ na wysÅ‚anie alertu
   setTimeout(() => process.exit(1), 2000);
 });
 
-// 3. Alert przy zamknięciu procesu
+// 3. Alert przy zamkniÄ™ciu procesu
 process.on("exit", async () => {
   const uptime = formatUptime(Date.now() - startTime);
-  const description = `Bot został zamknięty (process.exit)\n⏱ **Czas działania:** ${uptime}\n📊 **Liczba błędów:** ${errorCount}`;
+  const description = `Bot zostaÅ‚ zamkniÄ™ty (process.exit)\nâ± **Czas dziaÅ‚ania:** ${uptime}\nðŸ“Š **Liczba bÅ‚Ä™dÃ³w:** ${errorCount}`;
 
-  await sendMonitoringEmbed("🔴 Bot zamknięty", description, 0xff0000);
+  await sendMonitoringEmbed("ðŸ”´ Bot zamkniÄ™ty", description, 0xff0000);
 });
 
-// 4. Monitor HTTP sprawdzający czy UptimeRobot pinguje
+// 4. Monitor HTTP sprawdzajÄ…cy czy UptimeRobot pinguje
 setInterval(async () => {
   const webhookUrl = process.env.UPTIME_WEBHOOK;
   if (!webhookUrl) return;
 
   const monitorUrl = process.env.MONITOR_HTTP_URL || process.env.RENDER_EXTERNAL_URL;
   if (!monitorUrl) {
-    console.warn('[MONITOR_HTTP] Pomijam — brak MONITOR_HTTP_URL/RENDER_EXTERNAL_URL');
+    console.warn('[MONITOR_HTTP] Pomijam â€” brak MONITOR_HTTP_URL/RENDER_EXTERNAL_URL');
     return;
   }
 
@@ -10309,29 +10683,29 @@ setInterval(async () => {
       const responseTime = Date.now() - startTime;
       
       if (res.statusCode === 200) {
-        const description = `🌐 **Monitor HTTP:** Aktywny\n📡 **Response time:** ${responseTime}ms\n📊 **Status:** HTTP ${res.statusCode}`;
-        sendMonitoringEmbed("🟢 Monitor HTTP - OK", description, 0x00ff00);
+        const description = `ðŸŒ **Monitor HTTP:** Aktywny\nðŸ“¡ **Response time:** ${responseTime}ms\nðŸ“Š **Status:** HTTP ${res.statusCode}`;
+        sendMonitoringEmbed("ðŸŸ¢ Monitor HTTP - OK", description, 0x00ff00);
       } else {
-        const description = `🟠 **Monitor HTTP:** Nieoczekiwana odpowiedź\n📊 **Status:** HTTP ${res.statusCode}\n⏱ **Response time:** ${responseTime}ms`;
-        sendMonitoringEmbed("🟠 Monitor HTTP - Ostrzeżenie", description, 0xffaa00);
+        const description = `ðŸŸ  **Monitor HTTP:** Nieoczekiwana odpowiedÅº\nðŸ“Š **Status:** HTTP ${res.statusCode}\nâ± **Response time:** ${responseTime}ms`;
+        sendMonitoringEmbed("ðŸŸ  Monitor HTTP - OstrzeÅ¼enie", description, 0xffaa00);
       }
     });
 
     req.on('error', (err) => {
-      const description = `🔴 **Monitor HTTP:** Brak odpowiedzi\n**Błąd:** ${err.message}\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
-      sendMonitoringEmbed("🔴 Monitor HTTP - Błąd", description, 0xff0000);
+      const description = `ðŸ”´ **Monitor HTTP:** Brak odpowiedzi\n**BÅ‚Ä…d:** ${err.message}\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
+      sendMonitoringEmbed("ðŸ”´ Monitor HTTP - BÅ‚Ä…d", description, 0xff0000);
     });
 
     req.setTimeout(10000, () => {
       req.destroy();
-      const description = `🔴 **Monitor HTTP:** Timeout\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
-      sendMonitoringEmbed("🔴 Monitor HTTP - Timeout", description, 0xff0000);
+      const description = `ðŸ”´ **Monitor HTTP:** Timeout\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
+      sendMonitoringEmbed("ðŸ”´ Monitor HTTP - Timeout", description, 0xff0000);
     });
 
     req.end();
   } catch (err) {
-    const description = `🔴 **Monitor HTTP:** Błąd sprawdzania\n**Błąd:** ${err.message}\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
-    sendMonitoringEmbed("🔴 Monitor HTTP - Błąd", description, 0xff0000);
+    const description = `ðŸ”´ **Monitor HTTP:** BÅ‚Ä…d sprawdzania\n**BÅ‚Ä…d:** ${err.message}\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
+    sendMonitoringEmbed("ðŸ”´ Monitor HTTP - BÅ‚Ä…d", description, 0xff0000);
   }
 }, 10 * 60 * 1000); // co 10 minut
 
@@ -10344,30 +10718,30 @@ setInterval(async () => {
   const uptimeFormatted = formatUptime(uptime);
   const avgPing = pingHistory.length > 0 ? Math.round(pingHistory.reduce((a, b) => a + b, 0) / pingHistory.length) : 0;
 
-  const description = `📊 **RAPORT DZIAŁANIA BOTA**\n\n` +
-    `⏱ **Uptime:** ${uptimeFormatted}\n` +
-    `📡 **Ping aktualny:** ${ping}ms\n` +
-    `📈 **Ping średni:** ${avgPing}ms\n` +
-    `🌐 **Monitor HTTP:** Aktywny\n` +
-    `🔢 **Liczba błędów:** ${errorCount}\n` +
-    `📊 **Status:** ${status}\n` +
-    `🕐 **Raport wygenerowany:** ${new Date().toLocaleString("pl-PL")}`;
+  const description = `ðŸ“Š **RAPORT DZIAÅANIA BOTA**\n\n` +
+    `â± **Uptime:** ${uptimeFormatted}\n` +
+    `ðŸ“¡ **Ping aktualny:** ${ping}ms\n` +
+    `ðŸ“ˆ **Ping Å›redni:** ${avgPing}ms\n` +
+    `ðŸŒ **Monitor HTTP:** Aktywny\n` +
+    `ðŸ”¢ **Liczba bÅ‚Ä™dÃ³w:** ${errorCount}\n` +
+    `ðŸ“Š **Status:** ${status}\n` +
+    `ðŸ• **Raport wygenerowany:** ${new Date().toLocaleString("pl-PL")}`;
 
-  await sendMonitoringEmbed("📊 Raport okresowy - 12h", description, statusColor);
+  await sendMonitoringEmbed("ðŸ“Š Raport okresowy - 12h", description, statusColor);
 }, 12 * 60 * 60 * 1000); // co 12 godzin
 
-// 6. Monitorowanie reconnectów Discord
+// 6. Monitorowanie reconnectÃ³w Discord
 client.on("reconnecting", () => {
-  console.log("🔄 Bot próbuje się połączyć ponownie...");
+  console.log("ðŸ”„ Bot prÃ³buje siÄ™ poÅ‚Ä…czyÄ‡ ponownie...");
   errorCount++;
 });
 
 client.on("resume", () => {
-  const description = `🔄 **Bot wznowił połączenie**\n⏱ **Czas działania:** ${formatUptime(Date.now() - startTime)}\n📊 **Liczba błędów:** ${errorCount}`;
-  sendMonitoringEmbed("🟢 Połączenie wznowione", description, 0x00ff00);
+  const description = `ðŸ”„ **Bot wznowiÅ‚ poÅ‚Ä…czenie**\nâ± **Czas dziaÅ‚ania:** ${formatUptime(Date.now() - startTime)}\nðŸ“Š **Liczba bÅ‚Ä™dÃ³w:** ${errorCount}`;
+  sendMonitoringEmbed("ðŸŸ¢ PoÅ‚Ä…czenie wznowione", description, 0x00ff00);
 });
 
-// 7. Funkcja ręcznego sprawdzania statusu
+// 7. Funkcja rÄ™cznego sprawdzania statusu
 async function checkBotStatus() {
   const { status, statusColor, ping, uptime } = getBotStatus();
   const uptimeFormatted = formatUptime(uptime);
@@ -10427,21 +10801,21 @@ async function validateBotToken() {
   });
 }
 
-// 8. Komenda statusu (opcjonalnie - można dodać do slash commands)
+// 8. Komenda statusu (opcjonalnie - moÅ¼na dodaÄ‡ do slash commands)
 async function sendStatusReport(channel) {
   const status = await checkBotStatus();
   
   const embed = new EmbedBuilder()
     .setColor(status.statusColor)
-    .setTitle("📊 Status Bota")
+    .setTitle("ðŸ“Š Status Bota")
     .setDescription(`**Status:** ${status.status}`)
     .addFields(
-      { name: "⏱ Uptime", value: status.uptime, inline: true },
-      { name: "📡 Ping", value: `${status.ping}ms (avg: ${status.avgPing}ms)`, inline: true },
-      { name: "🔢 Błędy", value: status.errorCount.toString(), inline: true },
-      { name: "🌐 Serwery", value: status.guilds.toString(), inline: true },
-      { name: "👥 Użytkownicy", value: status.users.toString(), inline: true },
-      { name: "💬 Kanały", value: status.channels.toString(), inline: true }
+      { name: "â± Uptime", value: status.uptime, inline: true },
+      { name: "ðŸ“¡ Ping", value: `${status.ping}ms (avg: ${status.avgPing}ms)`, inline: true },
+      { name: "ðŸ”¢ BÅ‚Ä™dy", value: status.errorCount.toString(), inline: true },
+      { name: "ðŸŒ Serwery", value: status.guilds.toString(), inline: true },
+      { name: "ðŸ‘¥ UÅ¼ytkownicy", value: status.users.toString(), inline: true },
+      { name: "ðŸ’¬ KanaÅ‚y", value: status.channels.toString(), inline: true }
     )
     .setTimestamp()
     .setFooter({ text: "Bot Monitoring System" });
@@ -10449,27 +10823,27 @@ async function sendStatusReport(channel) {
   await channel.send({ embeds: [embed] });
 }
 
-console.log("🟢 FULL MONITORING MODE aktywowany - heartbeat co 5min, alerty błędów, monitor HTTP");
+console.log("ðŸŸ¢ FULL MONITORING MODE aktywowany - heartbeat co 5min, alerty bÅ‚Ä™dÃ³w, monitor HTTP");
 
 // ---------------------------------------------------
 
-console.log("[DEBUG] Próba połączenia z Discord...");
+console.log("[DEBUG] PrÃ³ba poÅ‚Ä…czenia z Discord...");
 console.log("[DEBUG] BOT_TOKEN exists:", !!process.env.BOT_TOKEN);
 console.log("[DEBUG] BOT_TOKEN length:", process.env.BOT_TOKEN?.length || 0);
 
-// Test WebSocket połączenia
-console.log("[WS_TEST] Testuję połączenie WebSocket z Discord...");
+// Test WebSocket poÅ‚Ä…czenia
+console.log("[WS_TEST] TestujÄ™ poÅ‚Ä…czenie WebSocket z Discord...");
 try {
   const WebSocket = require('ws');
   const ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
   
   const wsTimeout = setTimeout(() => {
-    console.error("[WS_TEST] WebSocket timeout - Render.com blokuje połączenia!");
+    console.error("[WS_TEST] WebSocket timeout - Render.com blokuje poÅ‚Ä…czenia!");
     ws.terminate();
   }, 10000);
   
   ws.on('open', () => {
-    console.log("[WS_TEST] WebSocket połączony pomyślnie!");
+    console.log("[WS_TEST] WebSocket poÅ‚Ä…czony pomyÅ›lnie!");
     clearTimeout(wsTimeout);
     ws.close();
   });
@@ -10480,21 +10854,21 @@ try {
   });
   
   ws.on('close', () => {
-    console.log("[WS_TEST] WebSocket zamknięty");
+    console.log("[WS_TEST] WebSocket zamkniÄ™ty");
   });
 } catch (err) {
-  console.error("[WS_TEST] Błąd tworzenia WebSocket:", err.message);
+  console.error("[WS_TEST] BÅ‚Ä…d tworzenia WebSocket:", err.message);
 }
 
-// Prosta funkcja retry z backoffem i obsługą 429 + diagnostyka
+// Prosta funkcja retry z backoffem i obsÅ‚ugÄ… 429 + diagnostyka
 async function loginWithRetry(maxRetries = 5) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const attempt = i + 1;
-      console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
+      console.log(`[LOGIN] PrÃ³ba ${attempt}/${maxRetries}...`);
 
       const slowLoginWarning = setTimeout(() => {
-        console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
+        console.warn(`[LOGIN] Logowanie trwa dÅ‚ugo (>30s) â€” czekam na odpowiedÅº Discorda...`);
       }, 30000);
 
       const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
@@ -10503,14 +10877,14 @@ async function loginWithRetry(maxRetries = 5) {
 
       clearTimeout(slowLoginWarning);
 
-      console.log("[LOGIN] Sukces! Bot połączony z Discord.");
+      console.log("[LOGIN] Sukces! Bot poÅ‚Ä…czony z Discord.");
       return;
     } catch (err) {
       const is429 = err?.code === 429 || /429/.test(err?.message || "");
       const retryAfterHeader = Number(err?.data?.retry_after || err?.retry_after || 0) * 1000;
       const backoff = is429 ? Math.max(retryAfterHeader, 30000) : 10000 * (i + 1);
 
-      console.error(`[LOGIN] Błąd próby ${i + 1}:`, err?.message || err);
+      console.error(`[LOGIN] BÅ‚Ä…d prÃ³by ${i + 1}:`, err?.message || err);
       if (err?.code) console.error(`[LOGIN] err.code=${err.code}`);
       if (err?.status) console.error(`[LOGIN] err.status=${err.status}`);
       if (err?.data?.retry_after) console.error(`[LOGIN] retry_after=${err.data.retry_after}`);
@@ -10520,36 +10894,36 @@ async function loginWithRetry(maxRetries = 5) {
       }
 
       if (i < maxRetries - 1) {
-        console.log(`[LOGIN] Czekam ${Math.round(backoff / 1000)}s przed kolejną próbą...`);
+        console.log(`[LOGIN] Czekam ${Math.round(backoff / 1000)}s przed kolejnÄ… prÃ³bÄ…...`);
         await new Promise(resolve => setTimeout(resolve, backoff));
       }
     }
   }
 
-  console.error("[LOGIN] Wszystkie próby nieudane!");
+  console.error("[LOGIN] Wszystkie prÃ³by nieudane!");
 
-  // Sprawdź połączenie sieciowe
-  console.log("[NETWORK] Sprawdzam połączenie z Discord API...");
+  // SprawdÅº poÅ‚Ä…czenie sieciowe
+  console.log("[NETWORK] Sprawdzam poÅ‚Ä…czenie z Discord API...");
   try {
     const https = require('https');
     const req = https.request('https://discord.com/api/v10/gateway', (res) => {
       console.log(`[NETWORK] Discord API response: ${res.statusCode}`);
       if (res.statusCode === 200) {
-        console.log("[NETWORK] Discord API jest dostępne - problem może być z WebSocket");
+        console.log("[NETWORK] Discord API jest dostÄ™pne - problem moÅ¼e byÄ‡ z WebSocket");
       } else {
-        console.log(`[NETWORK] Discord API zwróciło: ${res.statusCode}`);
+        console.log(`[NETWORK] Discord API zwrÃ³ciÅ‚o: ${res.statusCode}`);
       }
     });
     req.on('error', (err) => {
-      console.error("[NETWORK] Błąd połączenia z Discord API:", err.message);
+      console.error("[NETWORK] BÅ‚Ä…d poÅ‚Ä…czenia z Discord API:", err.message);
     });
     req.setTimeout(5000, () => {
-      console.error("[NETWORK] Timeout połączenia z Discord API");
+      console.error("[NETWORK] Timeout poÅ‚Ä…czenia z Discord API");
       req.destroy();
     });
     req.end();
   } catch (err) {
-    console.error("[NETWORK] Błąd sprawdzania połączenia:", err.message);
+    console.error("[NETWORK] BÅ‚Ä…d sprawdzania poÅ‚Ä…czenia:", err.message);
   }
 }
 
@@ -10571,13 +10945,13 @@ app.get('/', (req, res) => {
     ready: client.isReady()
   };
   
-  // Sprawdź czy request chce JSON czy HTML
+  // SprawdÅº czy request chce JSON czy HTML
   if (req.headers.accept && req.headers.accept.includes('application/json')) {
     res.json(status, null, 2);
   } else {
-    // Formatowanie HTML dla lepszej czytelności
+    // Formatowanie HTML dla lepszej czytelnoÅ›ci
     res.send(`
-      <h1>🤖 Bot Status Monitor</h1>
+      <h1>ðŸ¤– Bot Status Monitor</h1>
       <pre>${JSON.stringify(status, null, 2)}</pre>
       <hr>
       <p><strong>Health Check:</strong> <a href="/health">/health</a></p>
@@ -10601,5 +10975,5 @@ app.get('/health', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`[HTTP] Status endpoint nasłuchuje na porcie ${PORT}`);
+  console.log(`[HTTP] Status endpoint nasÅ‚uchuje na porcie ${PORT}`);
 });
