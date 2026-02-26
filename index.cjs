@@ -5258,7 +5258,7 @@ async function handleLegitRepUstawCommand(interaction) {
       return;
     }
 
-    const newName = `✅-×┃legit-rep➔${ile}`;
+    const newName = `✅×〢legit-rep➔${ile}`;
     await channel.setName(newName);
     
     // Wyślij informacyjną wiadomość
