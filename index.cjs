@@ -3720,19 +3720,13 @@ const nickInput = new TextInputBuilder()
       });
       const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
 
-      if (!interaction.channel || typeof interaction.channel.send !== "function") {
-        await interaction.editReply({
-          content: "> `❌` × Nie mogę wysłać nagrań na tym kanale.",
-        });
-        return;
-      }
-
       let sentCount = 0;
       for (const video of videosToSend) {
         const caption = getModsVideoCaption(video.videoCfg, video.labelFallback);
         try {
-          await interaction.channel.send({
+          await interaction.followUp({
             content: `${caption}\n${video.url}`,
+            flags: [MessageFlags.Ephemeral],
           });
           sentCount += 1;
         } catch (sendErr) {
@@ -3754,7 +3748,7 @@ const nickInput = new TextInputBuilder()
           : "";
 
       await interaction.editReply({
-        content: `> \`✅\` × Wysłano **${sentCount}** nagrań na kanał.${limitNote}`,
+        content: `> \`✅\` × Wysłano **${sentCount}** nagrań tylko dla Ciebie.${limitNote}`,
       });
       return;
     }
