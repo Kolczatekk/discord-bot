@@ -1720,6 +1720,24 @@ function isHttpUrl(value) {
   }
 }
 
+function normalizeDiscordCdnVideoUrl(rawUrl) {
+  const value = (rawUrl || "").toString().trim();
+  if (!isHttpUrl(value)) return value;
+  try {
+    const u = new URL(value);
+    const host = u.hostname.toLowerCase();
+    const isDiscordCdn =
+      host.endsWith("discordapp.com") || host.endsWith("discord.com");
+    const isAttachmentPath = u.pathname.includes("/attachments/");
+    if (isDiscordCdn && isAttachmentPath) {
+      return `${u.protocol}//${u.host}${u.pathname}`;
+    }
+    return value;
+  } catch {
+    return value;
+  }
+}
+
 function isVideoAttachment(att) {
   if (!att) return false;
   const ct = (att.contentType || "").toLowerCase();
@@ -1840,13 +1858,14 @@ function collectVideoLinksFromMessage(msg) {
 
   for (const att of msg.attachments.values()) {
     if (!isVideoAttachment(att)) continue;
-    if (!isHttpUrl(att.url)) continue;
+    const normalizedUrl = normalizeDiscordCdnVideoUrl(att.url);
+    if (!isHttpUrl(normalizedUrl)) continue;
     const cfg = getModsVideoConfigByFilename(att.name || "");
     out.push({
       label: att.name || "nagranie",
       key: cfg?.key || null,
       modName: cfg?.modName || null,
-      url: att.url,
+      url: normalizedUrl,
     });
   }
   return out;
@@ -1953,19 +1972,25 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
 
   if (!videoCfg) return null;
 
-  const fromEnv = (process.env[videoCfg.envVar] || "").trim();
+  const fromEnv = normalizeDiscordCdnVideoUrl(
+    (process.env[videoCfg.envVar] || "").trim(),
+  );
   if (isHttpUrl(fromEnv)) {
     modsVideoUrlCache.set(videoCfg.key, fromEnv);
     return fromEnv;
   }
 
-  const fromDefault = (videoCfg.defaultUrl || "").trim();
+  const fromDefault = normalizeDiscordCdnVideoUrl(
+    (videoCfg.defaultUrl || "").trim(),
+  );
   if (isHttpUrl(fromDefault)) {
     modsVideoUrlCache.set(videoCfg.key, fromDefault);
     return fromDefault;
   }
 
-  const cached = (modsVideoUrlCache.get(videoCfg.key) || "").trim();
+  const cached = normalizeDiscordCdnVideoUrl(
+    (modsVideoUrlCache.get(videoCfg.key) || "").trim(),
+  );
   if (isHttpUrl(cached)) return cached;
 
   const localRouteUrl = getLocalModsVideoPublicUrl(videoCfg);
@@ -1982,9 +2007,10 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
     guild,
     getModsVideoCandidateFilenames(videoCfg),
   );
-  if (isHttpUrl(found)) {
-    modsVideoUrlCache.set(videoCfg.key, found);
-    return found;
+  const normalizedFound = normalizeDiscordCdnVideoUrl(found);
+  if (isHttpUrl(normalizedFound)) {
+    modsVideoUrlCache.set(videoCfg.key, normalizedFound);
+    return normalizedFound;
   }
 
   return null;
@@ -3693,17 +3719,15 @@ const nickInput = new TextInputBuilder()
         return keyA.localeCompare(keyB, "pl");
       });
       const videosToSend = resolvedVideos.slice(0, MAX_FILES_PER_MESSAGE);
-      const captions = videosToSend.map((v) =>
-        getModsVideoCaption(v.videoCfg, v.labelFallback),
-      );
+      const lines = videosToSend.map((v) => {
+        const caption = getModsVideoCaption(v.videoCfg, v.labelFallback);
+        return `${caption}\n${v.url}`;
+      });
       const limitNote =
         resolvedVideos.length > MAX_FILES_PER_MESSAGE
           ? `\n> \`⚠️\` × Pokazano **${MAX_FILES_PER_MESSAGE}/${resolvedVideos.length}** nagrań (limit Discord na jedną wiadomość).`
           : "";
-      const payload = {
-        content: `${captions.join("\n")}${limitNote}`,
-        files: videosToSend.map((v) => v.url),
-      };
+      const payload = { content: `${lines.join("\n\n")}${limitNote}` };
 
       try {
         await interaction.editReply(payload);
@@ -7368,6 +7392,7 @@ async function handleModalSubmit(interaction) {
   let ticketTypeLabel;
   let formInfo;
   let ticketTopic;
+  let forceOwnerOnlyVisibility = false;
 
   switch (interaction.customId) {
     case "modal_zakup": {
@@ -7496,6 +7521,7 @@ async function handleModalSubmit(interaction) {
       ticketTypeLabel = "ZAKUP";
       ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
+      forceOwnerOnlyVisibility = true;
 
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentMethod}\`\n` +
@@ -7842,8 +7868,23 @@ async function handleModalSubmit(interaction) {
       ],
     };
 
+    if (
+      forceOwnerOnlyVisibility &&
+      interaction.guild.ownerId &&
+      interaction.guild.ownerId !== interaction.user.id
+    ) {
+      createOptions.permissionOverwrites.push({
+        id: interaction.guild.ownerId,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      });
+    }
+
     // Dodaj rangi limitów w zależności od kategorii
-    if (parentToUse) {
+    if (parentToUse && !forceOwnerOnlyVisibility) {
       const categoryId = parentToUse;
       
       // Zakup 0-20 - wszystkie rangi widzą
@@ -7896,6 +7937,11 @@ async function handleModalSubmit(interaction) {
     if (parentToUse) createOptions.parent = parentToUse;
 
     const channel = await interaction.guild.channels.create(createOptions);
+    if (forceOwnerOnlyVisibility) {
+      await channel.permissionOverwrites
+        .set(createOptions.permissionOverwrites)
+        .catch(() => null);
+    }
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
