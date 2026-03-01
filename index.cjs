@@ -3709,7 +3709,7 @@ const nickInput = new TextInputBuilder()
     }
 
     if (resolvedVideos.length > 0) {
-      const MAX_FILES_PER_MESSAGE = 10;
+      const MAX_VIDEO_MESSAGES = 10;
       resolvedVideos.sort((a, b) => {
         const rankA = getModsVideoOrderRank(a.videoCfg);
         const rankB = getModsVideoOrderRank(b.videoCfg);
@@ -3718,21 +3718,29 @@ const nickInput = new TextInputBuilder()
         const keyB = b.videoCfg?.key || b.labelFallback || "";
         return keyA.localeCompare(keyB, "pl");
       });
-      const videosToSend = resolvedVideos.slice(0, MAX_FILES_PER_MESSAGE);
-      const lines = videosToSend.map((v) => {
-        const caption = getModsVideoCaption(v.videoCfg, v.labelFallback);
-        return `${caption}\n${v.url}`;
-      });
-      const limitNote =
-        resolvedVideos.length > MAX_FILES_PER_MESSAGE
-          ? `\n> \`⚠️\` × Pokazano **${MAX_FILES_PER_MESSAGE}/${resolvedVideos.length}** nagrań (limit Discord na jedną wiadomość).`
-          : "";
-      const payload = { content: `${lines.join("\n\n")}${limitNote}` };
+      const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
 
-      try {
-        await interaction.editReply(payload);
-      } catch (sendErr) {
-        console.error("[mody] Nie udało się wysłać nagrań:", sendErr);
+      if (!interaction.channel || typeof interaction.channel.send !== "function") {
+        await interaction.editReply({
+          content: "> `❌` × Nie mogę wysłać nagrań na tym kanale.",
+        });
+        return;
+      }
+
+      let sentCount = 0;
+      for (const video of videosToSend) {
+        const caption = getModsVideoCaption(video.videoCfg, video.labelFallback);
+        try {
+          await interaction.channel.send({
+            content: `${caption}\n${video.url}`,
+          });
+          sentCount += 1;
+        } catch (sendErr) {
+          console.error("[mody] Nie udało się wysłać pojedynczego nagrania:", sendErr);
+        }
+      }
+
+      if (sentCount === 0) {
         await interaction.editReply({
           content:
             "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i poprawność źródeł wideo.",
@@ -3740,6 +3748,14 @@ const nickInput = new TextInputBuilder()
         return;
       }
 
+      const limitNote =
+        resolvedVideos.length > MAX_VIDEO_MESSAGES
+          ? `\n> \`⚠️\` × Pokazano **${MAX_VIDEO_MESSAGES}/${resolvedVideos.length}** nagrań (limit anty-spam).`
+          : "";
+
+      await interaction.editReply({
+        content: `> \`✅\` × Wysłano **${sentCount}** nagrań na kanał.${limitNote}`,
+      });
       return;
     }
 
