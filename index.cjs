@@ -1738,6 +1738,20 @@ function normalizeDiscordCdnVideoUrl(rawUrl) {
   }
 }
 
+function isDiscordAttachmentUrl(rawUrl) {
+  const value = (rawUrl || "").toString().trim();
+  if (!isHttpUrl(value)) return false;
+  try {
+    const u = new URL(value);
+    const host = u.hostname.toLowerCase();
+    const isDiscordHost =
+      host.endsWith("discordapp.com") || host.endsWith("discord.com");
+    return isDiscordHost && u.pathname.includes("/attachments/");
+  } catch {
+    return false;
+  }
+}
+
 function isVideoAttachment(att) {
   if (!att) return false;
   const ct = (att.contentType || "").toLowerCase();
@@ -1980,36 +1994,23 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
     return fromEnv;
   }
 
-  const localRouteUrl = getLocalModsVideoPublicUrl(videoCfg);
-  if (isHttpUrl(localRouteUrl)) {
-    modsVideoUrlCache.set(videoCfg.key, localRouteUrl);
-    return localRouteUrl;
-  }
-
   const cached = normalizeDiscordCdnVideoUrl(
     (modsVideoUrlCache.get(videoCfg.key) || "").trim(),
   );
-  if (isHttpUrl(cached)) return cached;
 
-  if (!allowSlowScan) {
-    const fromDefault = normalizeDiscordCdnVideoUrl(
-      (videoCfg.defaultUrl || "").trim(),
+  // Przy wolnym skanie preferujemy linki Discord CDN (najlepiej działają w podglądzie).
+  if (allowSlowScan) {
+    if (isDiscordAttachmentUrl(cached)) return cached;
+
+    const found = await findVideoAttachmentUrlByName(
+      guild,
+      getModsVideoCandidateFilenames(videoCfg),
     );
-    if (isHttpUrl(fromDefault)) {
-      modsVideoUrlCache.set(videoCfg.key, fromDefault);
-      return fromDefault;
+    const normalizedFound = normalizeDiscordCdnVideoUrl(found);
+    if (isHttpUrl(normalizedFound)) {
+      modsVideoUrlCache.set(videoCfg.key, normalizedFound);
+      return normalizedFound;
     }
-    return null;
-  }
-
-  const found = await findVideoAttachmentUrlByName(
-    guild,
-    getModsVideoCandidateFilenames(videoCfg),
-  );
-  const normalizedFound = normalizeDiscordCdnVideoUrl(found);
-  if (isHttpUrl(normalizedFound)) {
-    modsVideoUrlCache.set(videoCfg.key, normalizedFound);
-    return normalizedFound;
   }
 
   const fromDefault = normalizeDiscordCdnVideoUrl(
@@ -2018,6 +2019,14 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
   if (isHttpUrl(fromDefault)) {
     modsVideoUrlCache.set(videoCfg.key, fromDefault);
     return fromDefault;
+  }
+
+  if (isHttpUrl(cached)) return cached;
+
+  const localRouteUrl = getLocalModsVideoPublicUrl(videoCfg);
+  if (isHttpUrl(localRouteUrl)) {
+    modsVideoUrlCache.set(videoCfg.key, localRouteUrl);
+    return localRouteUrl;
   }
 
   return null;
@@ -3707,18 +3716,16 @@ const nickInput = new TextInputBuilder()
       );
     }
 
-    // 2) Następnie dokładamy szybkie źródła (env/cache/local-route) bez wolnego skanowania kanałów.
+    // 2) Dołóż źródła z resolvera z preferencją Discord CDN (slow-scan + fallbacki).
     for (const videoCfg of MODS_VIDEO_FILES) {
-      let url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
-        allowSlowScan: false,
+      const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
+        allowSlowScan: true,
       });
-      // Gdy szybkie źródła nie dają wyniku, spróbuj skanu historii po nazwie pliku.
-      if (!isHttpUrl(url)) {
-        url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
-          allowSlowScan: true,
-        });
-      }
-      addResolvedVideo(videoCfg, url, videoCfg.modName || videoCfg.label || "Nagranie");
+      addResolvedVideo(
+        videoCfg,
+        url,
+        videoCfg.modName || videoCfg.label || "Nagranie",
+      );
     }
 
     if (resolvedVideos.length > 0) {
