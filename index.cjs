@@ -3781,41 +3781,7 @@ const nickInput = new TextInputBuilder()
   }
 
   if (customId.startsWith("mody_buy_")) {
-    const modal = new ModalBuilder()
-      .setCustomId("modal_mody_zakup")
-      .setTitle("Zakup moda");
-
-    const modNameInput = new TextInputBuilder()
-      .setCustomId("mod_name")
-      .setLabel("Jakiego moda chcesz kupić?")
-      .setPlaceholder("Przykład: Auto_Dripstone")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(64);
-
-    const paymentMethodInput = new TextInputBuilder()
-      .setCustomId("payment_method")
-      .setLabel("Jaką metodą płatności płacisz?")
-      .setPlaceholder("Przykład: Blik")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(64);
-
-    const modsCountInput = new TextInputBuilder()
-      .setCustomId("mods_count")
-      .setLabel("Ile modów chcesz kupić? (1-4)")
-      .setPlaceholder("Przykład: 1")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(1);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(modNameInput),
-      new ActionRowBuilder().addComponents(paymentMethodInput),
-      new ActionRowBuilder().addComponents(modsCountInput),
-    );
-
-    await interaction.showModal(modal);
+    await showModyZakupModal(interaction);
     return;
   }
 
@@ -5545,14 +5511,22 @@ async function handleTicketCommand(interaction) {
     .setPlaceholder("Wybierz kategorię...")
     .addOptions([
       {
-        label: "💰 Zakup",
+        label: "Zakup",
         value: "zakup",
         description: "Chcę kupić przedmioty",
+        emoji: "🛒",
       },
       {
-        label: "💵 Sprzedaż",
+        label: "Sprzedaż",
         value: "sprzedaz",
         description: "Chcę sprzedać przedmioty",
+        emoji: { id: "1476700165082710178", name: "kasa_2" },
+      },
+      {
+        label: "Zakup autorskiego moda",
+        value: "zakup_moda",
+        description: "Chcę kupić autorskiego moda",
+        emoji: { id: "1477662159029796865", name: "java" },
       },
       {
         label: "🎁 Nagroda za zaproszenia",
@@ -5602,14 +5576,22 @@ async function handleTicketPanelCommand(interaction) {
     .setPlaceholder("Wybierz kategorię...")
     .addOptions([
       {
-        label: "💰 Zakup",
+        label: "Zakup",
         value: "zakup",
         description: "Kliknij, aby dokonać zakupu!",
+        emoji: "🛒",
       },
       {
-        label: "💵 Sprzedaż",
+        label: "Sprzedaż",
         value: "sprzedaz",
         description: "Kliknij, aby dokonać sprzedaży!",
+        emoji: { id: "1476700165082710178", name: "kasa_2" },
+      },
+      {
+        label: "Zakup autorskiego moda",
+        value: "zakup_moda",
+        description: "Kliknij, aby kupić autorskiego moda!",
+        emoji: { id: "1477662159029796865", name: "java" },
       },
       {
         label: "🎁 Nagroda za zaproszenia",
@@ -6096,6 +6078,9 @@ async function handleSelectMenu(interaction) {
       case "zakup":
         await showZakupModal(interaction);
         break;
+      case "zakup_moda":
+        await showModyZakupModal(interaction);
+        break;
       case "sprzedaz":
         await showSprzedazModal(interaction);
         break;
@@ -6222,6 +6207,44 @@ async function showZakupModal(interaction) {
     new ActionRowBuilder().addComponents(kwotaInput),
     new ActionRowBuilder().addComponents(platnosInput),
     new ActionRowBuilder().addComponents(oczekiwanaWalutaInput),
+  );
+
+  await interaction.showModal(modal);
+}
+
+async function showModyZakupModal(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId("modal_mody_zakup")
+    .setTitle("Zakup moda");
+
+  const modNameInput = new TextInputBuilder()
+    .setCustomId("mod_name")
+    .setLabel("Jakiego moda chcesz kupić?")
+    .setPlaceholder("Przykład: Auto_Dripstone")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(64);
+
+  const paymentMethodInput = new TextInputBuilder()
+    .setCustomId("payment_method")
+    .setLabel("Jaką metodą płatności płacisz?")
+    .setPlaceholder("Przykład: Blik")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(64);
+
+  const modsCountInput = new TextInputBuilder()
+    .setCustomId("mods_count")
+    .setLabel("Ile modów chcesz kupić? (1-4)")
+    .setPlaceholder("Przykład: 1")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(1);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(modNameInput),
+    new ActionRowBuilder().addComponents(paymentMethodInput),
+    new ActionRowBuilder().addComponents(modsCountInput),
   );
 
   await interaction.showModal(modal);
