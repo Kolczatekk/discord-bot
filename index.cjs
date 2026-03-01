@@ -1674,6 +1674,37 @@ function isHttpUrl(value) {
   }
 }
 
+function isVideoAttachment(att) {
+  if (!att) return false;
+  const ct = (att.contentType || "").toLowerCase();
+  if (ct.startsWith("video/")) return true;
+
+  const name = (att.name || "").toLowerCase();
+  return (
+    name.endsWith(".mp4") ||
+    name.endsWith(".mov") ||
+    name.endsWith(".webm") ||
+    name.endsWith(".m4v") ||
+    name.endsWith(".mkv") ||
+    name.endsWith(".avi")
+  );
+}
+
+function collectVideoLinksFromMessage(msg) {
+  const out = [];
+  if (!msg?.attachments?.size) return out;
+
+  for (const att of msg.attachments.values()) {
+    if (!isVideoAttachment(att)) continue;
+    if (!isHttpUrl(att.url)) continue;
+    out.push({
+      label: att.name || "nagranie",
+      url: att.url,
+    });
+  }
+  return out;
+}
+
 function getPublicBaseUrl() {
   const candidates = [
     process.env.PUBLIC_BASE_URL,
@@ -3436,31 +3467,47 @@ const nickInput = new TextInputBuilder()
     }
 
     const resolvedVideos = [];
+    const seenUrls = new Set();
+
+    // 1) Najpierw: załączniki z tej konkretnej wiadomości z przyciskiem
+    // (to daje efekt "tak jak użytkownik", bo bot publikuje ten sam link/film).
+    const fromCurrentMessage = collectVideoLinksFromMessage(interaction.message);
+    for (const item of fromCurrentMessage) {
+      if (!item?.url || seenUrls.has(item.url)) continue;
+      seenUrls.add(item.url);
+      resolvedVideos.push(item);
+    }
+
+    // 2) Następnie: skonfigurowane źródła z MODS_VIDEO_FILES
     for (const videoCfg of MODS_VIDEO_FILES) {
       const url = await resolveModsVideoUrl(interaction.guild, videoCfg);
-      if (url) {
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
         resolvedVideos.push({ label: videoCfg.label, url });
       }
     }
 
     if (resolvedVideos.length > 0) {
-      const lines = resolvedVideos
-        .map((v) => `> \`🎥\` × **${v.label}:** ${v.url}`)
-        .join("\n");
+      let sentCount = 0;
+      for (const v of resolvedVideos) {
+        try {
+          // Publiczne wysłanie na kanał, żeby wyglądało "normalnie jak wiadomość z filmem/linkiem".
+          await interaction.channel.send(v.url);
+          sentCount += 1;
+        } catch (sendErr) {
+          console.error("[mody] Nie udało się wysłać linku nagrania:", sendErr);
+        }
+      }
 
-      const modsEmbed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
-          "```\n" +
-          "🎬 New Shop × NAGRANIA MODÓW\n" +
-          "```\n" +
-          `${lines}\n\n` +
-          "> `ℹ️` × Tę wiadomość widzisz tylko Ty.",
-        );
-
-      await interaction.editReply({
-        embeds: [modsEmbed],
-      });
+      if (sentCount > 0) {
+        await interaction.editReply({
+          content: `> \`✅\` × Wysłano **${sentCount}** nagranie(-a) na kanał.`,
+        });
+      } else {
+        await interaction.editReply({
+          content: "> `❌` × Nie udało się wysłać nagrań na kanał (sprawdź uprawnienia bota).",
+        });
+      }
       return;
     }
 
