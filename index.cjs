@@ -1980,12 +1980,10 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
     return fromEnv;
   }
 
-  const fromDefault = normalizeDiscordCdnVideoUrl(
-    (videoCfg.defaultUrl || "").trim(),
-  );
-  if (isHttpUrl(fromDefault)) {
-    modsVideoUrlCache.set(videoCfg.key, fromDefault);
-    return fromDefault;
+  const localRouteUrl = getLocalModsVideoPublicUrl(videoCfg);
+  if (isHttpUrl(localRouteUrl)) {
+    modsVideoUrlCache.set(videoCfg.key, localRouteUrl);
+    return localRouteUrl;
   }
 
   const cached = normalizeDiscordCdnVideoUrl(
@@ -1993,13 +1991,14 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
   );
   if (isHttpUrl(cached)) return cached;
 
-  const localRouteUrl = getLocalModsVideoPublicUrl(videoCfg);
-  if (isHttpUrl(localRouteUrl)) {
-    modsVideoUrlCache.set(videoCfg.key, localRouteUrl);
-    return localRouteUrl;
-  }
-
   if (!allowSlowScan) {
+    const fromDefault = normalizeDiscordCdnVideoUrl(
+      (videoCfg.defaultUrl || "").trim(),
+    );
+    if (isHttpUrl(fromDefault)) {
+      modsVideoUrlCache.set(videoCfg.key, fromDefault);
+      return fromDefault;
+    }
     return null;
   }
 
@@ -2011,6 +2010,14 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
   if (isHttpUrl(normalizedFound)) {
     modsVideoUrlCache.set(videoCfg.key, normalizedFound);
     return normalizedFound;
+  }
+
+  const fromDefault = normalizeDiscordCdnVideoUrl(
+    (videoCfg.defaultUrl || "").trim(),
+  );
+  if (isHttpUrl(fromDefault)) {
+    modsVideoUrlCache.set(videoCfg.key, fromDefault);
+    return fromDefault;
   }
 
   return null;
@@ -3702,9 +3709,15 @@ const nickInput = new TextInputBuilder()
 
     // 2) Następnie dokładamy szybkie źródła (env/cache/local-route) bez wolnego skanowania kanałów.
     for (const videoCfg of MODS_VIDEO_FILES) {
-      const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
+      let url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
         allowSlowScan: false,
       });
+      // Gdy szybkie źródła nie dają wyniku, spróbuj skanu historii po nazwie pliku.
+      if (!isHttpUrl(url)) {
+        url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
+          allowSlowScan: true,
+        });
+      }
       addResolvedVideo(videoCfg, url, videoCfg.modName || videoCfg.label || "Nagranie");
     }
 
