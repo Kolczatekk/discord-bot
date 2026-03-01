@@ -110,6 +110,7 @@ const MODS_VIDEO_FILES = [
     label: "No_entities (1440x2560)",
     modName: "NoEntities",
     filename: "No_entities.mov",
+    filenameAliases: ["No_entities.mp4"],
     localPath: path.join(__dirname, "attached_assets", "No_entities.mov"),
     envVar: "MODS_VIDEO_URL_NO_ENTITIES",
   },
@@ -118,6 +119,7 @@ const MODS_VIDEO_FILES = [
     label: "Sprawdz_procenty",
     modName: "SprawdzProcenty",
     filename: "Sprawdz_procenty.mov",
+    filenameAliases: ["Sprawdz_procenty.mp4"],
     localPath: path.join(__dirname, "attached_assets", "Sprawdz_procenty.mov"),
     envVar: "MODS_VIDEO_URL_SPRAWDZ_PROCENTY",
   },
@@ -126,6 +128,11 @@ const MODS_VIDEO_FILES = [
     label: "Auto_dźwignia",
     modName: "AutoDzwignia",
     filename: "Auto_dźwignia.mov",
+    filenameAliases: [
+      "Auto_dźwignia (1).mov",
+      "Auto_dzwignia.mov",
+      "Auto_dzwignia (1).mov",
+    ],
     localPath: path.join(__dirname, "attached_assets", "Auto_dźwignia.mov"),
     envVar: "MODS_VIDEO_URL_AUTO_DZWIGNIA",
   },
@@ -134,6 +141,7 @@ const MODS_VIDEO_FILES = [
     label: "Auto_Dripstone",
     modName: "AutoDripstone",
     filename: "Auto_Dripstone.mov",
+    filenameAliases: ["Auto_Dripstone.mp4"],
     localPath: path.join(__dirname, "attached_assets", "Auto_Dripstone.mov"),
     envVar: "MODS_VIDEO_URL_AUTO_DRIPSTONE",
   },
@@ -1715,23 +1723,80 @@ function isVideoAttachment(att) {
   );
 }
 
+function getModsVideoCandidateFilenames(videoCfg) {
+  if (!videoCfg || typeof videoCfg !== "object") return [];
+
+  const rawCandidates = [];
+  if (videoCfg.filename) rawCandidates.push(videoCfg.filename);
+  if (Array.isArray(videoCfg.filenameAliases)) {
+    rawCandidates.push(...videoCfg.filenameAliases);
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const raw of rawCandidates) {
+    const name = (raw || "").toString().trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(name);
+  }
+  return unique;
+}
+
+function getNormalizedVideoStem(value) {
+  return (value || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\.[^.]+$/, "")
+    .replace(/\s*\(\d+\)$/, "");
+}
+
+function resolveLocalModsVideoPath(videoCfg) {
+  if (!videoCfg || typeof videoCfg !== "object") return null;
+
+  const candidates = [];
+  for (const filename of getModsVideoCandidateFilenames(videoCfg)) {
+    candidates.push(path.join(__dirname, "attached_assets", filename));
+  }
+  if (videoCfg.localPath) {
+    candidates.push(videoCfg.localPath);
+  }
+
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const p = (candidate || "").toString().trim();
+    if (!p) continue;
+    const key = p.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (fs.existsSync(p)) return p;
+  }
+
+  return null;
+}
+
 function getModsVideoConfigByFilename(filename) {
   const normalized = (filename || "").toString().trim().toLowerCase();
   if (!normalized) return null;
 
-  const normalizedNoExt = normalized.replace(/\.[^.]+$/, "");
+  const normalizedNoExt = getNormalizedVideoStem(normalized);
 
   for (const cfg of MODS_VIDEO_FILES) {
-    const cfgFilename = (cfg.filename || "").toString().trim().toLowerCase();
-    if (!cfgFilename) continue;
-
-    const cfgNoExt = cfgFilename.replace(/\.[^.]+$/, "");
-    if (
-      normalized === cfgFilename ||
-      normalizedNoExt === cfgNoExt ||
-      normalized.startsWith(`${cfgNoExt}.`)
-    ) {
-      return cfg;
+    const candidateNames = getModsVideoCandidateFilenames(cfg);
+    for (const candidateNameRaw of candidateNames) {
+      const candidateName = candidateNameRaw.toLowerCase();
+      const candidateStem = getNormalizedVideoStem(candidateName);
+      if (
+        normalized === candidateName ||
+        normalizedNoExt === candidateStem ||
+        normalizedNoExt.startsWith(candidateStem) ||
+        candidateStem.startsWith(normalizedNoExt)
+      ) {
+        return cfg;
+      }
     }
   }
 
@@ -1794,8 +1859,9 @@ function getPublicBaseUrl() {
 }
 
 function getLocalModsVideoPublicUrl(videoCfg) {
-  if (!videoCfg?.key || !videoCfg?.localPath) return null;
-  if (!fs.existsSync(videoCfg.localPath)) return null;
+  if (!videoCfg?.key) return null;
+  const localPath = resolveLocalModsVideoPath(videoCfg);
+  if (!localPath) return null;
 
   const baseUrl = getPublicBaseUrl();
   if (!baseUrl) return null;
@@ -1803,9 +1869,14 @@ function getLocalModsVideoPublicUrl(videoCfg) {
   return `${baseUrl}/videos/${encodeURIComponent(videoCfg.key)}`;
 }
 
-async function findVideoAttachmentUrlByName(guild, filename) {
-  if (!guild || !filename) return null;
-  const filenameLower = filename.toLowerCase();
+async function findVideoAttachmentUrlByName(guild, filenames) {
+  const list = Array.isArray(filenames) ? filenames : [filenames];
+  const filenameLowerList = list
+    .map((f) => (f || "").toString().trim().toLowerCase())
+    .filter(Boolean);
+  if (!guild || filenameLowerList.length === 0) return null;
+
+  const filenameStemList = filenameLowerList.map((f) => getNormalizedVideoStem(f));
   const meRef = guild.members?.me || client.user?.id || null;
   const channels = guild.channels.cache.filter(
     (ch) => ch.type === ChannelType.GuildText,
@@ -1829,9 +1900,19 @@ async function findVideoAttachmentUrlByName(guild, filename) {
       for (const msg of fetched.values()) {
         for (const att of msg.attachments.values()) {
           const attName = (att.name || "").toLowerCase();
+          const attStem = getNormalizedVideoStem(attName);
           const matchesName =
-            attName === filenameLower ||
-            attName.startsWith(filenameLower.replace(/\.[^.]+$/, ""));
+            filenameLowerList.some(
+              (filenameLower) =>
+                attName === filenameLower ||
+                attName.startsWith(filenameLower.replace(/\.[^.]+$/, "")),
+            ) ||
+            filenameStemList.some(
+              (filenameStem) =>
+                attStem === filenameStem ||
+                attStem.startsWith(filenameStem) ||
+                filenameStem.startsWith(attStem),
+            );
           if (!matchesName) continue;
           if (isHttpUrl(att.url)) {
             return att.url;
@@ -1870,7 +1951,10 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
     return null;
   }
 
-  const found = await findVideoAttachmentUrlByName(guild, videoCfg.filename);
+  const found = await findVideoAttachmentUrlByName(
+    guild,
+    getModsVideoCandidateFilenames(videoCfg),
+  );
   if (isHttpUrl(found)) {
     modsVideoUrlCache.set(videoCfg.key, found);
     return found;
@@ -3604,7 +3688,14 @@ const nickInput = new TextInputBuilder()
       return;
     }
 
-    const localVideo = MODS_VIDEO_FILES.find((v) => fs.existsSync(v.localPath)) || null;
+    const localVideo =
+      MODS_VIDEO_FILES
+        .map((cfg) => ({
+          cfg,
+          localPath: resolveLocalModsVideoPath(cfg),
+        }))
+        .find((item) => !!item.localPath) || null;
+
     if (localVideo) {
       let videoSize = 0;
       try {
@@ -3617,9 +3708,9 @@ const nickInput = new TextInputBuilder()
       const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
       await interaction.editReply({
         content:
-          `> \`❌\` × Nie mam publicznego linku do **${localVideo.filename}**.\n` +
+          `> \`❌\` × Nie mam publicznego linku do **${path.basename(localVideo.localPath)}**.\n` +
           `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
-          `> \`✅\` × Ustaw URL w env \`${localVideo.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
+          `> \`✅\` × Ustaw URL w env \`${localVideo.cfg.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
       });
       return;
     }
@@ -11428,27 +11519,28 @@ app.get('/videos/:videoKey', (req, res) => {
       return;
     }
 
-    if (!fs.existsSync(videoCfg.localPath)) {
+    const localVideoPath = resolveLocalModsVideoPath(videoCfg);
+    if (!localVideoPath) {
       res.status(404).json({ error: "video_file_missing" });
       return;
     }
 
-    const stat = fs.statSync(videoCfg.localPath);
+    const stat = fs.statSync(localVideoPath);
     const totalSize = stat.size;
     const rangeHeader = req.headers.range;
-    const contentType = getVideoContentType(videoCfg.localPath);
+    const contentType = getVideoContentType(localVideoPath);
 
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.setHeader("Content-Type", contentType);
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="${videoCfg.filename || path.basename(videoCfg.localPath)}"`,
+      `inline; filename="${path.basename(localVideoPath)}"`,
     );
 
     if (!rangeHeader) {
       res.setHeader("Content-Length", totalSize);
-      const stream = fs.createReadStream(videoCfg.localPath);
+      const stream = fs.createReadStream(localVideoPath);
       stream.on("error", (err) => {
         console.error("[VIDEO] Błąd streamu bez range:", err);
         if (!res.headersSent) {
@@ -11485,7 +11577,7 @@ app.get('/videos/:videoKey', (req, res) => {
     res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
     res.setHeader("Content-Length", chunkSize);
 
-    const stream = fs.createReadStream(videoCfg.localPath, { start, end });
+    const stream = fs.createReadStream(localVideoPath, { start, end });
     stream.on("error", (err) => {
       console.error("[VIDEO] Błąd streamu range:", err);
       if (!res.headersSent) {
