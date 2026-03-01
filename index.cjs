@@ -3491,8 +3491,11 @@ const nickInput = new TextInputBuilder()
       let sentCount = 0;
       for (const v of resolvedVideos) {
         try {
-          // Publiczne wysłanie na kanał, żeby wyglądało "normalnie jak wiadomość z filmem/linkiem".
-          await interaction.channel.send(v.url);
+          // Publiczne wysłanie jako ZAŁĄCZNIK (nie link w treści),
+          // żeby Discord pokazał to jak normalny film do odtworzenia.
+          await interaction.channel.send({
+            files: [v.url],
+          });
           sentCount += 1;
         } catch (sendErr) {
           console.error("[mody] Nie udało się wysłać linku nagrania:", sendErr);
