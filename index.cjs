@@ -3753,6 +3753,45 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
+  if (customId.startsWith("mody_buy_")) {
+    const modal = new ModalBuilder()
+      .setCustomId("modal_mody_zakup")
+      .setTitle("Zakup moda");
+
+    const modNameInput = new TextInputBuilder()
+      .setCustomId("mod_name")
+      .setLabel("Jakiego moda chcesz kupić?")
+      .setPlaceholder("Przykład: Auto_Dripstone")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(64);
+
+    const paymentMethodInput = new TextInputBuilder()
+      .setCustomId("payment_method")
+      .setLabel("Jaką metodą płatności płacisz?")
+      .setPlaceholder("Przykład: Blik")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(64);
+
+    const modsCountInput = new TextInputBuilder()
+      .setCustomId("mods_count")
+      .setLabel("Ile modów chcesz kupić? (1-4)")
+      .setPlaceholder("Przykład: 1")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(1);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(modNameInput),
+      new ActionRowBuilder().addComponents(paymentMethodInput),
+      new ActionRowBuilder().addComponents(modsCountInput),
+    );
+
+    await interaction.showModal(modal);
+    return;
+  }
+
   // NEW: verification panel button
   if (customId.startsWith("verify_panel_")) {
     // very simple puzzles for preschool level: addition and multiplication with small numbers
@@ -5104,7 +5143,12 @@ async function handleModyCommand(interaction) {
       .setLabel("Nagrania modów")
       .setEmoji("📹")
       .setStyle(ButtonStyle.Secondary);
-    const row = new ActionRowBuilder().addComponents(videosButton);
+    const buyModButton = new ButtonBuilder()
+      .setCustomId(`mody_buy_${Date.now()}`)
+      .setLabel("Zakup moda")
+      .setEmoji("🛒")
+      .setStyle(ButtonStyle.Secondary);
+    const row = new ActionRowBuilder().addComponents(videosButton, buyModButton);
 
     try {
       const sendOptions = {
@@ -7394,6 +7438,69 @@ async function handleModalSubmit(interaction) {
         `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${platnosc}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
+      break;
+    }
+    case "modal_mody_zakup": {
+      const modName = (interaction.fields.getTextInputValue("mod_name") || "").trim();
+      const paymentMethod = (interaction.fields.getTextInputValue("payment_method") || "").trim();
+      const modsCountRaw = (interaction.fields.getTextInputValue("mods_count") || "").trim();
+
+      if (!modName) {
+        await interaction.reply({
+          content: "> `❌` × Podaj nazwę moda, którego chcesz kupić.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!paymentMethod) {
+        await interaction.reply({
+          content: "> `❌` × Podaj metodę płatności.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!/^\d+$/.test(modsCountRaw)) {
+        await interaction.reply({
+          content: "> `❌` × Liczba modów musi być liczbą od **1** do **4**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      const modsCount = parseInt(modsCountRaw, 10);
+      if (modsCount < 1 || modsCount > 4) {
+        await interaction.reply({
+          content: "> `❌` × Możesz kupić jednorazowo od **1** do **4** modów.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      const totalPrice = modsCount * 20;
+      if (totalPrice <= 20) {
+        categoryId = categories["zakup-0-20"];
+        ticketType = "zakup-0-20";
+      } else if (totalPrice <= 50) {
+        categoryId = categories["zakup-20-50"];
+        ticketType = "zakup-20-50";
+      } else if (totalPrice <= 100) {
+        categoryId = categories["zakup-50-100"];
+        ticketType = "zakup-50-100";
+      } else {
+        categoryId = categories["zakup-100-200"];
+        ticketType = "zakup-100-200";
+      }
+
+      ticketTypeLabel = "ZAKUP";
+      ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
+      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
+
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentMethod}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ilość modów:** \`${modsCount}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Łączna kwota:** \`${totalPrice}zł\``;
       break;
     }
     case "modal_sprzedaz": {
