@@ -5532,19 +5532,19 @@ async function handleTicketCommand(interaction) {
         label: "Nagroda za zaproszenia",
         value: "odbior",
         description: "Odbiór nagrody za zaproszenia (kod)",
-        emoji: "🎁",
+        emoji: "📩",
       },
       {
         label: "Nagroda za konkurs",
         value: "konkurs_odbior",
         description: "Odbiór nagrody za konkurs",
-        emoji: "🏆",
+        emoji: { id: "1469355450645352583", name: "gift" },
       },
       {
-        label: "Pytanie",
+        label: "Pytanie/Pomoc",
         value: "inne",
-        description: "Kliknij, aby zadać pytanie!",
-        emoji: "❓",
+        description: "Kliknij aby zadać pytanie lub otrzymać pomoc!",
+        emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
       },
     ]);
 
@@ -5604,19 +5604,19 @@ async function handleTicketPanelCommand(interaction) {
         label: "Nagroda za zaproszenia",
         value: "odbior",
         description: "Kliknij, aby odebrać nagrode za zaproszenia (kod)",
-        emoji: "🎁",
+        emoji: "📩",
       },
       {
         label: "Nagroda za konkurs",
         value: "konkurs_odbior",
         description: "Kliknij, aby odebrać nagrode za konkurs",
-        emoji: "🏆",
+        emoji: { id: "1469355450645352583", name: "gift" },
       },
       {
-        label: "Pytanie",
+        label: "Pytanie/Pomoc",
         value: "inne",
-        description: "Kliknij, aby zadać pytanie!",
-        emoji: "❓",
+        description: "Kliknij aby zadać pytanie lub otrzymać pomoc!",
+        emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
       },
     ]);
 
