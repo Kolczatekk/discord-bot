@@ -121,6 +121,22 @@ const MODS_VIDEO_FILES = [
     localPath: path.join(__dirname, "attached_assets", "Sprawdz_procenty.mov"),
     envVar: "MODS_VIDEO_URL_SPRAWDZ_PROCENTY",
   },
+  {
+    key: "auto_dzwignia",
+    label: "Auto_dźwignia",
+    modName: "AutoDzwignia",
+    filename: "Auto_dźwignia.mov",
+    localPath: path.join(__dirname, "attached_assets", "Auto_dźwignia.mov"),
+    envVar: "MODS_VIDEO_URL_AUTO_DZWIGNIA",
+  },
+  {
+    key: "auto_dripstone",
+    label: "Auto_Dripstone",
+    modName: "AutoDripstone",
+    filename: "Auto_Dripstone.mov",
+    localPath: path.join(__dirname, "attached_assets", "Auto_Dripstone.mov"),
+    envVar: "MODS_VIDEO_URL_AUTO_DRIPSTONE",
+  },
 ];
 const modsVideoUrlCache = new Map(); // key -> url
 const DISCORD_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -3556,34 +3572,20 @@ const nickInput = new TextInputBuilder()
     }
 
     if (resolvedVideos.length > 0) {
-      let firstSent = false;
-      let sentCount = 0;
+      const MAX_FILES_PER_MESSAGE = 10;
+      const videosToSend = resolvedVideos.slice(0, MAX_FILES_PER_MESSAGE);
+      const captions = videosToSend.map((v) =>
+        getModsVideoCaption(v.videoCfg, v.labelFallback),
+      );
+      const payload = {
+        content: captions.join("\n"),
+        files: videosToSend.map((v) => v.url),
+      };
 
-      for (const v of resolvedVideos) {
-        const caption = getModsVideoCaption(v.videoCfg, v.labelFallback);
-        try {
-          const payload = {
-            content: caption,
-            files: [v.url],
-          };
-
-          if (!firstSent) {
-            await interaction.editReply(payload);
-            firstSent = true;
-          } else {
-            await interaction.followUp({
-              ...payload,
-              flags: [MessageFlags.Ephemeral],
-            });
-          }
-
-          sentCount += 1;
-        } catch (sendErr) {
-          console.error("[mody] Nie udało się wysłać nagrania:", sendErr);
-        }
-      }
-
-      if (!firstSent || sentCount <= 0) {
+      try {
+        await interaction.editReply(payload);
+      } catch (sendErr) {
+        console.error("[mody] Nie udało się wysłać nagrań:", sendErr);
         await interaction.editReply({
           content:
             "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i poprawność źródeł wideo.",
@@ -3591,10 +3593,10 @@ const nickInput = new TextInputBuilder()
         return;
       }
 
-      if (sentCount < resolvedVideos.length) {
+      if (resolvedVideos.length > MAX_FILES_PER_MESSAGE) {
         await interaction.followUp({
           content:
-            `> \`⚠️\` × Wysłano **${sentCount}/${resolvedVideos.length}** nagrań. Część plików nie mogła zostać wysłana.`,
+            `> \`⚠️\` × Pokazano **${MAX_FILES_PER_MESSAGE}/${resolvedVideos.length}** nagrań (limit Discord na jedną wiadomość).`,
           flags: [MessageFlags.Ephemeral],
         }).catch(() => null);
       }
