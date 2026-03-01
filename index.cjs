@@ -1855,7 +1855,7 @@ function getModsVideoCaption(videoCfg, fallbackName = "Nagranie") {
     .replace(/[\r\n`*_~|<>]/g, "")
     .trim();
   const modName = safeName || "Nagranie";
-  return `${arrowEmoji} **Mod:** __**${modName}**__`;
+  return `## ${arrowEmoji} Mod: **__${modName}__**`;
 }
 
 function getModsVideoOrderRank(videoCfg) {
@@ -3739,17 +3739,26 @@ const nickInput = new TextInputBuilder()
         return keyA.localeCompare(keyB, "pl");
       });
       const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
-      const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
-      const modsHeader =
-        `## ${arrowEmoji} Mody: **__Autodripstone__**, **__NoEntities__**, **__AutoDźwignia__**, **__SprawdzProcenty__**`;
-
-      await interaction.editReply({
-        content: modsHeader,
-        embeds: [],
-        components: [],
-      });
-
       let sentAtLeastOneVideo = false;
+      let firstCaptionSent = false;
+
+      const sendVideoCaption = async (videoCfg, fallbackLabel) => {
+        const caption = getModsVideoCaption(videoCfg, fallbackLabel || "Nagranie");
+        if (!firstCaptionSent) {
+          await interaction.editReply({
+            content: caption,
+            embeds: [],
+            components: [],
+          });
+          firstCaptionSent = true;
+          return;
+        }
+        await interaction.followUp({
+          content: caption,
+          flags: [MessageFlags.Ephemeral],
+        });
+      };
+
       for (let i = 0; i < videosToSend.length; i += 1) {
         const video = videosToSend[i];
         const videoCfg = video.videoCfg || null;
@@ -3773,6 +3782,7 @@ const nickInput = new TextInputBuilder()
               name: `${baseName}${ext.toLowerCase()}`,
             });
 
+            await sendVideoCaption(videoCfg, video.labelFallback);
             await interaction.followUp({
               files: [attachment],
               flags: [MessageFlags.Ephemeral],
@@ -3784,6 +3794,7 @@ const nickInput = new TextInputBuilder()
 
         // Fallback: jeśli lokalny plik jest niedostępny, wyślij link.
         if (isHttpUrl(video.url)) {
+          await sendVideoCaption(videoCfg, video.labelFallback);
           await interaction.followUp({
             content: video.url,
             flags: [MessageFlags.Ephemeral],
@@ -3793,11 +3804,16 @@ const nickInput = new TextInputBuilder()
       }
 
       if (!sentAtLeastOneVideo) {
-        await interaction.followUp({
-          content:
-            "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.",
-          flags: [MessageFlags.Ephemeral],
-        });
+        const failMsg =
+          "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.";
+        if (!firstCaptionSent) {
+          await interaction.editReply({ content: failMsg, embeds: [], components: [] });
+        } else {
+          await interaction.followUp({
+            content: failMsg,
+            flags: [MessageFlags.Ephemeral],
+          });
+        }
       }
       return;
     }
