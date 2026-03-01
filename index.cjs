@@ -3739,45 +3739,63 @@ const nickInput = new TextInputBuilder()
         return keyA.localeCompare(keyB, "pl");
       });
       const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
-
-      const entries = videosToSend.map((video) => video.url);
+      const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
       const modsHeader =
-        "## :strzałka: Mody: **__Autodripstone__**, **__NoEntities__**, **__AutoDźwignia__**, **__SprawdzProcenty__**";
-
-      // Wyślij listę nagrań w jednej odpowiedzi, aby uniknąć "znikania" pierwszej
-      // wiadomości przy wielu follow-upach ephemeral.
-      const MAX_CONTENT_LEN = 1900;
-      const chunks = [];
-      let currentChunk = modsHeader;
-
-      for (const entry of entries) {
-        const candidate = currentChunk ? `${currentChunk}\n${entry}` : entry;
-        if (candidate.length > MAX_CONTENT_LEN) {
-          if (currentChunk) chunks.push(currentChunk);
-          currentChunk = entry;
-        } else {
-          currentChunk = candidate;
-        }
-      }
-      if (currentChunk) chunks.push(currentChunk);
-
-      if (chunks.length === 0) {
-        await interaction.editReply({
-          content:
-            "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i poprawność źródeł wideo.",
-        });
-        return;
-      }
+        `## ${arrowEmoji} Mody: **__Autodripstone__**, **__NoEntities__**, **__AutoDźwignia__**, **__SprawdzProcenty__**`;
 
       await interaction.editReply({
-        content: chunks[0],
+        content: modsHeader,
         embeds: [],
         components: [],
       });
 
-      for (let i = 1; i < chunks.length; i += 1) {
+      let sentAtLeastOneVideo = false;
+      for (let i = 0; i < videosToSend.length; i += 1) {
+        const video = videosToSend[i];
+        const videoCfg = video.videoCfg || null;
+        const localPath = resolveLocalModsVideoPath(videoCfg);
+
+        if (localPath) {
+          let size = 0;
+          try {
+            size = fs.statSync(localPath).size || 0;
+          } catch {
+            size = 0;
+          }
+
+          if (size > 0 && size <= DISCORD_MAX_UPLOAD_BYTES) {
+            const ext = path.extname(localPath) || ".mp4";
+            const baseName =
+              (videoCfg?.key || `video_${i + 1}`)
+                .toString()
+                .replace(/[^a-z0-9_-]/gi, "_") || `video_${i + 1}`;
+            const attachment = new AttachmentBuilder(localPath, {
+              name: `${baseName}${ext.toLowerCase()}`,
+            });
+
+            await interaction.followUp({
+              files: [attachment],
+              flags: [MessageFlags.Ephemeral],
+            });
+            sentAtLeastOneVideo = true;
+            continue;
+          }
+        }
+
+        // Fallback: jeśli lokalny plik jest niedostępny, wyślij link.
+        if (isHttpUrl(video.url)) {
+          await interaction.followUp({
+            content: video.url,
+            flags: [MessageFlags.Ephemeral],
+          });
+          sentAtLeastOneVideo = true;
+        }
+      }
+
+      if (!sentAtLeastOneVideo) {
         await interaction.followUp({
-          content: chunks[i],
+          content:
+            "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.",
           flags: [MessageFlags.Ephemeral],
         });
       }
