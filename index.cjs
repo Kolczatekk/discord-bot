@@ -3742,14 +3742,7 @@ const nickInput = new TextInputBuilder()
         return;
       }
 
-      const limitNote =
-        resolvedVideos.length > MAX_VIDEO_MESSAGES
-          ? `\n> \`⚠️\` × Pokazano **${MAX_VIDEO_MESSAGES}/${resolvedVideos.length}** nagrań (limit anty-spam).`
-          : "";
-
-      await interaction.editReply({
-        content: `> \`✅\` × Wysłano **${sentCount}** nagrań tylko dla Ciebie.${limitNote}`,
-      });
+      await interaction.deleteReply().catch(() => {});
       return;
     }
 
@@ -5175,12 +5168,12 @@ async function handleModyCommand(interaction) {
     const videosButton = new ButtonBuilder()
       .setCustomId(`mody_videos_${Date.now()}`)
       .setLabel("Nagrania modów")
-      .setEmoji("📹")
+      .setEmoji("📸")
       .setStyle(ButtonStyle.Secondary);
     const buyModButton = new ButtonBuilder()
       .setCustomId(`mody_buy_${Date.now()}`)
       .setLabel("Zakup moda")
-      .setEmoji("🛒")
+      .setEmoji({ id: "1477662159029796865", name: "java" })
       .setStyle(ButtonStyle.Secondary);
     const row = new ActionRowBuilder().addComponents(videosButton, buyModButton);
 
