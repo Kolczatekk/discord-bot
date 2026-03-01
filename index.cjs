@@ -3384,6 +3384,14 @@ const nickInput = new TextInputBuilder()
   }
 
   if (customId.startsWith("mody_videos_")) {
+    try {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+    } catch (err) {
+      // Interaction token already expired or already acknowledged.
+      console.warn("[mody] Nie udało się potwierdzić interakcji przycisku:", err?.code || err);
+      return;
+    }
+
     const resolvedVideos = [];
     for (const videoCfg of MODS_VIDEO_FILES) {
       const url = await resolveModsVideoUrl(interaction.guild, videoCfg);
@@ -3407,9 +3415,8 @@ const nickInput = new TextInputBuilder()
           "> `ℹ️` × Tę wiadomość widzisz tylko Ty.",
         );
 
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [modsEmbed],
-        flags: [MessageFlags.Ephemeral],
       });
       return;
     }
@@ -3425,20 +3432,18 @@ const nickInput = new TextInputBuilder()
 
       const sizeMb = (videoSize / 1024 / 1024).toFixed(1);
       const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
-      await interaction.reply({
+      await interaction.editReply({
         content:
           `> \`❌\` × Nie mam publicznego linku do **${localVideo.filename}**.\n` +
           `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
           `> \`✅\` × Ustaw URL w env \`${localVideo.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
-        flags: [MessageFlags.Ephemeral],
       });
       return;
     }
 
-    await interaction.reply({
+    await interaction.editReply({
       content:
         "> `❌` × Nie znaleziono żadnych nagrań modów ani linków do nich.",
-      flags: [MessageFlags.Ephemeral],
     });
     return;
   }
