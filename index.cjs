@@ -1674,6 +1674,43 @@ function isHttpUrl(value) {
   }
 }
 
+function getPublicBaseUrl() {
+  const candidates = [
+    process.env.PUBLIC_BASE_URL,
+    process.env.MONITOR_HTTP_URL,
+    process.env.RENDER_EXTERNAL_URL,
+    process.env.RENDER_URL,
+  ];
+
+  for (const raw of candidates) {
+    const value = (raw || "").trim();
+    if (!value) continue;
+    try {
+      const parsed = new URL(value);
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      // ignore invalid URL candidate
+    }
+  }
+
+  const host = (process.env.RENDER_EXTERNAL_HOSTNAME || "").trim();
+  if (host) {
+    return `https://${host}`;
+  }
+
+  return null;
+}
+
+function getLocalModsVideoPublicUrl(videoCfg) {
+  if (!videoCfg?.key || !videoCfg?.localPath) return null;
+  if (!fs.existsSync(videoCfg.localPath)) return null;
+
+  const baseUrl = getPublicBaseUrl();
+  if (!baseUrl) return null;
+
+  return `${baseUrl}/videos/${encodeURIComponent(videoCfg.key)}`;
+}
+
 async function findVideoAttachmentUrlByName(guild, filename) {
   if (!guild || !filename) return null;
   const filenameLower = filename.toLowerCase();
@@ -1728,6 +1765,12 @@ async function resolveModsVideoUrl(guild, videoCfg) {
 
   const cached = (modsVideoUrlCache.get(videoCfg.key) || "").trim();
   if (isHttpUrl(cached)) return cached;
+
+  const localRouteUrl = getLocalModsVideoPublicUrl(videoCfg);
+  if (isHttpUrl(localRouteUrl)) {
+    modsVideoUrlCache.set(videoCfg.key, localRouteUrl);
+    return localRouteUrl;
+  }
 
   const found = await findVideoAttachmentUrlByName(guild, videoCfg.filename);
   if (isHttpUrl(found)) {
@@ -11226,6 +11269,97 @@ validateBotToken().finally(() => loginWithRetry());
 
 const express = require('express');
 const app = express();
+
+function getVideoContentType(filePath) {
+  const ext = path.extname(filePath || "").toLowerCase();
+  if (ext === ".mp4") return "video/mp4";
+  if (ext === ".mov") return "video/quicktime";
+  if (ext === ".webm") return "video/webm";
+  return "application/octet-stream";
+}
+
+app.get('/videos/:videoKey', (req, res) => {
+  try {
+    const videoKey = (req.params.videoKey || "").trim();
+    const videoCfg = MODS_VIDEO_FILES.find((v) => v.key === videoKey);
+
+    if (!videoCfg) {
+      res.status(404).json({ error: "video_not_found" });
+      return;
+    }
+
+    if (!fs.existsSync(videoCfg.localPath)) {
+      res.status(404).json({ error: "video_file_missing" });
+      return;
+    }
+
+    const stat = fs.statSync(videoCfg.localPath);
+    const totalSize = stat.size;
+    const rangeHeader = req.headers.range;
+    const contentType = getVideoContentType(videoCfg.localPath);
+
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Content-Type", contentType);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${videoCfg.filename || path.basename(videoCfg.localPath)}"`,
+    );
+
+    if (!rangeHeader) {
+      res.setHeader("Content-Length", totalSize);
+      const stream = fs.createReadStream(videoCfg.localPath);
+      stream.on("error", (err) => {
+        console.error("[VIDEO] Błąd streamu bez range:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "stream_error" });
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+      return;
+    }
+
+    const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+    if (!match) {
+      res.status(416).setHeader("Content-Range", `bytes */${totalSize}`);
+      res.end();
+      return;
+    }
+
+    let start = match[1] ? parseInt(match[1], 10) : 0;
+    let end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+
+    if (!Number.isFinite(start) || start < 0) start = 0;
+    if (!Number.isFinite(end) || end >= totalSize) end = totalSize - 1;
+
+    if (start > end || start >= totalSize) {
+      res.status(416).setHeader("Content-Range", `bytes */${totalSize}`);
+      res.end();
+      return;
+    }
+
+    const chunkSize = end - start + 1;
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+    res.setHeader("Content-Length", chunkSize);
+
+    const stream = fs.createReadStream(videoCfg.localPath, { start, end });
+    stream.on("error", (err) => {
+      console.error("[VIDEO] Błąd streamu range:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "stream_error" });
+      } else {
+        res.end();
+      }
+    });
+    stream.pipe(res);
+  } catch (err) {
+    console.error("[VIDEO] Błąd endpointu /videos/:videoKey:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
 
 // Health check endpoint
 app.get('/', (req, res) => {
