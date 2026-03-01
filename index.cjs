@@ -103,6 +103,19 @@ const REP_EMBED_BANNER_URL =
 // track last info message posted by the bot per channel so we can delete it before posting a new one
 const repLastInfoMessage = new Map(); // channelId -> messageId
 
+// /mody: list of proof videos shown after clicking the button
+const MODS_VIDEO_FILES = [
+  {
+    key: "no_entities",
+    label: "No_entities (1440x2560)",
+    filename: "No_entities.mov",
+    localPath: path.join(__dirname, "attached_assets", "No_entities.mov"),
+    envVar: "MODS_VIDEO_URL_NO_ENTITIES",
+  },
+];
+const modsVideoUrlCache = new Map(); // key -> url
+const DISCORD_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 // legit rep counter
 let legitRepCount = 15;
 let lastChannelRename = 0;
@@ -1533,6 +1546,20 @@ const commands = [
         .addChannelTypes(ChannelType.GuildText),
     )
     .toJSON(),
+  new SlashCommandBuilder()
+    .setName("mody")
+    .setDescription("Wyślij embed z przyciskiem do nagrań modów (tylko właściciel)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addChannelOption((o) =>
+      o
+        .setName("kanal")
+        .setDescription(
+          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
+        )
+        .setRequired(false)
+        .addChannelTypes(ChannelType.GuildText),
+    )
+    .toJSON(),
   // RENAMED: sprawdz-zaproszenia (was sprawdz-zapro)
   new SlashCommandBuilder()
     .setName("sprawdz-zaproszenia")
@@ -1636,6 +1663,79 @@ function humanizeMs(ms) {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
+}
+
+function isHttpUrl(value) {
+  try {
+    const u = new URL((value || "").trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function findVideoAttachmentUrlByName(guild, filename) {
+  if (!guild || !filename) return null;
+  const filenameLower = filename.toLowerCase();
+  const meRef = guild.members?.me || client.user?.id || null;
+  const channels = guild.channels.cache.filter(
+    (ch) => ch.type === ChannelType.GuildText,
+  );
+
+  // Limit scan scope to keep this interaction responsive.
+  for (const channel of channels.values()) {
+    try {
+      const perms = meRef ? channel.permissionsFor(meRef) : null;
+      if (
+        !perms ||
+        !perms.has(PermissionFlagsBits.ViewChannel) ||
+        !perms.has(PermissionFlagsBits.ReadMessageHistory)
+      ) {
+        continue;
+      }
+
+      const fetched = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+      if (!fetched) continue;
+
+      for (const msg of fetched.values()) {
+        for (const att of msg.attachments.values()) {
+          const attName = (att.name || "").toLowerCase();
+          const matchesName =
+            attName === filenameLower ||
+            attName.startsWith(filenameLower.replace(/\.[^.]+$/, ""));
+          if (!matchesName) continue;
+          if (isHttpUrl(att.url)) {
+            return att.url;
+          }
+        }
+      }
+    } catch {
+      // ignore per-channel fetch errors
+    }
+  }
+
+  return null;
+}
+
+async function resolveModsVideoUrl(guild, videoCfg) {
+  if (!videoCfg) return null;
+
+  const fromEnv = (process.env[videoCfg.envVar] || "").trim();
+  if (isHttpUrl(fromEnv)) {
+    modsVideoUrlCache.set(videoCfg.key, fromEnv);
+    return fromEnv;
+  }
+
+  const cached = (modsVideoUrlCache.get(videoCfg.key) || "").trim();
+  if (isHttpUrl(cached)) return cached;
+
+  const found = await findVideoAttachmentUrlByName(guild, videoCfg.filename);
+  if (isHttpUrl(found)) {
+    modsVideoUrlCache.set(videoCfg.key, found);
+    return found;
+  }
+
+  return null;
 }
 
 // Helper: sprawdź czy użytkownik jest admin lub sprzedawca
@@ -3283,6 +3383,66 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
+  if (customId.startsWith("mody_videos_")) {
+    const resolvedVideos = [];
+    for (const videoCfg of MODS_VIDEO_FILES) {
+      const url = await resolveModsVideoUrl(interaction.guild, videoCfg);
+      if (url) {
+        resolvedVideos.push({ label: videoCfg.label, url });
+      }
+    }
+
+    if (resolvedVideos.length > 0) {
+      const lines = resolvedVideos
+        .map((v) => `> \`🎥\` × **${v.label}:** ${v.url}`)
+        .join("\n");
+
+      const modsEmbed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "🎬 New Shop × NAGRANIA MODÓW\n" +
+          "```\n" +
+          `${lines}\n\n` +
+          "> `ℹ️` × Tę wiadomość widzisz tylko Ty.",
+        );
+
+      await interaction.reply({
+        embeds: [modsEmbed],
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const localVideo = MODS_VIDEO_FILES.find((v) => fs.existsSync(v.localPath)) || null;
+    if (localVideo) {
+      let videoSize = 0;
+      try {
+        videoSize = fs.statSync(localVideo.localPath).size || 0;
+      } catch {
+        videoSize = 0;
+      }
+
+      const sizeMb = (videoSize / 1024 / 1024).toFixed(1);
+      const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
+      await interaction.reply({
+        content:
+          `> \`❌\` × Nie mam publicznego linku do **${localVideo.filename}**.\n` +
+          `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
+          `> \`✅\` × Ustaw URL w env \`${localVideo.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content:
+        "> `❌` × Nie znaleziono żadnych nagrań modów ani linków do nich.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
   // NEW: verification panel button
   if (customId.startsWith("verify_panel_")) {
     // very simple puzzles for preschool level: addition and multiplication with small numbers
@@ -3636,6 +3796,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "embed":
       await handleSendMessageCommand(interaction);
+      break;
+    case "mody":
+      await handleModyCommand(interaction);
       break;
     case "sprawdz-zaproszenia":
       await handleSprawdzZaproszeniaCommand(interaction);
@@ -4526,6 +4689,156 @@ async function handleSendMessageCommand(interaction) {
   });
 }
 
+async function handleModyCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  // Owner-only
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetChannel =
+    interaction.options.getChannel("kanal") || interaction.channel;
+
+  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+    await interaction.reply({
+      content: "> `❌` × **Wybierz** poprawny kanał tekstowy **docelowy**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  try {
+    await interaction.reply({
+      content:
+        "✉️ Napisz w tym kanale (w ciągu 2 minut) wiadomość, którą mam wysłać z przyciskiem **Nagrania modów**.\n" +
+        `Docelowy kanał: <#${targetChannel.id}>\n\n` +
+        "Możesz wysłać tekst, obraz/GIF i animowane emoji. Wpisz `anuluj`, aby przerwać.",
+      flags: [MessageFlags.Ephemeral],
+    });
+  } catch (e) {
+    console.error("handleModyCommand: reply failed", e);
+    return;
+  }
+
+  const collectChannel = interaction.channel;
+  if (!collectChannel || !collectChannel.createMessageCollector) {
+    await interaction.followUp({
+      content: "❌ Nie mogę uruchomić kolektora w tym kanale. Spróbuj ponownie.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const filter = (m) => m.author.id === interaction.user.id && !m.author.bot;
+  const collector = collectChannel.createMessageCollector({
+    filter,
+    time: 120_000,
+    max: 1,
+  });
+
+  collector.on("collect", async (msg) => {
+    const contentRaw = (msg.content || "").trim();
+    const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
+    const alertEmoji = "<a:alert:1474431227972026469>";
+    const starEmoji = "<:star:1474431260133691567>";
+    const content = contentRaw
+      .replace(/:strzałka:/gi, arrowEmoji)
+      .replace(/:alertownik:/gi, alertEmoji)
+      .replace(/:startownik:/gi, starEmoji);
+
+    if (content.toLowerCase() === "anuluj") {
+      try {
+        await interaction.followUp({
+          content: "> `❌` × **Anulowano** wysyłanie wiadomości.",
+          flags: [MessageFlags.Ephemeral],
+        });
+      } catch (e) { }
+      collector.stop("cancelled");
+      return;
+    }
+
+    const files = [];
+    let imageAttachment = null;
+    for (const att of msg.attachments.values()) {
+      if (att.contentType && att.contentType.startsWith("image/")) {
+        imageAttachment = att.url;
+      } else {
+        files.push(att.url);
+      }
+    }
+
+    const sendEmbed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        (content || "`(brak treści)`").replace(/<@!?\d+>|@everyone|@here/g, ""),
+      )
+      .setTimestamp();
+
+    if (imageAttachment) {
+      sendEmbed.setImage(imageAttachment);
+    }
+
+    const videosButton = new ButtonBuilder()
+      .setCustomId(`mody_videos_${Date.now()}`)
+      .setLabel("Nagrania modów")
+      .setEmoji("📹")
+      .setStyle(ButtonStyle.Secondary);
+    const row = new ActionRowBuilder().addComponents(videosButton);
+
+    try {
+      const sendOptions = {
+        embeds: [sendEmbed],
+        components: [row],
+        files: files.length ? files : undefined,
+      };
+
+      const pings = content.match(/<@!?\d+>|@everyone|@here/g);
+      if (pings && pings.length > 0) {
+        await targetChannel.send({ content: pings.join(" ") });
+      }
+
+      await targetChannel.send(sendOptions);
+
+      await interaction.followUp({
+        content: `✅ Wiadomość z przyciskiem modów została wysłana do <#${targetChannel.id}>.`,
+        flags: [MessageFlags.Ephemeral],
+      });
+    } catch (err) {
+      console.error("handleModyCommand: send failed", err);
+      try {
+        await interaction.followUp({
+          content:
+            "❌ Nie udało się wysłać wiadomości (sprawdź uprawnienia bota do wysyłania wiadomości/załączników).",
+          flags: [MessageFlags.Ephemeral],
+        });
+      } catch (e) { }
+    }
+  });
+
+  collector.on("end", async (collected, reason) => {
+    if (reason === "time" && collected.size === 0) {
+      try {
+        await interaction.followUp({
+          content:
+            "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /mody, aby spróbować jeszcze raz.",
+          flags: [MessageFlags.Ephemeral],
+        });
+      } catch (e) { }
+    }
+  });
+}
+
 async function handleDropCommand(interaction) {
   const user = interaction.user;
   const guildId = interaction.guildId;
@@ -5258,7 +5571,7 @@ async function handleLegitRepUstawCommand(interaction) {
       return;
     }
 
-    const newName = `✅×〢legit-rep➔${ile}`;
+    const newName = `✅-×┃legit-rep➔${ile}`;
     await channel.setName(newName);
     
     // Wyślij informacyjną wiadomość
