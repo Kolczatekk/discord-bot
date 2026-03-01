@@ -5529,19 +5529,22 @@ async function handleTicketCommand(interaction) {
         emoji: { id: "1477662159029796865", name: "java" },
       },
       {
-        label: "🎁 Nagroda za zaproszenia",
+        label: "Nagroda za zaproszenia",
         value: "odbior",
         description: "Odbiór nagrody za zaproszenia (kod)",
+        emoji: "🎁",
       },
       {
-        label: "🏆 Nagroda za konkurs",
+        label: "Nagroda za konkurs",
         value: "konkurs_odbior",
         description: "Odbiór nagrody za konkurs",
+        emoji: "🏆",
       },
       {
-        label: "❓ Pytanie",
+        label: "Pytanie",
         value: "inne",
         description: "Kliknij, aby zadać pytanie!",
+        emoji: "❓",
       },
     ]);
 
@@ -5598,19 +5601,22 @@ async function handleTicketPanelCommand(interaction) {
         emoji: { id: "1477662159029796865", name: "java" },
       },
       {
-        label: "🎁 Nagroda za zaproszenia",
+        label: "Nagroda za zaproszenia",
         value: "odbior",
         description: "Kliknij, aby odebrać nagrode za zaproszenia (kod)",
+        emoji: "🎁",
       },
       {
-        label: "🏆 Nagroda za konkurs",
+        label: "Nagroda za konkurs",
         value: "konkurs_odbior",
         description: "Kliknij, aby odebrać nagrode za konkurs",
+        emoji: "🏆",
       },
       {
-        label: "❓ Pytanie",
+        label: "Pytanie",
         value: "inne",
         description: "Kliknij, aby zadać pytanie!",
+        emoji: "❓",
       },
     ]);
 
