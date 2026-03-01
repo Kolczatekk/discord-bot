@@ -3740,21 +3740,31 @@ const nickInput = new TextInputBuilder()
       });
       const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
 
-      let sentCount = 0;
-      for (const video of videosToSend) {
+      const entries = videosToSend.map((video) => {
         const caption = getModsVideoCaption(video.videoCfg, video.labelFallback);
-        try {
-          await interaction.followUp({
-            content: `${caption}\n${video.url}`,
-            flags: [MessageFlags.Ephemeral],
-          });
-          sentCount += 1;
-        } catch (sendErr) {
-          console.error("[mody] Nie udało się wysłać pojedynczego nagrania:", sendErr);
+        return `${caption}\n${video.url}`;
+      });
+
+      // Wyślij listę nagrań w jednej odpowiedzi, aby uniknąć "znikania" pierwszej
+      // wiadomości przy wielu follow-upach ephemeral.
+      const MAX_CONTENT_LEN = 1900;
+      const chunks = [];
+      let currentChunk = "";
+
+      for (const entry of entries) {
+        const candidate = currentChunk
+          ? `${currentChunk}\n\n${entry}`
+          : entry;
+        if (candidate.length > MAX_CONTENT_LEN) {
+          if (currentChunk) chunks.push(currentChunk);
+          currentChunk = entry;
+        } else {
+          currentChunk = candidate;
         }
       }
+      if (currentChunk) chunks.push(currentChunk);
 
-      if (sentCount === 0) {
+      if (chunks.length === 0) {
         await interaction.editReply({
           content:
             "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i poprawność źródeł wideo.",
@@ -3762,7 +3772,18 @@ const nickInput = new TextInputBuilder()
         return;
       }
 
-      await interaction.deleteReply().catch(() => {});
+      await interaction.editReply({
+        content: chunks[0],
+        embeds: [],
+        components: [],
+      });
+
+      for (let i = 1; i < chunks.length; i += 1) {
+        await interaction.followUp({
+          content: chunks[i],
+          flags: [MessageFlags.Ephemeral],
+        });
+      }
       return;
     }
 
