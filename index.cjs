@@ -135,6 +135,8 @@ const MODS_VIDEO_FILES = [
     ],
     localPath: path.join(__dirname, "attached_assets", "Auto_dźwignia.mov"),
     envVar: "MODS_VIDEO_URL_AUTO_DZWIGNIA",
+    defaultUrl:
+      "https://cdn.discordapp.com/attachments/1350603811512909914/1477659247511605340/Auto_dzwignia.mov?ex=69a590ea&is=69a43f6a&hm=045a8441610b16e22135e2a267ba139021cd498791c71861627d4dc486506284",
   },
   {
     key: "auto_dripstone",
@@ -144,10 +146,21 @@ const MODS_VIDEO_FILES = [
     filenameAliases: ["Auto_Dripstone.mp4"],
     localPath: path.join(__dirname, "attached_assets", "Auto_Dripstone.mov"),
     envVar: "MODS_VIDEO_URL_AUTO_DRIPSTONE",
+    defaultUrl:
+      "https://cdn.discordapp.com/attachments/1350603811512909914/1477659253664780402/Auto_Dripstone.mov?ex=69a590eb&is=69a43f6b&hm=51a15faf631c567393b82b6fcc017661cb20775ddd517b723100456f914b1fed",
   },
 ];
 const modsVideoUrlCache = new Map(); // key -> url
 const DISCORD_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MODS_VIDEO_SEND_ORDER = [
+  "auto_dripstone",
+  "no_entities",
+  "auto_dzwignia",
+  "sprawdz_procenty",
+];
+const modsVideoOrderRanks = new Map(
+  MODS_VIDEO_SEND_ORDER.map((key, idx) => [key, idx]),
+);
 
 // legit rep counter
 let legitRepCount = 15;
@@ -1813,6 +1826,14 @@ function getModsVideoCaption(videoCfg, fallbackName = "Nagranie") {
   return `${arrowEmoji} **Mod:** __**${modName}**__`;
 }
 
+function getModsVideoOrderRank(videoCfg) {
+  const key = videoCfg?.key;
+  if (!key) return Number.MAX_SAFE_INTEGER;
+  return modsVideoOrderRanks.has(key)
+    ? modsVideoOrderRanks.get(key)
+    : Number.MAX_SAFE_INTEGER;
+}
+
 function collectVideoLinksFromMessage(msg) {
   const out = [];
   if (!msg?.attachments?.size) return out;
@@ -1936,6 +1957,12 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
   if (isHttpUrl(fromEnv)) {
     modsVideoUrlCache.set(videoCfg.key, fromEnv);
     return fromEnv;
+  }
+
+  const fromDefault = (videoCfg.defaultUrl || "").trim();
+  if (isHttpUrl(fromDefault)) {
+    modsVideoUrlCache.set(videoCfg.key, fromDefault);
+    return fromDefault;
   }
 
   const cached = (modsVideoUrlCache.get(videoCfg.key) || "").trim();
@@ -3657,12 +3684,24 @@ const nickInput = new TextInputBuilder()
 
     if (resolvedVideos.length > 0) {
       const MAX_FILES_PER_MESSAGE = 10;
+      resolvedVideos.sort((a, b) => {
+        const rankA = getModsVideoOrderRank(a.videoCfg);
+        const rankB = getModsVideoOrderRank(b.videoCfg);
+        if (rankA !== rankB) return rankA - rankB;
+        const keyA = a.videoCfg?.key || a.labelFallback || "";
+        const keyB = b.videoCfg?.key || b.labelFallback || "";
+        return keyA.localeCompare(keyB, "pl");
+      });
       const videosToSend = resolvedVideos.slice(0, MAX_FILES_PER_MESSAGE);
       const captions = videosToSend.map((v) =>
         getModsVideoCaption(v.videoCfg, v.labelFallback),
       );
+      const limitNote =
+        resolvedVideos.length > MAX_FILES_PER_MESSAGE
+          ? `\n> \`⚠️\` × Pokazano **${MAX_FILES_PER_MESSAGE}/${resolvedVideos.length}** nagrań (limit Discord na jedną wiadomość).`
+          : "";
       const payload = {
-        content: captions.join("\n"),
+        content: `${captions.join("\n")}${limitNote}`,
         files: videosToSend.map((v) => v.url),
       };
 
@@ -3675,14 +3714,6 @@ const nickInput = new TextInputBuilder()
             "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i poprawność źródeł wideo.",
         });
         return;
-      }
-
-      if (resolvedVideos.length > MAX_FILES_PER_MESSAGE) {
-        await interaction.followUp({
-          content:
-            `> \`⚠️\` × Pokazano **${MAX_FILES_PER_MESSAGE}/${resolvedVideos.length}** nagrań (limit Discord na jedną wiadomość).`,
-          flags: [MessageFlags.Ephemeral],
-        }).catch(() => null);
       }
 
       return;
