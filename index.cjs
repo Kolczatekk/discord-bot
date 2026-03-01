@@ -3299,7 +3299,7 @@ async function handleModalSubmit(interaction) {
 
       categoryId = categories["inne"];
       ticketType = "inne";
-      ticketTypeLabel = "INNE";
+      ticketTypeLabel = "PYTANIE";
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
@@ -5538,7 +5538,11 @@ async function handleTicketCommand(interaction) {
         value: "konkurs_odbior",
         description: "Odbiór nagrody za konkurs",
       },
-      { label: "❓ INNE", value: "inne", description: "Kliknij, aby zadać inne pytanie!" },
+      {
+        label: "❓ Pytanie",
+        value: "inne",
+        description: "Kliknij, aby zadać pytanie!",
+      },
     ]);
 
   const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -5603,7 +5607,11 @@ async function handleTicketPanelCommand(interaction) {
         value: "konkurs_odbior",
         description: "Kliknij, aby odebrać nagrode za konkurs",
       },
-      { label: "❓ INNE", value: "inne", description: "Kliknij, aby zadać inne pytanie!" },
+      {
+        label: "❓ Pytanie",
+        value: "inne",
+        description: "Kliknij, aby zadać pytanie!",
+      },
     ]);
 
   const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -7814,7 +7822,7 @@ async function handleModalSubmit(interaction) {
 
       categoryId = categories["inne"];
       ticketType = "inne";
-      ticketTypeLabel = "INNE";
+      ticketTypeLabel = "PYTANIE";
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
