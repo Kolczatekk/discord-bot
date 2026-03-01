@@ -3740,21 +3740,22 @@ const nickInput = new TextInputBuilder()
       });
       const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
       let sentAtLeastOneVideo = false;
-      let firstCaptionSent = false;
+      let firstResponseSent = false;
 
-      const sendVideoCaption = async (videoCfg, fallbackLabel) => {
-        const caption = getModsVideoCaption(videoCfg, fallbackLabel || "Nagranie");
-        if (!firstCaptionSent) {
+      const sendVideoMessage = async ({ content, files }) => {
+        if (!firstResponseSent) {
           await interaction.editReply({
-            content: caption,
+            content,
+            files,
             embeds: [],
             components: [],
           });
-          firstCaptionSent = true;
+          firstResponseSent = true;
           return;
         }
         await interaction.followUp({
-          content: caption,
+          content,
+          files,
           flags: [MessageFlags.Ephemeral],
         });
       };
@@ -3762,7 +3763,9 @@ const nickInput = new TextInputBuilder()
       for (let i = 0; i < videosToSend.length; i += 1) {
         const video = videosToSend[i];
         const videoCfg = video.videoCfg || null;
+        const caption = getModsVideoCaption(videoCfg, video.labelFallback || "Nagranie");
         const localPath = resolveLocalModsVideoPath(videoCfg);
+        let sentThisVideo = false;
 
         if (localPath) {
           let size = 0;
@@ -3782,31 +3785,50 @@ const nickInput = new TextInputBuilder()
               name: `${baseName}${ext.toLowerCase()}`,
             });
 
-            await sendVideoCaption(videoCfg, video.labelFallback);
-            await interaction.followUp({
-              files: [attachment],
-              flags: [MessageFlags.Ephemeral],
-            });
-            sentAtLeastOneVideo = true;
-            continue;
+            try {
+              await sendVideoMessage({
+                content: caption,
+                files: [attachment],
+              });
+              sentAtLeastOneVideo = true;
+              sentThisVideo = true;
+              continue;
+            } catch (err) {
+              console.warn(
+                `[mody] Nie udało się wysłać pliku ${path.basename(localPath)}; próbuję link fallback.`,
+                err?.code || err?.message || err,
+              );
+            }
           }
         }
 
-        // Fallback: jeśli lokalny plik jest niedostępny, wyślij link.
-        if (isHttpUrl(video.url)) {
-          await sendVideoCaption(videoCfg, video.labelFallback);
-          await interaction.followUp({
-            content: video.url,
-            flags: [MessageFlags.Ephemeral],
-          });
-          sentAtLeastOneVideo = true;
+        // Fallback: jeśli lokalny plik jest niedostępny/za duży, wyślij caption + link.
+        if (!sentThisVideo && isHttpUrl(video.url)) {
+          try {
+            await sendVideoMessage({
+              content: `${caption}\n${video.url}`,
+            });
+            sentAtLeastOneVideo = true;
+            sentThisVideo = true;
+          } catch (err) {
+            console.warn(
+              "[mody] Nie udało się wysłać fallback linku:",
+              err?.code || err?.message || err,
+            );
+          }
+        }
+
+        if (!sentThisVideo) {
+          console.warn(
+            `[mody] Pominięto video ${videoCfg?.key || video.labelFallback || i + 1} (brak pliku <= limit i brak działającego URL).`,
+          );
         }
       }
 
       if (!sentAtLeastOneVideo) {
         const failMsg =
           "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.";
-        if (!firstCaptionSent) {
+        if (!firstResponseSent) {
           await interaction.editReply({ content: failMsg, embeds: [], components: [] });
         } else {
           await interaction.followUp({
