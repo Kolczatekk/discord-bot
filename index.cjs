@@ -108,9 +108,18 @@ const MODS_VIDEO_FILES = [
   {
     key: "no_entities",
     label: "No_entities (1440x2560)",
+    modName: "NoEntities",
     filename: "No_entities.mov",
     localPath: path.join(__dirname, "attached_assets", "No_entities.mov"),
     envVar: "MODS_VIDEO_URL_NO_ENTITIES",
+  },
+  {
+    key: "sprawdz_procenty",
+    label: "Sprawdz_procenty",
+    modName: "SprawdzProcenty",
+    filename: "Sprawdz_procenty.mov",
+    localPath: path.join(__dirname, "attached_assets", "Sprawdz_procenty.mov"),
+    envVar: "MODS_VIDEO_URL_SPRAWDZ_PROCENTY",
   },
 ];
 const modsVideoUrlCache = new Map(); // key -> url
@@ -1690,6 +1699,39 @@ function isVideoAttachment(att) {
   );
 }
 
+function getModsVideoConfigByFilename(filename) {
+  const normalized = (filename || "").toString().trim().toLowerCase();
+  if (!normalized) return null;
+
+  const normalizedNoExt = normalized.replace(/\.[^.]+$/, "");
+
+  for (const cfg of MODS_VIDEO_FILES) {
+    const cfgFilename = (cfg.filename || "").toString().trim().toLowerCase();
+    if (!cfgFilename) continue;
+
+    const cfgNoExt = cfgFilename.replace(/\.[^.]+$/, "");
+    if (
+      normalized === cfgFilename ||
+      normalizedNoExt === cfgNoExt ||
+      normalized.startsWith(`${cfgNoExt}.`)
+    ) {
+      return cfg;
+    }
+  }
+
+  return null;
+}
+
+function getModsVideoCaption(videoCfg, fallbackName = "Nagranie") {
+  const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
+  const safeName = (videoCfg?.modName || fallbackName)
+    .toString()
+    .replace(/[\r\n`*_~|<>]/g, "")
+    .trim();
+  const modName = safeName || "Nagranie";
+  return `${arrowEmoji} **Mod:** __**${modName}**__`;
+}
+
 function collectVideoLinksFromMessage(msg) {
   const out = [];
   if (!msg?.attachments?.size) return out;
@@ -1697,8 +1739,11 @@ function collectVideoLinksFromMessage(msg) {
   for (const att of msg.attachments.values()) {
     if (!isVideoAttachment(att)) continue;
     if (!isHttpUrl(att.url)) continue;
+    const cfg = getModsVideoConfigByFilename(att.name || "");
     out.push({
       label: att.name || "nagranie",
+      key: cfg?.key || null,
+      modName: cfg?.modName || null,
       url: att.url,
     });
   }
@@ -1785,7 +1830,9 @@ async function findVideoAttachmentUrlByName(guild, filename) {
   return null;
 }
 
-async function resolveModsVideoUrl(guild, videoCfg) {
+async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
+  const allowSlowScan = options.allowSlowScan !== false;
+
   if (!videoCfg) return null;
 
   const fromEnv = (process.env[videoCfg.envVar] || "").trim();
@@ -1801,6 +1848,10 @@ async function resolveModsVideoUrl(guild, videoCfg) {
   if (isHttpUrl(localRouteUrl)) {
     modsVideoUrlCache.set(videoCfg.key, localRouteUrl);
     return localRouteUrl;
+  }
+
+  if (!allowSlowScan) {
+    return null;
   }
 
   const found = await findVideoAttachmentUrlByName(guild, videoCfg.filename);
@@ -3467,50 +3518,87 @@ const nickInput = new TextInputBuilder()
     }
 
     const resolvedVideos = [];
+    const seenKeys = new Set();
     const seenUrls = new Set();
 
-    // 1) Najpierw: załączniki z tej konkretnej wiadomości z przyciskiem
-    // (to daje efekt "tak jak użytkownik", bo bot publikuje ten sam link/film).
+    const addResolvedVideo = (videoCfg, url, labelFallback = "Nagranie") => {
+      if (!isHttpUrl(url)) return;
+      const key = videoCfg?.key ? `key:${videoCfg.key}` : `url:${url}`;
+      if (seenKeys.has(key) || seenUrls.has(url)) return;
+      seenKeys.add(key);
+      seenUrls.add(url);
+      resolvedVideos.push({
+        videoCfg: videoCfg || null,
+        url,
+        labelFallback,
+      });
+    };
+
+    // 1) Najpierw bierzemy video z wiadomości panelu (to najszybsza ścieżka).
     const fromCurrentMessage = collectVideoLinksFromMessage(interaction.message);
     for (const item of fromCurrentMessage) {
-      if (!item?.url || seenUrls.has(item.url)) continue;
-      seenUrls.add(item.url);
-      resolvedVideos.push(item);
+      const cfgFromAttachment =
+        (item?.key && MODS_VIDEO_FILES.find((v) => v.key === item.key)) ||
+        getModsVideoConfigByFilename(item?.label || "");
+      addResolvedVideo(
+        cfgFromAttachment,
+        item?.url || "",
+        item?.modName || item?.label || "Nagranie",
+      );
     }
 
-    // 2) Następnie: skonfigurowane źródła z MODS_VIDEO_FILES
+    // 2) Następnie dokładamy szybkie źródła (env/cache/local-route) bez wolnego skanowania kanałów.
     for (const videoCfg of MODS_VIDEO_FILES) {
-      const url = await resolveModsVideoUrl(interaction.guild, videoCfg);
-      if (url && !seenUrls.has(url)) {
-        seenUrls.add(url);
-        resolvedVideos.push({ label: videoCfg.label, url });
-      }
+      const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
+        allowSlowScan: false,
+      });
+      addResolvedVideo(videoCfg, url, videoCfg.modName || videoCfg.label || "Nagranie");
     }
 
     if (resolvedVideos.length > 0) {
+      let firstSent = false;
       let sentCount = 0;
+
       for (const v of resolvedVideos) {
+        const caption = getModsVideoCaption(v.videoCfg, v.labelFallback);
         try {
-          // Publiczne wysłanie jako ZAŁĄCZNIK (nie link w treści),
-          // żeby Discord pokazał to jak normalny film do odtworzenia.
-          await interaction.channel.send({
+          const payload = {
+            content: caption,
             files: [v.url],
-          });
+          };
+
+          if (!firstSent) {
+            await interaction.editReply(payload);
+            firstSent = true;
+          } else {
+            await interaction.followUp({
+              ...payload,
+              flags: [MessageFlags.Ephemeral],
+            });
+          }
+
           sentCount += 1;
         } catch (sendErr) {
-          console.error("[mody] Nie udało się wysłać linku nagrania:", sendErr);
+          console.error("[mody] Nie udało się wysłać nagrania:", sendErr);
         }
       }
 
-      if (sentCount > 0) {
+      if (!firstSent || sentCount <= 0) {
         await interaction.editReply({
-          content: `> \`✅\` × Wysłano **${sentCount}** nagranie(-a) na kanał.`,
+          content:
+            "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i poprawność źródeł wideo.",
         });
-      } else {
-        await interaction.editReply({
-          content: "> `❌` × Nie udało się wysłać nagrań na kanał (sprawdź uprawnienia bota).",
-        });
+        return;
       }
+
+      if (sentCount < resolvedVideos.length) {
+        await interaction.followUp({
+          content:
+            `> \`⚠️\` × Wysłano **${sentCount}/${resolvedVideos.length}** nagrań. Część plików nie mogła zostać wysłana.`,
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+      }
+
       return;
     }
 
