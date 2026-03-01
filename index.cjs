@@ -3740,21 +3740,18 @@ const nickInput = new TextInputBuilder()
       });
       const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
 
-      const entries = videosToSend.map((video) => {
-        const caption = getModsVideoCaption(video.videoCfg, video.labelFallback);
-        return `${caption}\n${video.url}`;
-      });
+      const entries = videosToSend.map((video) => video.url);
+      const modsHeader =
+        "## :strzałka: Mody: **__Autodripstone__**, **__NoEntities__**, **__AutoDźwignia__**, **__SprawdzProcenty__**";
 
       // Wyślij listę nagrań w jednej odpowiedzi, aby uniknąć "znikania" pierwszej
       // wiadomości przy wielu follow-upach ephemeral.
       const MAX_CONTENT_LEN = 1900;
       const chunks = [];
-      let currentChunk = "";
+      let currentChunk = modsHeader;
 
       for (const entry of entries) {
-        const candidate = currentChunk
-          ? `${currentChunk}\n\n${entry}`
-          : entry;
+        const candidate = currentChunk ? `${currentChunk}\n${entry}` : entry;
         if (candidate.length > MAX_CONTENT_LEN) {
           if (currentChunk) chunks.push(currentChunk);
           currentChunk = entry;
