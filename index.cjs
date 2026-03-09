@@ -191,6 +191,7 @@ const pendingTicketClose = new Map(); // channelId -> { userId, ts }
 
 // ------------------ Invite tracking & protections ------------------
 const guildInvites = new Map(); // guildId -> Map<code, uses>
+const guildVanityUses = new Map(); // guildId -> last known vanity invite uses
 const inviteCounts = new Map(); // guildId -> Map<inviterId, count>  (current cycle count)
 const inviterOfMember = new Map(); // `${guildId}:${memberId}` -> inviterId
 const INVITE_REWARD_THRESHOLD = 5;
@@ -1710,6 +1711,16 @@ function humanizeMs(ms) {
   return `${sec}s`;
 }
 
+async function fetchGuildVanityUses(guild) {
+  if (!guild || typeof guild.fetchVanityData !== "function") return null;
+  try {
+    const vanityData = await guild.fetchVanityData();
+    return typeof vanityData?.uses === "number" ? vanityData.uses : null;
+  } catch {
+    return null;
+  }
+}
+
 function isHttpUrl(value) {
   try {
     const u = new URL((value || "").trim());
@@ -2614,10 +2625,21 @@ client.once(Events.ClientReady, async (c) => {
   client.guilds.cache.forEach(async (guild) => {
     try {
       const invites = await guild.invites.fetch().catch(() => null);
-      if (!invites) return;
       const map = new Map();
-      invites.each((inv) => map.set(inv.code, inv.uses));
+      if (invites) {
+        invites.each((inv) => map.set(inv.code, inv.uses));
+      } else {
+        console.warn(
+          `[invites] Nie udało się pobrać invite'ów dla guild ${guild.id} przy starcie.`,
+        );
+      }
       guildInvites.set(guild.id, map);
+
+      const vanityUses = await fetchGuildVanityUses(guild);
+      if (typeof vanityUses === "number") {
+        guildVanityUses.set(guild.id, vanityUses);
+      }
+
       // ensure inviteCounts map exists
       if (!inviteCounts.has(guild.id)) inviteCounts.set(guild.id, new Map());
       if (!inviteRewards.has(guild.id)) inviteRewards.set(guild.id, new Map());
@@ -9335,6 +9357,28 @@ client.on(Events.GuildMemberAdd, async (member) => {
           `[invites] Nie udało się pobrać invite'ów dla guild ${member.guild.id} — sprawdź uprawnienia bota (MANAGE_GUILD).`,
         );
       }
+
+      const previousVanityUses = guildVanityUses.has(member.guild.id)
+        ? guildVanityUses.get(member.guild.id)
+        : null;
+      const currentVanityUses = await fetchGuildVanityUses(member.guild);
+
+      if (
+        !inviterId &&
+        previousVanityUses !== null &&
+        typeof currentVanityUses === "number" &&
+        currentVanityUses > previousVanityUses
+      ) {
+        inviterId = member.guild.ownerId;
+        countThisInvite = true;
+        console.log(
+          `[invites] Wykryto wejście przez vanity URL dla guild ${member.guild.id}; przypisuję do właściciela ${inviterId}.`,
+        );
+      }
+
+      if (typeof currentVanityUses === "number") {
+        guildVanityUses.set(member.guild.id, currentVanityUses);
+      }
     } catch (e) {
       console.error("Błąd podczas wykrywania invite:", e);
     }
@@ -9379,7 +9423,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
     // If we detected an inviter (even if not counted due to rate-limit, inviterId may be present)
     let fakeMap = null;
-    const ownerId = "1305200545979437129";
+    const ownerId = member.guild.ownerId;
 
     if (inviterId) {
       // Ensure all maps exist
@@ -9528,7 +9572,6 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const gMap = inviteCounts.get(member.guild.id) || new Map();
       const currentInvites = gMap.get(inviterId) || 0;
       const inviteWord = getInviteWord(currentInvites);
-      const ownerId = "1305200545979437129";
       
       try {
         let message;
@@ -9616,7 +9659,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     if (!inviteCounts.has(member.guild.id))
       inviteCounts.set(member.guild.id, new Map());
     const gMap = inviteCounts.get(member.guild.id);
-    const ownerId = "1305200545979437129";
+    const ownerId = member.guild.ownerId;
     
     // Odejmujemy zaproszenia tylko jeśli nie jest właścicielem
     if (counted && inviterId !== ownerId) {
@@ -9674,7 +9717,6 @@ client.on(Events.GuildMemberRemove, async (member) => {
       // compute newCount for message (inviteCounts after possible decrement)
       const currentCount = gMap.get(inviterId) || 0;
       const inviteWord = getInviteWord(currentCount);
-      const ownerId = "1305200545979437129";
       
       try {
         let message;
