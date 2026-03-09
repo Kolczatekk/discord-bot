@@ -5595,37 +5595,37 @@ async function handleTicketCommand(interaction) {
     .setPlaceholder("Wybierz kategorię...")
     .addOptions([
       {
-        label: "Zakup itemów",
+        label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
         value: "zakup",
         description: "Chcę kupić itemy",
         emoji: "🛒",
       },
       {
-        label: "Sprzedaż",
+        label: "ꜱᴘʀᴢᴇᴅᴀż",
         value: "sprzedaz",
         description: "Chcę sprzedać przedmioty",
         emoji: { id: "1476700165082710178", name: "kasa_2" },
       },
       {
-        label: "Zakup autorskiego moda",
+        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏʀsᴋɪᴇɢᴏ ᴍᴏᴅᴀ",
         value: "zakup_moda",
         description: "Chcę kupić autorskiego moda",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
-        label: "Zakup Auto Rynku",
+        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
         value: "zakup_autorynku",
         description: "Kliknij, aby kupić najlepszy AutoRynek",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
-        label: "Nagroda za zaproszenia",
+        label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
         value: "odbior",
         description: "Odbiór nagrody za zaproszenia (kod)",
         emoji: { id: "1480590229697069210", name: "nagroda" },
       },
       {
-        label: "Pytanie/Pomoc",
+        label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
         value: "inne",
         description: "Kliknij aby zadać pytanie lub otrzymać pomoc!",
         emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
@@ -5667,37 +5667,37 @@ async function handleTicketPanelCommand(interaction) {
     .setPlaceholder("Wybierz kategorię...")
     .addOptions([
       {
-        label: "Zakup itemów",
+        label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
         value: "zakup",
         description: "Kliknij, aby kupić itemy!",
         emoji: "🛒",
       },
       {
-        label: "Sprzedaż",
+        label: "ꜱᴘʀᴢᴇᴅᴀż",
         value: "sprzedaz",
         description: "Kliknij, aby dokonać sprzedaży!",
         emoji: { id: "1476700165082710178", name: "kasa_2" },
       },
       {
-        label: "Zakup autorskiego moda",
+        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏʀsᴋɪᴇɢᴏ ᴍᴏᴅᴀ",
         value: "zakup_moda",
         description: "Kliknij, aby kupić autorskiego moda!",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
-        label: "Zakup Auto Rynku",
+        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
         value: "zakup_autorynku",
         description: "Kliknij, aby kupić najlepszy AutoRynek",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
-        label: "Nagroda za zaproszenia",
+        label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
         value: "odbior",
         description: "Kliknij, aby odebrać nagrode za zaproszenia (kod)",
         emoji: { id: "1480590229697069210", name: "nagroda" },
       },
       {
-        label: "Pytanie/Pomoc",
+        label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
         value: "inne",
         description: "Kliknij aby zadać pytanie lub otrzymać pomoc!",
         emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
@@ -6353,22 +6353,6 @@ async function showAutoRynekZakupModal(interaction) {
     .setCustomId("modal_autorynek_zakup")
     .setTitle("Zakup Auto Rynku");
 
-  const serwerInput = new TextInputBuilder()
-    .setCustomId("serwer")
-    .setLabel("Na jakim serwerze?")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Anarchia")
-    .setRequired(true)
-    .setMaxLength(64);
-
-  const kwotaInput = new TextInputBuilder()
-    .setCustomId("kwota")
-    .setLabel("Za ile chcesz kupić?")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: 20")
-    .setRequired(true)
-    .setMaxLength(16);
-
   const paymentMethodInput = new TextInputBuilder()
     .setCustomId("payment_method")
     .setLabel("Jaką metodą płatności płacisz?")
@@ -6377,19 +6361,8 @@ async function showAutoRynekZakupModal(interaction) {
     .setRequired(true)
     .setMaxLength(64);
 
-  const autoRynekInput = new TextInputBuilder()
-    .setCustomId("autorynek_name")
-    .setLabel("Jaki AutoRynek chcesz kupić?")
-    .setPlaceholder("Przykład: AutoRynek v2")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(64);
-
   modal.addComponents(
-    new ActionRowBuilder().addComponents(serwerInput),
-    new ActionRowBuilder().addComponents(kwotaInput),
     new ActionRowBuilder().addComponents(paymentMethodInput),
-    new ActionRowBuilder().addComponents(autoRynekInput),
   );
 
   await interaction.showModal(modal);
@@ -7683,77 +7656,23 @@ async function handleModalSubmit(interaction) {
       break;
     }
     case "modal_autorynek_zakup": {
-      const serwer = (interaction.fields.getTextInputValue("serwer") || "").trim();
-      const kwotaRaw = (interaction.fields.getTextInputValue("kwota") || "").trim();
       const paymentMethod = (interaction.fields.getTextInputValue("payment_method") || "").trim();
-      const autoRynekName = (interaction.fields.getTextInputValue("autorynek_name") || "").trim();
-
-      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
-      if (!lettersOnly.test(serwer)) {
+      if (!paymentMethod) {
         await interaction.reply({
-          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
+          content: "> `❌` × Podaj metodę płatności.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      let kwotaNum = parseFloat(kwotaRaw.replace(/,/g, '.'));
-      if (Number.isNaN(kwotaNum)) {
-        await interaction.reply({
-          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5` (zł).",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!lettersOnly.test(paymentMethod)) {
-        await interaction.reply({
-          content: "> `❌` × Napisz metodę płatności literami, bez cyfr.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!autoRynekName) {
-        await interaction.reply({
-          content: "> `❌` × Podaj nazwę AutoRynku, który chcesz kupić.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
-      if (kwotaNum < 5) {
-        await interaction.reply({
-          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (kwotaNum <= 20) {
-        categoryId = categories["zakup-0-20"];
-        ticketType = "zakup-0-20";
-      } else if (kwotaNum <= 50) {
-        categoryId = categories["zakup-20-50"];
-        ticketType = "zakup-20-50";
-      } else if (kwotaNum <= 100) {
-        categoryId = categories["zakup-50-100"];
-        ticketType = "zakup-50-100";
-      } else {
-        categoryId = categories["zakup-100-200"];
-        ticketType = "zakup-100-200";
-      }
-
+      categoryId = categories["zakup-0-20"];
+      ticketType = "zakup-0-20";
       ticketTypeLabel = "ZAKUP";
-      ticketTopic = `Zakup AutoRynku: ${autoRynekName} na ${serwer}`;
+      ticketTopic = "Zakup AutoRynku";
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       forceOwnerOnlyVisibility = true;
 
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **AutoRynek:** \`${autoRynekName}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentMethod}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentMethod}\``;
       break;
     }
     case "modal_sprzedaz": {
