@@ -7665,9 +7665,9 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      categoryId = categories["zakup-0-20"];
-      ticketType = "zakup-0-20";
-      ticketTypeLabel = "ZAKUP";
+      categoryId = categories["zakup-20-50"];
+      ticketType = "zakup-20-50";
+      ticketTypeLabel = "ZAKUP AUTO RYNKU";
       ticketTopic = "Zakup AutoRynku";
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       forceOwnerOnlyVisibility = true;
@@ -8107,7 +8107,7 @@ async function handleModalSubmit(interaction) {
 
     const buttons = [closeButton, settingsButton];
 
-    if (ticketTypeLabel === "ZAKUP") {
+    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
       buttons.push(
         new ButtonBuilder()
           .setCustomId(`ticket_code_${channel.id}_${user.id}`)
@@ -8164,7 +8164,7 @@ async function handleModalSubmit(interaction) {
       flags: [MessageFlags.Ephemeral],
     });
 
-    if (ticketTypeLabel === "ZAKUP") {
+    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
       await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
         console.error("[autoprzejmij] Auto-claim po utworzeniu ticketa nieudany:", err),
       );
