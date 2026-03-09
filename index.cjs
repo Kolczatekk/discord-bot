@@ -1294,7 +1294,6 @@ const DEFAULT_NAMES = {
     "zakup-100-200": "zakup 100-200+",
     sprzedaz: "sprzedaz",
     "odbior-nagrody": "nagroda za zaproszenia",
-    "konkurs-nagrody": "nagroda za konkurs",
     inne: "inne",
   },
 };
@@ -3299,15 +3298,6 @@ async function handleModalSubmit(interaction) {
       ticketType = "odbior-nagrody";
       ticketTypeLabel = "NAGRODA ZA ZAPROSZENIA";
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.reward || "Brak"}\``;
-      break;
-    }
-    case "modal_konkurs_odbior": {
-      const info = interaction.fields.getTextInputValue("konkurs_info");
-
-      categoryId = REWARDS_CATEGORY_ID;
-      ticketType = "konkurs-nagrody";
-      ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -5605,9 +5595,9 @@ async function handleTicketCommand(interaction) {
     .setPlaceholder("Wybierz kategorię...")
     .addOptions([
       {
-        label: "Zakup",
+        label: "Zakup itemów",
         value: "zakup",
-        description: "Chcę kupić przedmioty",
+        description: "Chcę kupić itemy",
         emoji: "🛒",
       },
       {
@@ -5620,19 +5610,19 @@ async function handleTicketCommand(interaction) {
         label: "Zakup autorskiego moda",
         value: "zakup_moda",
         description: "Chcę kupić autorskiego moda",
-        emoji: { id: "1477662159029796865", name: "java" },
+        emoji: { id: "1480590181944791122", name: "autorynek" },
+      },
+      {
+        label: "Zakup Auto Rynku",
+        value: "zakup_autorynku",
+        description: "Kliknij, aby kupić najlepszy AutoRynek",
+        emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
         label: "Nagroda za zaproszenia",
         value: "odbior",
         description: "Odbiór nagrody za zaproszenia (kod)",
-        emoji: "📩",
-      },
-      {
-        label: "Nagroda za konkurs",
-        value: "konkurs_odbior",
-        description: "Odbiór nagrody za konkurs",
-        emoji: { id: "1469355450645352583", name: "gift" },
+        emoji: { id: "1480590229697069210", name: "nagroda" },
       },
       {
         label: "Pytanie/Pomoc",
@@ -5677,9 +5667,9 @@ async function handleTicketPanelCommand(interaction) {
     .setPlaceholder("Wybierz kategorię...")
     .addOptions([
       {
-        label: "Zakup",
+        label: "Zakup itemów",
         value: "zakup",
-        description: "Kliknij, aby dokonać zakupu!",
+        description: "Kliknij, aby kupić itemy!",
         emoji: "🛒",
       },
       {
@@ -5692,19 +5682,19 @@ async function handleTicketPanelCommand(interaction) {
         label: "Zakup autorskiego moda",
         value: "zakup_moda",
         description: "Kliknij, aby kupić autorskiego moda!",
-        emoji: { id: "1477662159029796865", name: "java" },
+        emoji: { id: "1480590181944791122", name: "autorynek" },
+      },
+      {
+        label: "Zakup Auto Rynku",
+        value: "zakup_autorynku",
+        description: "Kliknij, aby kupić najlepszy AutoRynek",
+        emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
         label: "Nagroda za zaproszenia",
         value: "odbior",
         description: "Kliknij, aby odebrać nagrode za zaproszenia (kod)",
-        emoji: "📩",
-      },
-      {
-        label: "Nagroda za konkurs",
-        value: "konkurs_odbior",
-        description: "Kliknij, aby odebrać nagrode za konkurs",
-        emoji: { id: "1469355450645352583", name: "gift" },
+        emoji: { id: "1480590229697069210", name: "nagroda" },
       },
       {
         label: "Pytanie/Pomoc",
@@ -6189,14 +6179,14 @@ async function handleSelectMenu(interaction) {
       case "zakup_moda":
         await showModyZakupModal(interaction);
         break;
+      case "zakup_autorynku":
+        await showAutoRynekZakupModal(interaction);
+        break;
       case "sprzedaz":
         await showSprzedazModal(interaction);
         break;
       case "odbior":
         await showOdbiorModal(interaction);
-        break;
-      case "konkurs_odbior":
-        await showKonkursOdbiorModal(interaction);
         break;
       case "inne":
         await showInneModal(interaction);
@@ -6358,20 +6348,49 @@ async function showModyZakupModal(interaction) {
   await interaction.showModal(modal);
 }
 
-async function showKonkursOdbiorModal(interaction) {
+async function showAutoRynekZakupModal(interaction) {
   const modal = new ModalBuilder()
-    .setCustomId("modal_konkurs_odbior")
-    .setTitle("Nagroda za konkurs");
+    .setCustomId("modal_autorynek_zakup")
+    .setTitle("Zakup Auto Rynku");
 
-  const infoInput = new TextInputBuilder()
-    .setCustomId("konkurs_info")
-    .setLabel("Za jaki konkurs oraz jaka nagroda?")
+  const serwerInput = new TextInputBuilder()
+    .setCustomId("serwer")
+    .setLabel("Na jakim serwerze?")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Wygrałem konkurs na elytre")
+    .setPlaceholder("Przykład: Anarchia")
     .setRequired(true)
-    .setMaxLength(128);
+    .setMaxLength(64);
 
-  modal.addComponents(new ActionRowBuilder().addComponents(infoInput));
+  const kwotaInput = new TextInputBuilder()
+    .setCustomId("kwota")
+    .setLabel("Za ile chcesz kupić?")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Przykład: 20")
+    .setRequired(true)
+    .setMaxLength(16);
+
+  const paymentMethodInput = new TextInputBuilder()
+    .setCustomId("payment_method")
+    .setLabel("Jaką metodą płatności płacisz?")
+    .setPlaceholder("Przykład: Blik")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(64);
+
+  const autoRynekInput = new TextInputBuilder()
+    .setCustomId("autorynek_name")
+    .setLabel("Jaki AutoRynek chcesz kupić?")
+    .setPlaceholder("Przykład: AutoRynek v2")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(64);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(serwerInput),
+    new ActionRowBuilder().addComponents(kwotaInput),
+    new ActionRowBuilder().addComponents(paymentMethodInput),
+    new ActionRowBuilder().addComponents(autoRynekInput),
+  );
 
   await interaction.showModal(modal);
 }
@@ -7663,6 +7682,80 @@ async function handleModalSubmit(interaction) {
         `> <a:arrowwhite:1469100658606211233> × **Łączna kwota:** \`${totalPrice}zł\``;
       break;
     }
+    case "modal_autorynek_zakup": {
+      const serwer = (interaction.fields.getTextInputValue("serwer") || "").trim();
+      const kwotaRaw = (interaction.fields.getTextInputValue("kwota") || "").trim();
+      const paymentMethod = (interaction.fields.getTextInputValue("payment_method") || "").trim();
+      const autoRynekName = (interaction.fields.getTextInputValue("autorynek_name") || "").trim();
+
+      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
+      if (!lettersOnly.test(serwer)) {
+        await interaction.reply({
+          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      let kwotaNum = parseFloat(kwotaRaw.replace(/,/g, '.'));
+      if (Number.isNaN(kwotaNum)) {
+        await interaction.reply({
+          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5` (zł).",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!lettersOnly.test(paymentMethod)) {
+        await interaction.reply({
+          content: "> `❌` × Napisz metodę płatności literami, bez cyfr.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!autoRynekName) {
+        await interaction.reply({
+          content: "> `❌` × Podaj nazwę AutoRynku, który chcesz kupić.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
+      if (kwotaNum < 5) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (kwotaNum <= 20) {
+        categoryId = categories["zakup-0-20"];
+        ticketType = "zakup-0-20";
+      } else if (kwotaNum <= 50) {
+        categoryId = categories["zakup-20-50"];
+        ticketType = "zakup-20-50";
+      } else if (kwotaNum <= 100) {
+        categoryId = categories["zakup-50-100"];
+        ticketType = "zakup-50-100";
+      } else {
+        categoryId = categories["zakup-100-200"];
+        ticketType = "zakup-100-200";
+      }
+
+      ticketTypeLabel = "ZAKUP";
+      ticketTopic = `Zakup AutoRynku: ${autoRynekName} na ${serwer}`;
+      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
+      forceOwnerOnlyVisibility = true;
+
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **AutoRynek:** \`${autoRynekName}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentMethod}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\``;
+      break;
+    }
     case "modal_sprzedaz": {
       const co = interaction.fields.getTextInputValue("co_sprzedac");
       const serwer = interaction.fields.getTextInputValue("serwer");
@@ -7906,15 +7999,6 @@ async function handleModalSubmit(interaction) {
           flags: [MessageFlags.Ephemeral],
         });
       }
-      break;
-    }
-    case "modal_konkurs_odbior": {
-      const info = interaction.fields.getTextInputValue("konkurs_info");
-
-      categoryId = REWARDS_CATEGORY_ID;
-      ticketType = "konkurs-nagrody";
-      ticketTypeLabel = "NAGRODA ZA KONKURS";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
