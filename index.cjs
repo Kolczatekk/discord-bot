@@ -5597,37 +5597,37 @@ async function handleTicketCommand(interaction) {
       {
         label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
         value: "zakup",
-        description: "Chcę kupić itemy",
+        description: "Kliknij, aby kupić itemy!",
         emoji: "🛒",
       },
       {
         label: "ꜱᴘʀᴢᴇᴅᴀż",
         value: "sprzedaz",
-        description: "Chcę sprzedać przedmioty",
+        description: "Kliknij, aby sprzedać przedmioty!",
         emoji: { id: "1476700165082710178", name: "kasa_2" },
       },
       {
         label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏʀsᴋɪᴇɢᴏ ᴍᴏᴅᴀ",
         value: "zakup_moda",
-        description: "Chcę kupić autorskiego moda",
+        description: "Kliknij, aby kupić autorskiego moda!",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
         label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
         value: "zakup_autorynku",
-        description: "Kliknij, aby kupić najlepszy AutoRynek",
+        description: "Kliknij, aby kupić najlepszy AutoRynek!",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
         label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
         value: "odbior",
-        description: "Odbiór nagrody za zaproszenia (kod)",
+        description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
         emoji: { id: "1480590229697069210", name: "nagroda" },
       },
       {
         label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
         value: "inne",
-        description: "Kliknij aby zadać pytanie lub otrzymać pomoc!",
+        description: "Kliknij, aby zadać pytanie lub otrzymać pomoc!",
         emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
       },
     ]);
@@ -5675,7 +5675,7 @@ async function handleTicketPanelCommand(interaction) {
       {
         label: "ꜱᴘʀᴢᴇᴅᴀż",
         value: "sprzedaz",
-        description: "Kliknij, aby dokonać sprzedaży!",
+        description: "Kliknij, aby sprzedać przedmioty!",
         emoji: { id: "1476700165082710178", name: "kasa_2" },
       },
       {
@@ -5687,19 +5687,19 @@ async function handleTicketPanelCommand(interaction) {
       {
         label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
         value: "zakup_autorynku",
-        description: "Kliknij, aby kupić najlepszy AutoRynek",
+        description: "Kliknij, aby kupić najlepszy AutoRynek!",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
         label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
         value: "odbior",
-        description: "Kliknij, aby odebrać nagrode za zaproszenia (kod)",
+        description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
         emoji: { id: "1480590229697069210", name: "nagroda" },
       },
       {
         label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
         value: "inne",
-        description: "Kliknij aby zadać pytanie lub otrzymać pomoc!",
+        description: "Kliknij, aby zadać pytanie lub otrzymać pomoc!",
         emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
       },
     ]);
