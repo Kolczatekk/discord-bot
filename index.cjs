@@ -1711,14 +1711,26 @@ function humanizeMs(ms) {
   return `${sec}s`;
 }
 
-async function fetchGuildVanityUses(guild) {
+async function fetchGuildVanityDataSafe(guild) {
   if (!guild || typeof guild.fetchVanityData !== "function") return null;
   try {
     const vanityData = await guild.fetchVanityData();
-    return typeof vanityData?.uses === "number" ? vanityData.uses : null;
+    if (!vanityData) return null;
+    return {
+      code:
+        typeof vanityData.code === "string" && vanityData.code.trim()
+          ? vanityData.code.trim()
+          : null,
+      uses: typeof vanityData.uses === "number" ? vanityData.uses : null,
+    };
   } catch {
     return null;
   }
+}
+
+async function fetchGuildVanityUses(guild) {
+  const vanityData = await fetchGuildVanityDataSafe(guild);
+  return typeof vanityData?.uses === "number" ? vanityData.uses : null;
 }
 
 function isHttpUrl(value) {
@@ -6054,7 +6066,7 @@ async function handleLegitRepUstawCommand(interaction) {
       return;
     }
 
-    const newName = `✅×〢legit-rep➔${ile}`;
+    const newName = `✅-×┃legit-rep➔${ile}`;
     await channel.setName(newName);
     
     // Wyślij informacyjną wiadomość
@@ -9066,7 +9078,7 @@ async function handleWyczyscKanalCommand(interaction) {
 async function scheduleRepChannelRename(channel, count) {
   if (!channel || typeof channel.setName !== "function") return;
 
-  const newName = `✅×〢legit-rep➔${count}`;
+  const newName = `✅-×┃legit-rep➔${count}`;
   const now = Date.now();
   const since = now - lastChannelRename;
   const remaining = Math.max(0, CHANNEL_RENAME_COOLDOWN - since);
@@ -9301,6 +9313,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
     let inviterId = null;
     let countThisInvite = false;
     let isFakeAccount = false;
+    let usedVanityCode = null;
 
     try {
       // jeśli ten użytkownik wcześniej opuścił i mieliśmy to zapisane -> usuń "leave" (kompensacja)
@@ -9361,7 +9374,16 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const previousVanityUses = guildVanityUses.has(member.guild.id)
         ? guildVanityUses.get(member.guild.id)
         : null;
-      const currentVanityUses = await fetchGuildVanityUses(member.guild);
+      const currentVanityData = await fetchGuildVanityDataSafe(member.guild);
+      const currentVanityUses =
+        typeof currentVanityData?.uses === "number"
+          ? currentVanityData.uses
+          : null;
+      const currentVanityCode =
+        typeof currentVanityData?.code === "string" &&
+        currentVanityData.code.trim()
+          ? currentVanityData.code.trim()
+          : null;
 
       if (
         !inviterId &&
@@ -9369,10 +9391,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
         typeof currentVanityUses === "number" &&
         currentVanityUses > previousVanityUses
       ) {
-        inviterId = member.guild.ownerId;
-        countThisInvite = true;
+        usedVanityCode = currentVanityCode || "newshop";
         console.log(
-          `[invites] Wykryto wejście przez vanity URL dla guild ${member.guild.id}; przypisuję do właściciela ${inviterId}.`,
+          `[invites] Wykryto wejście przez vanity URL ${usedVanityCode} dla guild ${member.guild.id}.`,
         );
       }
 
@@ -9559,6 +9580,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
       inviterId,
       counted: !!(countThisInvite && !isFakeAccount),
       isFake: !!isFakeAccount,
+      isVanity: !!usedVanityCode,
+      vanityCode: usedVanityCode || null,
     });
 
     // persist join/invite state
@@ -9568,14 +9591,18 @@ client.on(Events.GuildMemberAdd, async (member) => {
     const zapChannelId = "1449159392388972554";
     const zapChannel = member.guild.channels.cache.get(zapChannelId);
 
-    if (zapChannel && inviterId) {
+    if (zapChannel && (inviterId || usedVanityCode)) {
       const gMap = inviteCounts.get(member.guild.id) || new Map();
       const currentInvites = gMap.get(inviterId) || 0;
       const inviteWord = getInviteWord(currentInvites);
       
       try {
         let message;
-        if (inviterId === ownerId) {
+        if (usedVanityCode) {
+          message = isFakeAccount
+            ? `> \`✉️\` × <@${member.id}> dołączył używając linku **${usedVanityCode}**. (konto ma mniej niż 2 mies.)`
+            : `> \`✉️\` × <@${member.id}> dołączył używając linku **${usedVanityCode}**.`;
+        } else if (inviterId === ownerId) {
           // Zaproszenie przez właściciela - nie liczymy zaproszeń
           message = `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> (został zaproszony przez właściciela)`;
         } else {
@@ -9639,18 +9666,23 @@ client.on(Events.GuildMemberRemove, async (member) => {
     if (!stored) return;
 
     // backward-compat: jeżeli stary format (string), zamieniamy na obiekt
-    let inviterId, counted, wasFake;
+    let inviterId, counted, wasFake, vanityCode;
     if (typeof stored === "string") {
       inviterId = stored;
       counted = true; // zakładamy, że wcześniej był liczony
       wasFake = false;
+      vanityCode = null;
     } else {
       inviterId = stored.inviterId;
       counted = !!stored.counted;
       wasFake = !!stored.isFake;
+      vanityCode =
+        typeof stored.vanityCode === "string" && stored.vanityCode.trim()
+          ? stored.vanityCode.trim()
+          : null;
     }
 
-    if (!inviterId) {
+    if (!inviterId && !vanityCode) {
       inviterOfMember.delete(key);
       return;
     }
@@ -9662,7 +9694,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     const ownerId = member.guild.ownerId;
     
     // Odejmujemy zaproszenia tylko jeśli nie jest właścicielem
-    if (counted && inviterId !== ownerId) {
+    if (counted && inviterId && inviterId !== ownerId) {
       const prev = gMap.get(inviterId) || 0;
       const newCount = Math.max(0, prev - 1);
       gMap.set(inviterId, newCount);
@@ -9670,32 +9702,34 @@ client.on(Events.GuildMemberRemove, async (member) => {
       scheduleSavePersistentState(true); // Natychmiastowy zapis
     }
 
-    // decrement totalJoined (since we incremented it on join unconditionally)
-    if (!inviteTotalJoined.has(member.guild.id))
-      inviteTotalJoined.set(member.guild.id, new Map());
-    const totalMap = inviteTotalJoined.get(member.guild.id);
-    const prevTotal = totalMap.get(inviterId) || 0;
-    totalMap.set(inviterId, Math.max(0, prevTotal - 1));
+    if (inviterId) {
+      // decrement totalJoined (since we incremented it on join unconditionally)
+      if (!inviteTotalJoined.has(member.guild.id))
+        inviteTotalJoined.set(member.guild.id, new Map());
+      const totalMap = inviteTotalJoined.get(member.guild.id);
+      const prevTotal = totalMap.get(inviterId) || 0;
+      totalMap.set(inviterId, Math.max(0, prevTotal - 1));
 
-    // If it was marked as fake on join, decrement fake counter
-    if (wasFake) {
-      if (!inviteFakeAccounts.has(member.guild.id))
-        inviteFakeAccounts.set(member.guild.id, new Map());
-      const fMap = inviteFakeAccounts.get(member.guild.id);
-      const prevFake = fMap.get(inviterId) || 0;
-      fMap.set(inviterId, Math.max(0, prevFake - 1));
+      // If it was marked as fake on join, decrement fake counter
+      if (wasFake) {
+        if (!inviteFakeAccounts.has(member.guild.id))
+          inviteFakeAccounts.set(member.guild.id, new Map());
+        const fMap = inviteFakeAccounts.get(member.guild.id);
+        const prevFake = fMap.get(inviterId) || 0;
+        fMap.set(inviterId, Math.max(0, prevFake - 1));
+      }
+
+      // increment leaves count
+      if (!inviteLeaves.has(member.guild.id))
+        inviteLeaves.set(member.guild.id, new Map());
+      const lMap = inviteLeaves.get(member.guild.id);
+      const prevLeft = lMap.get(inviterId) || 0;
+      lMap.set(inviterId, prevLeft + 1);
+      inviteLeaves.set(member.guild.id, lMap);
+
+      // Zapisz do leaveRecords na wypadek powrotu
+      leaveRecords.set(key, inviterId);
     }
-
-    // increment leaves count
-    if (!inviteLeaves.has(member.guild.id))
-      inviteLeaves.set(member.guild.id, new Map());
-    const lMap = inviteLeaves.get(member.guild.id);
-    const prevLeft = lMap.get(inviterId) || 0;
-    lMap.set(inviterId, prevLeft + 1);
-    inviteLeaves.set(member.guild.id, lMap);
-
-    // Zapisz do leaveRecords na wypadek powrotu
-    leaveRecords.set(key, inviterId);
 
     // remove mapping
     inviterOfMember.delete(key);
@@ -9720,7 +9754,9 @@ client.on(Events.GuildMemberRemove, async (member) => {
       
       try {
         let message;
-        if (inviterId === ownerId) {
+        if (vanityCode) {
+          message = `> \`🚪\` × <@${member.id}> opuścił serwer. Dołączył używając linku **${vanityCode}**.`;
+        } else if (inviterId === ownerId) {
           // Opuszczenie przez zaproszenie właściciela - nie odejmowaliśmy zaproszeń
           message = `> \`🚪\` × <@${member.id}> opuścił serwer. (Był zaproszony przez właściciela)`;
         } else {
@@ -9731,9 +9767,15 @@ client.on(Events.GuildMemberRemove, async (member) => {
       } catch (e) { }
     }
 
-    console.log(
-      `Odejmuję zaproszenie od ${inviterId} po leave (counted=${counted}, wasFake=${wasFake}).`,
-    );
+    if (vanityCode) {
+      console.log(
+        `Użytkownik ${member.id} opuścił serwer po wejściu przez vanity URL ${vanityCode}.`,
+      );
+    } else {
+      console.log(
+        `Odejmuję zaproszenie od ${inviterId} po leave (counted=${counted}, wasFake=${wasFake}).`,
+      );
+    }
   } catch (err) {
     console.error("Błąd przy obsłudze odejścia członka:", err);
   }
