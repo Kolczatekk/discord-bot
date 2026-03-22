@@ -5050,10 +5050,16 @@ async function handleSendMessageCommand(interaction) {
     const contentRaw = (msg.content || "").trim();
     const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const alertEmoji = '<a:alert:1474431227972026469>';
+    const alertEmoji2 = '<a:alertownik2:1477688955221835807>';
+    const minecraftEmoji2 = '<a:minecraft2:1480590181944791122>';
+    const ironLoveEmoji = '<a:iron_love:1480590229697069210>';
     const starEmoji = '<:star:1474431260133691567>';
     const content = contentRaw
       .replace(/:strzałka:/gi, arrowEmoji)
       .replace(/:alertownik:/gi, alertEmoji)
+      .replace(/:alertownik2:/gi, alertEmoji2)
+      .replace(/:minecraft2:/gi, minecraftEmoji2)
+      .replace(/:iron_love:/gi, ironLoveEmoji)
       .replace(/:startownik:/gi, starEmoji);
     if (content.toLowerCase() === "anuluj") {
       try {
@@ -5211,10 +5217,16 @@ async function handleModyCommand(interaction) {
     const contentRaw = (msg.content || "").trim();
     const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
     const alertEmoji = "<a:alert:1474431227972026469>";
+    const alertEmoji2 = "<a:alertownik2:1477688955221835807>";
+    const minecraftEmoji2 = "<a:minecraft2:1480590181944791122>";
+    const ironLoveEmoji = "<a:iron_love:1480590229697069210>";
     const starEmoji = "<:star:1474431260133691567>";
     const content = contentRaw
       .replace(/:strzałka:/gi, arrowEmoji)
       .replace(/:alertownik:/gi, alertEmoji)
+      .replace(/:alertownik2:/gi, alertEmoji2)
+      .replace(/:minecraft2:/gi, minecraftEmoji2)
+      .replace(/:iron_love:/gi, ironLoveEmoji)
       .replace(/:startownik:/gi, starEmoji);
 
     if (content.toLowerCase() === "anuluj") {
