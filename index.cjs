@@ -2147,14 +2147,31 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
+const ANARCHIA_LIFESTEAL_RATE = 6000;
+const ANARCHIA_LIFESTEAL_BULK_RATE = 6500;
+const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 200;
+
+function getAnarchiaLifestealRateForPln(pln) {
+  return Number(pln) > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
+    ? ANARCHIA_LIFESTEAL_BULK_RATE
+    : ANARCHIA_LIFESTEAL_RATE;
+}
+
+function getAnarchiaLifestealRateForWaluta(waluta, methodRaw) {
+  const basePlnHighRate = Number(waluta) / ANARCHIA_LIFESTEAL_BULK_RATE;
+  const { fee: highRateFee } = calculateFeePln(basePlnHighRate, methodRaw);
+  const totalPlnHighRate = round2(basePlnHighRate + highRateFee);
+
+  return totalPlnHighRate > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
+    ? ANARCHIA_LIFESTEAL_BULK_RATE
+    : ANARCHIA_LIFESTEAL_RATE;
+}
+
 function getRateForPlnAmount(pln, serverRaw) {
   const server = (serverRaw || "").toString().trim().toUpperCase();
 
   if (server === "ANARCHIA_BOXPVP") return 650000;
-  if (server === "ANARCHIA_LIFESTEAL") {
-    if (Number(pln) >= 100) return 5000;
-    return 4500;
-  }
+  if (server === "ANARCHIA_LIFESTEAL") return getAnarchiaLifestealRateForPln(pln);
   if (server === "PYK_MC") {
     if (Number(pln) >= 100) return 4000;
     return 3500;
@@ -3592,8 +3609,7 @@ async function handleKalkulatorSubmit(interaction, typ) {
       if (server === "ANARCHIA_BOXPVP") {
         rate = 650000;
       } else if (server === "ANARCHIA_LIFESTEAL") {
-        const estimatedPln4500 = waluta / 4500;
-        rate = estimatedPln4500 >= 100 ? 5000 : 4500;
+        rate = getAnarchiaLifestealRateForWaluta(waluta, userData.metoda);
       } else {
         // PYK MC
         const estimatedPln3500 = waluta / 3500;
