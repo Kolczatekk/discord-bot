@@ -9106,7 +9106,7 @@ async function handleWyczyscKanalCommand(interaction) {
 async function scheduleRepChannelRename(channel, count) {
   if (!channel || typeof channel.setName !== "function") return;
 
-  const newName = `✅-×┃legit-rep➔${count}`;
+  const newName = `✅×〢legit-rep➔${count}`;
   const now = Date.now();
   const since = now - lastChannelRename;
   const remaining = Math.max(0, CHANNEL_RENAME_COOLDOWN - since);
@@ -9223,7 +9223,7 @@ async function handleResetLCCommand(interaction) {
     if (remaining === 0 && !pendingRename) {
       try {
         // attempt immediate rename (may fail if missing ManageChannels)
-        await channel.setName(`✅-×┃legit-rep➔${legitRepCount}`);
+        await channel.setName(`✅×〢legit-rep➔${legitRepCount}`);
         lastChannelRename = Date.now();
         pendingRename = false;
         console.log(`[resetlc] Kanał ${channel.id} zaktualizowany do 0.`);
