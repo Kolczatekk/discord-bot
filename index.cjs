@@ -1322,11 +1322,6 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("testpanel")
-    .setDescription("Otwórz prywatny testowy TicketPanel")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .toJSON(),
-  new SlashCommandBuilder()
     .setName("ticket-zakoncz")
     .setDescription("Użyj tej komendy jeżeli będziesz chciał zakończyć ticket (sprzedawca)")
     .setDefaultMemberPermissions(null)
@@ -2183,8 +2178,7 @@ function getRateForPlnAmount(pln, serverRaw) {
     return 3500;
   }
   if (server === "DONUT_SMP") {
-    if (Number(pln) >= 100) return 5000;
-    return 4500;
+    return 3_000_000;
   }
 
   // fallback (stary cennik)
@@ -3600,8 +3594,7 @@ async function handleKalkulatorSubmit(interaction, typ) {
         const estimatedPln3500 = waluta / 3500;
         rate = estimatedPln3500 >= 100 ? 4000 : 3500;
       } else if (server === "DONUT_SMP") {
-        const estimatedPln4500 = waluta / 4500;
-        rate = estimatedPln4500 >= 100 ? 5000 : 4500;
+        rate = 3_000_000;
       } else {
         const estimatedPln3500 = waluta / 3500;
         rate = estimatedPln3500 >= 100 ? 4000 : 3500;
@@ -4233,9 +4226,6 @@ async function handleSlashCommand(interaction) {
       break;
     case "ticketpanel":
       await handleTicketPanelCommand(interaction);
-      break;
-    case "testpanel":
-      await handleTestPanelCommand(interaction);
       break;
     case "zamknij":
       await handleCloseTicketCommand(interaction);
@@ -6570,7 +6560,6 @@ async function showZakupModal(interaction) {
 async function showModyZakupModal(interaction) {
   const modNameInput = new TextInputBuilder()
     .setCustomId("mod_name")
-    .setLabel("Jakiego moda chcesz kupić?")
     .setPlaceholder("Przykład: Auto_Dripstone")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
@@ -7082,7 +7071,6 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 async function showSprzedazModal(interaction) {
   const itemInput = new TextInputBuilder()
     .setCustomId("co_sprzedac")
-    .setLabel("Co chcesz sprzedać?")
     .setPlaceholder("Przykład: 100k$")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
@@ -7097,7 +7085,6 @@ async function showSprzedazModal(interaction) {
 
   const amountInput = new TextInputBuilder()
     .setCustomId("ile")
-    .setLabel("Ile oczekujesz?")
     .setStyle(TextInputStyle.Short)
     .setPlaceholder("Przykład: 20zł")
     .setRequired(true);
