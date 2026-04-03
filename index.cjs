@@ -5788,6 +5788,45 @@ const SHOP_PAYMENT_OPTION_DEFS = [
   },
 ];
 
+const PANEL_CATEGORY_OPTIONS = [
+  {
+    label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
+    value: "zakup",
+    description: "Kliknij, aby kupić itemy!",
+    emoji: "🛒",
+  },
+  {
+    label: "ꜱᴘʀᴢᴇᴅᴀż",
+    value: "sprzedaz",
+    description: "Kliknij, aby sprzedać przedmioty!",
+    emoji: { id: "1476700165082710178", name: "kasa_2" },
+  },
+  {
+    label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏʀsᴋɪᴇɢᴏ ᴍᴏᴅᴀ",
+    value: "zakup_moda",
+    description: "Kliknij, aby kupić autorskiego moda!",
+    emoji: { id: "1480590181944791122", name: "autorynek" },
+  },
+  {
+    label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
+    value: "zakup_autorynku",
+    description: "Kliknij, aby kupić najlepszy AutoRynek!",
+    emoji: { id: "1480590181944791122", name: "autorynek" },
+  },
+  {
+    label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
+    value: "odbior",
+    description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
+    emoji: { id: "1480590229697069210", name: "nagroda" },
+  },
+  {
+    label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
+    value: "inne",
+    description: "Kliknij, aby zadać pytanie lub otrzymać pomoc!",
+    emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
+  },
+];
+
 const TEST_PANEL_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
   label: option.label,
   value: option.testValue,
@@ -5816,22 +5855,61 @@ const KALKULATOR_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
   emoji: option.emoji,
 }));
 
+const SIMPLE_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
+  label: option.label,
+  value: option.testValue,
+  description: `Płatność ${option.label}`,
+  emoji: option.emoji,
+}));
+
+const PAYOUT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
+  label: option.label,
+  value: option.testValue,
+  description: `Wypłata ${option.label}`,
+  emoji: option.emoji,
+}));
+
+const MOD_COUNT_OPTIONS = [
+  { label: "1 mod", value: "1", description: "Kupisz 1 mod" },
+  { label: "2 mody", value: "2", description: "Kupisz 2 mody" },
+  { label: "3 mody", value: "3", description: "Kupisz 3 mody" },
+  { label: "4 mody", value: "4", description: "Kupisz 4 mody" },
+];
+
+const MAX_PURCHASE_PLN = 10_000;
+
 function getTestPanelOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || null;
 }
 
-function buildTestPanelIntroPayload() {
+function getModalTextInputValueSafe(interaction, customId) {
+  try {
+    return interaction.fields.getTextInputValue(customId);
+  } catch {
+    return null;
+  }
+}
+
+function getModalStringSelectValueSafe(interaction, customId) {
+  try {
+    return interaction.fields.getStringSelectValues(customId)?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildTicketPanelPayload() {
   const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
     "```\n" +
-      "New Shop × TEST PANEL\n" +
+      "🛒 New Shop × TICKET\n" +
       "```\n" +
-      "Wybierz kategorię do przetestowania.",
+      "`📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!",
   );
 
   const selectMenu = new StringSelectMenuBuilder()
-    .setCustomId("testpanel_category")
-    .setPlaceholder("Wybierz kategorię")
-    .addOptions(TEST_PANEL_CATEGORY_OPTIONS);
+    .setCustomId("ticket_category")
+    .setPlaceholder("Wybierz kategorię...")
+    .addOptions(PANEL_CATEGORY_OPTIONS);
 
   return {
     embeds: [embed],
@@ -5839,9 +5917,22 @@ function buildTestPanelIntroPayload() {
   };
 }
 
+async function sendTicketPanel(interaction) {
+  await interaction.reply({
+    content: "> `✅` × **Panel** ticketów wysłany!",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  await interaction.channel.send(buildTicketPanelPayload());
+}
+
 async function showTestPanelZakupModal(interaction) {
+  await showZakupModalV2(interaction);
+}
+
+async function showZakupModalV2(interaction) {
   const serverSelect = new StringSelectMenuBuilder()
-    .setCustomId("testpanel_purchase_server")
+    .setCustomId("zakup_server")
     .setPlaceholder("Wybierz serwer")
     .setRequired(true)
     .setMinValues(1)
@@ -5849,7 +5940,7 @@ async function showTestPanelZakupModal(interaction) {
     .addOptions(TEST_PANEL_SERVER_OPTIONS);
 
   const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("testpanel_purchase_payment")
+    .setCustomId("zakup_payment")
     .setPlaceholder("Wybierz płatność")
     .setRequired(true)
     .setMinValues(1)
@@ -5863,7 +5954,7 @@ async function showTestPanelZakupModal(interaction) {
     .setRequired(true);
 
   const modal = new ModalBuilder()
-    .setCustomId("modal_testpanel_purchase")
+    .setCustomId("modal_zakup")
     .setTitle("Formularz zakupu")
     .addLabelComponents(
       new LabelBuilder()
@@ -5889,10 +5980,7 @@ async function handleTestPanelCommand(interaction) {
     return;
   }
 
-  await interaction.reply({
-    ...buildTestPanelIntroPayload(),
-    flags: [MessageFlags.Ephemeral],
-  });
+  await sendTicketPanel(interaction);
 }
 
 async function handleTicketPanelCommand(interaction) {
@@ -5904,68 +5992,7 @@ async function handleTicketPanelCommand(interaction) {
     });
     return;
   }
-
-  const botName = client.user?.username || "NEWSHOP";
-
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-      "🛒 New Shop × TICKET\n" +
-      "```\n" +
-      "`📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!",
-    );
-
-  const selectMenu = new StringSelectMenuBuilder()
-    .setCustomId("ticket_category")
-    .setPlaceholder("Wybierz kategorię...")
-    .addOptions([
-      {
-        label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
-        value: "zakup",
-        description: "Kliknij, aby kupić itemy!",
-        emoji: "🛒",
-      },
-      {
-        label: "ꜱᴘʀᴢᴇᴅᴀż",
-        value: "sprzedaz",
-        description: "Kliknij, aby sprzedać przedmioty!",
-        emoji: { id: "1476700165082710178", name: "kasa_2" },
-      },
-      {
-        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏʀsᴋɪᴇɢᴏ ᴍᴏᴅᴀ",
-        value: "zakup_moda",
-        description: "Kliknij, aby kupić autorskiego moda!",
-        emoji: { id: "1480590181944791122", name: "autorynek" },
-      },
-      {
-        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
-        value: "zakup_autorynku",
-        description: "Kliknij, aby kupić najlepszy AutoRynek!",
-        emoji: { id: "1480590181944791122", name: "autorynek" },
-      },
-      {
-        label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
-        value: "odbior",
-        description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
-        emoji: { id: "1480590229697069210", name: "nagroda" },
-      },
-      {
-        label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
-        value: "inne",
-        description: "Kliknij, aby zadać pytanie lub otrzymać pomoc!",
-        emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
-      },
-    ]);
-
-  const row = new ActionRowBuilder().addComponents(selectMenu);
-
-  await interaction.reply({
-    content: "> `✅` × **Panel** ticketów wysłany!",
-    flags: [MessageFlags.Ephemeral],
-  });
-
-  await interaction.channel.send({ embeds: [embed], components: [row] });
+  await sendTicketPanel(interaction);
 }
 
 async function handleCloseTicketCommand(interaction) {
@@ -6433,7 +6460,7 @@ async function handleSelectMenu(interaction) {
       return;
     }
 
-    await showTestPanelZakupModal(interaction);
+    await showZakupModal(interaction);
     return;
   }
 
@@ -6537,53 +6564,10 @@ async function handleSelectMenu(interaction) {
 }
 
 async function showZakupModal(interaction) {
-  const modal = new ModalBuilder()
-    .setCustomId("modal_zakup")
-    .setTitle("Informacje dot. zakupu.");
-
-  const serwerInput = new TextInputBuilder()
-    .setCustomId("serwer")
-    .setLabel("Na jakim serwerze?")
-    .setPlaceholder("Przykład: Anarchia")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const kwotaInput = new TextInputBuilder()
-    .setCustomId("kwota")
-    .setLabel("Za ile chcesz kupić?")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: 20zł")
-    .setRequired(true);
-
-  const platnosInput = new TextInputBuilder()
-    .setCustomId("platnosc")
-    .setLabel("Jaką metodą płatności płacisz?")
-    .setPlaceholder("Przykład: Blik")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const oczekiwanaWalutaInput = new TextInputBuilder()
-    .setCustomId("oczekiwana_waluta")
-    .setLabel("Co chciałbyś zakupić")
-    .setPlaceholder("Przykład: Elytra")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(serwerInput),
-    new ActionRowBuilder().addComponents(kwotaInput),
-    new ActionRowBuilder().addComponents(platnosInput),
-    new ActionRowBuilder().addComponents(oczekiwanaWalutaInput),
-  );
-
-  await interaction.showModal(modal);
+  await showZakupModalV2(interaction);
 }
 
 async function showModyZakupModal(interaction) {
-  const modal = new ModalBuilder()
-    .setCustomId("modal_mody_zakup")
-    .setTitle("Zakup moda");
-
   const modNameInput = new TextInputBuilder()
     .setCustomId("mod_name")
     .setLabel("Jakiego moda chcesz kupić?")
@@ -6592,47 +6576,57 @@ async function showModyZakupModal(interaction) {
     .setRequired(true)
     .setMaxLength(64);
 
-  const paymentMethodInput = new TextInputBuilder()
-    .setCustomId("payment_method")
-    .setLabel("Jaką metodą płatności płacisz?")
-    .setPlaceholder("Przykład: Blik")
-    .setStyle(TextInputStyle.Short)
+  const paymentSelect = new StringSelectMenuBuilder()
+    .setCustomId("mod_payment_method")
+    .setPlaceholder("Wybierz formę płatności")
     .setRequired(true)
-    .setMaxLength(64);
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(SIMPLE_PAYMENT_OPTIONS);
 
-  const modsCountInput = new TextInputBuilder()
-    .setCustomId("mods_count")
-    .setLabel("Ile modów chcesz kupić? (1-4)")
-    .setPlaceholder("Przykład: 1")
-    .setStyle(TextInputStyle.Short)
+  const modsCountSelect = new StringSelectMenuBuilder()
+    .setCustomId("mods_count_select")
+    .setPlaceholder("Wybierz ilość modów")
     .setRequired(true)
-    .setMaxLength(1);
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(MOD_COUNT_OPTIONS);
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(modNameInput),
-    new ActionRowBuilder().addComponents(paymentMethodInput),
-    new ActionRowBuilder().addComponents(modsCountInput),
-  );
+  const modal = new ModalBuilder()
+    .setCustomId("modal_mody_zakup")
+    .setTitle("Zakup moda")
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Jakiego moda chcesz kupić?")
+        .setTextInputComponent(modNameInput),
+      new LabelBuilder()
+        .setLabel("Forma płatności")
+        .setStringSelectMenuComponent(paymentSelect),
+      new LabelBuilder()
+        .setLabel("Ile modów chcesz kupić?")
+        .setStringSelectMenuComponent(modsCountSelect),
+    );
 
   await interaction.showModal(modal);
 }
 
 async function showAutoRynekZakupModal(interaction) {
+  const paymentSelect = new StringSelectMenuBuilder()
+    .setCustomId("autorynek_payment_method")
+    .setPlaceholder("Wybierz formę płatności")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(SIMPLE_PAYMENT_OPTIONS);
+
   const modal = new ModalBuilder()
     .setCustomId("modal_autorynek_zakup")
-    .setTitle("Zakup Auto Rynku");
-
-  const paymentMethodInput = new TextInputBuilder()
-    .setCustomId("payment_method")
-    .setLabel("Jaką metodą płatności płacisz?")
-    .setPlaceholder("Przykład: Blik")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(64);
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(paymentMethodInput),
-  );
+    .setTitle("Zakup Auto Rynku")
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Forma płatności")
+        .setStringSelectMenuComponent(paymentSelect),
+    );
 
   await interaction.showModal(modal);
 }
@@ -7086,36 +7080,53 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 }
 
 async function showSprzedazModal(interaction) {
-  const modal = new ModalBuilder()
-    .setCustomId("modal_sprzedaz")
-    .setTitle("Informacje dot. zgłoszenia.");
-
-  const coInput = new TextInputBuilder()
+  const itemInput = new TextInputBuilder()
     .setCustomId("co_sprzedac")
     .setLabel("Co chcesz sprzedać?")
     .setPlaceholder("Przykład: 100k$")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
-  const serwerInput = new TextInputBuilder()
-    .setCustomId("serwer")
-    .setLabel("Na jakim serwerze?")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Anarchia")
-    .setRequired(true);
+  const serverSelect = new StringSelectMenuBuilder()
+    .setCustomId("sprzedaz_server")
+    .setPlaceholder("Wybierz serwer")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(TEST_PANEL_SERVER_OPTIONS);
 
-  const ileInput = new TextInputBuilder()
+  const amountInput = new TextInputBuilder()
     .setCustomId("ile")
     .setLabel("Ile oczekujesz?")
     .setStyle(TextInputStyle.Short)
     .setPlaceholder("Przykład: 20zł")
     .setRequired(true);
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(coInput),
-    new ActionRowBuilder().addComponents(serwerInput),
-    new ActionRowBuilder().addComponents(ileInput),
-  );
+  const payoutSelect = new StringSelectMenuBuilder()
+    .setCustomId("sprzedaz_payout")
+    .setPlaceholder("Wybierz formę wypłaty")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(PAYOUT_OPTIONS);
+
+  const modal = new ModalBuilder()
+    .setCustomId("modal_sprzedaz")
+    .setTitle("Informacje dot. zgłoszenia.")
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Co chcesz sprzedać?")
+        .setTextInputComponent(itemInput),
+      new LabelBuilder()
+        .setLabel("Na jakim serwerze?")
+        .setStringSelectMenuComponent(serverSelect),
+      new LabelBuilder()
+        .setLabel("Ile oczekujesz?")
+        .setTextInputComponent(amountInput),
+      new LabelBuilder()
+        .setLabel("Forma wypłaty")
+        .setStringSelectMenuComponent(payoutSelect),
+    );
 
   await interaction.showModal(modal);
 }
@@ -7766,12 +7777,19 @@ async function handleModalSubmit(interaction) {
   let forceOwnerOnlyVisibility = false;
 
   switch (interaction.customId) {
-    case "modal_testpanel_purchase": {
+    case "modal_testpanel_purchase":
+    case "modal_zakup": {
       const selectedServer =
-        interaction.fields.getStringSelectValues("testpanel_purchase_server")[0];
+        getModalStringSelectValueSafe(interaction, "zakup_server") ||
+        getModalStringSelectValueSafe(interaction, "testpanel_purchase_server") ||
+        getModalTextInputValueSafe(interaction, "serwer") ||
+        "";
       const selectedPayment =
-        interaction.fields.getStringSelectValues("testpanel_purchase_payment")[0];
-      const kwotaRaw = interaction.fields.getTextInputValue("kwota") || "";
+        getModalStringSelectValueSafe(interaction, "zakup_payment") ||
+        getModalStringSelectValueSafe(interaction, "testpanel_purchase_payment") ||
+        getModalTextInputValueSafe(interaction, "platnosc") ||
+        "";
+      const kwotaRaw = getModalTextInputValueSafe(interaction, "kwota") || "";
       let kwotaNum = parseFloat(
         kwotaRaw.replace(/[^0-9,.\-]/g, "").replace(/,/g, "."),
       );
@@ -7789,6 +7807,30 @@ async function handleModalSubmit(interaction) {
       if (kwotaNum < 5) {
         await interaction.reply({
           content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (kwotaNum > MAX_PURCHASE_PLN) {
+        await interaction.reply({
+          content: "> `❌` × Maksymalna kwota zakupu to **10 000zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!selectedServer) {
+        await interaction.reply({
+          content: "> `❌` × Wybierz serwer przed wysłaniem formularza.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!selectedPayment) {
+        await interaction.reply({
+          content: "> `❌` × Wybierz formę płatności przed wysłaniem formularza.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -7822,83 +7864,19 @@ async function handleModalSubmit(interaction) {
       formInfo =
         `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serverLabel}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentLabel}\``;
-      break;
-    }
-    case "modal_zakup": {
-      const serwer = interaction.fields.getTextInputValue("serwer");
-      const kwotaRaw = interaction.fields.getTextInputValue("kwota");
-      const platnosc = interaction.fields.getTextInputValue("platnosc");
-      const oczekiwanaWaluta = interaction.fields.getTextInputValue(
-        "oczekiwana_waluta",
-      );
-
-      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
-      if (!lettersOnly.test(serwer)) {
-        await interaction.reply({
-          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-      let kwotaNum = parseFloat(kwotaRaw.replace(/,/g, '.'));
-      if (Number.isNaN(kwotaNum)) {
-        await interaction.reply({
-          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5` (zł).",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-      if (!lettersOnly.test(platnosc)) {
-        await interaction.reply({
-          content: "> `❌` × Napisz metodę płatności literami, bez cyfr.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      // Użyj już sparsowanej kwoty (kwotaNum) – zapewnia liczbową wartość
-      if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
-
-      // routing to categories: treat >100 as 100-200+ (user requested)
-      if (kwotaNum <= 20) {
-        categoryId = categories["zakup-0-20"];
-        ticketType = "zakup-0-20";
-      } else if (kwotaNum <= 50) {
-        categoryId = categories["zakup-20-50"];
-        ticketType = "zakup-20-50";
-      } else if (kwotaNum <= 100) {
-        categoryId = categories["zakup-50-100"];
-        ticketType = "zakup-50-100";
-      } else {
-        // anything above 100 goes to 100-200+ category
-        categoryId = categories["zakup-100-200"];
-        ticketType = "zakup-100-200";
-      }
-
-      ticketTypeLabel = "ZAKUP";
-      // Prosty opis bez kalkulacji
-      ticketTopic = `Zakup na serwerze: ${serwer}`;
-      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-
-      if (kwotaNum < 5) {
-        await interaction.reply({
-          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${platnosc}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
+        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentLabel}\``;
       break;
     }
     case "modal_mody_zakup": {
-      const modName = (interaction.fields.getTextInputValue("mod_name") || "").trim();
-      const paymentMethod = (interaction.fields.getTextInputValue("payment_method") || "").trim();
-      const modsCountRaw = (interaction.fields.getTextInputValue("mods_count") || "").trim();
+      const modName = (getModalTextInputValueSafe(interaction, "mod_name") || "").trim();
+      const paymentMethodRaw =
+        getModalStringSelectValueSafe(interaction, "mod_payment_method") ||
+        getModalTextInputValueSafe(interaction, "payment_method") ||
+        "";
+      const modsCountRaw =
+        getModalStringSelectValueSafe(interaction, "mods_count_select") ||
+        getModalTextInputValueSafe(interaction, "mods_count") ||
+        "";
 
       if (!modName) {
         await interaction.reply({
@@ -7908,9 +7886,9 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      if (!paymentMethod) {
+      if (!paymentMethodRaw) {
         await interaction.reply({
-          content: "> `❌` × Podaj metodę płatności.",
+          content: "> `❌` × Wybierz formę płatności.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -7953,17 +7931,24 @@ async function handleModalSubmit(interaction) {
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       forceOwnerOnlyVisibility = true;
 
+      const paymentMethod =
+        getTestPanelOptionLabel(SIMPLE_PAYMENT_OPTIONS, paymentMethodRaw) ||
+        paymentMethodRaw;
+
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentMethod}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Ilość modów:** \`${modsCount}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Łączna kwota:** \`${totalPrice}zł\``;
       break;
     }
     case "modal_autorynek_zakup": {
-      const paymentMethod = (interaction.fields.getTextInputValue("payment_method") || "").trim();
-      if (!paymentMethod) {
+      const paymentMethodRaw =
+        getModalStringSelectValueSafe(interaction, "autorynek_payment_method") ||
+        getModalTextInputValueSafe(interaction, "payment_method") ||
+        "";
+      if (!paymentMethodRaw) {
         await interaction.reply({
-          content: "> `❌` × Podaj metodę płatności.",
+          content: "> `❌` × Wybierz formę płatności.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -7976,22 +7961,43 @@ async function handleModalSubmit(interaction) {
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       forceOwnerOnlyVisibility = true;
 
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentMethod}\``;
+      const paymentMethod =
+        getTestPanelOptionLabel(SIMPLE_PAYMENT_OPTIONS, paymentMethodRaw) ||
+        paymentMethodRaw;
+
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\``;
       break;
     }
     case "modal_sprzedaz": {
-      const co = interaction.fields.getTextInputValue("co_sprzedac");
-      const serwer = interaction.fields.getTextInputValue("serwer");
-      const ile = interaction.fields.getTextInputValue("ile");
+      const co = getModalTextInputValueSafe(interaction, "co_sprzedac") || "";
+      const serwerRaw =
+        getModalStringSelectValueSafe(interaction, "sprzedaz_server") ||
+        getModalTextInputValueSafe(interaction, "serwer") ||
+        "";
+      const payoutRaw =
+        getModalStringSelectValueSafe(interaction, "sprzedaz_payout") ||
+        getModalTextInputValueSafe(interaction, "payout_method") ||
+        getModalTextInputValueSafe(interaction, "platnosc") ||
+        "";
+      const ile = getModalTextInputValueSafe(interaction, "ile") || "";
       const kwotaSprzedaz = parseFloat(ile.replace(/,/g, '.'));
-      const lettersOnly = /^[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s-]+$/;
-      if (!lettersOnly.test(serwer)) {
+
+      if (!serwerRaw) {
         await interaction.reply({
-          content: "> `❌` × Wpisz nazwę serwera literami (bez cyfr).",
+          content: "> `❌` × Wybierz serwer przed wysłaniem formularza.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
+
+      if (!payoutRaw) {
+        await interaction.reply({
+          content: "> `❌` × Wybierz formę wypłaty przed wysłaniem formularza.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
         await interaction.reply({
           content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
@@ -8010,6 +8016,12 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
       ticketTypeLabel = "SPRZEDAŻ";
+      const serwer =
+        getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, serwerRaw) ||
+        serwerRaw;
+      const payoutMethod =
+        getTestPanelOptionLabel(PAYOUT_OPTIONS, payoutRaw) ||
+        payoutRaw;
       if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
         await interaction.reply({
           content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
@@ -8018,7 +8030,14 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${co}\`\n> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n> <a:arrowwhite:1469100658606211233> × **Oczekiwana kwota:** \`${ile}\``;
+      ticketTopic = `Sprzedaż na serwerze: ${serwer}`;
+      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
+
+      formInfo =
+        `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${co}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Oczekiwana kwota:** \`${ile}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Forma wypłaty:** \`${payoutMethod}\``;
       break;
     }
     case "modal_odbior": {
