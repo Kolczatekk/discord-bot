@@ -2124,8 +2124,8 @@ function getPaymentFeePercent(methodRaw) {
   if (m.includes("mypsc")) return 20;
   if (m === "psc bez paragonu" || m.startsWith("psc bez paragonu")) return 20;
   if (m === "psc" || m.startsWith("psc ")) return 10;
-  if (m.includes("paypal")) return 5;
-  if (m.includes("ltc")) return 5;
+  if (m.includes("paypal")) return 10;
+  if (m.includes("ltc")) return 10;
 
   return 0;
 }
@@ -2181,6 +2181,10 @@ function getRateForPlnAmount(pln, serverRaw) {
   if (server === "PYK_MC") {
     if (Number(pln) >= 100) return 4000;
     return 3500;
+  }
+  if (server === "DONUT_SMP") {
+    if (Number(pln) >= 100) return 5000;
+    return 4500;
   }
 
   // fallback (stary cennik)
@@ -2917,24 +2921,12 @@ async function handleModalSubmit(interaction) {
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
-        .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
-        );
+        .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
-        .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
-        );
+        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -2992,24 +2984,12 @@ async function handleModalSubmit(interaction) {
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
-        .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
-        );
+        .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
-        .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
-        );
+        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -3616,8 +3596,13 @@ async function handleKalkulatorSubmit(interaction, typ) {
         rate = 650000;
       } else if (server === "ANARCHIA_LIFESTEAL") {
         rate = getAnarchiaLifestealRateForWaluta(waluta, userData.metoda);
+      } else if (server === "PYK_MC") {
+        const estimatedPln3500 = waluta / 3500;
+        rate = estimatedPln3500 >= 100 ? 4000 : 3500;
+      } else if (server === "DONUT_SMP") {
+        const estimatedPln4500 = waluta / 4500;
+        rate = estimatedPln4500 >= 100 ? 5000 : 4500;
       } else {
-        // PYK MC
         const estimatedPln3500 = waluta / 3500;
         rate = estimatedPln3500 >= 100 ? 4000 : 3500;
       }
@@ -5720,36 +5705,116 @@ const TEST_PANEL_CATEGORY_OPTIONS = [
   },
 ];
 
-const TEST_PANEL_SERVER_OPTIONS = [
+const SHOP_SERVER_OPTION_DEFS = [
   {
     label: "Anarchia LF",
-    value: "anarchia_lf",
-    description: "Zakup na serwerze Anarchia LF",
-  },
-  {
-    label: "Donut SMP",
-    value: "donut_smp",
-    description: "Zakup na serwerze Donut SMP",
+    testValue: "anarchia_lf",
+    calcValue: "ANARCHIA_LIFESTEAL",
+    description: "Tryb Anarchia LifeSteal na Anarchii",
+    emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" },
   },
   {
     label: "Anarchia BoxPvP",
-    value: "anarchia_boxpvp",
-    description: "Zakup na serwerze Anarchia BoxPvP",
+    testValue: "anarchia_boxpvp",
+    calcValue: "ANARCHIA_BOXPVP",
+    description: "Tryb BoxPvP na Anarchii",
+    emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" },
+  },
+  {
+    label: "Pyk MC",
+    testValue: "pyk_mc",
+    calcValue: "PYK_MC",
+    description: "Tryb Entropia na PykMc",
+    emoji: { id: "1457113144412475635", name: "PYK_MC" },
+  },
+  {
+    label: "Donut SMP",
+    testValue: "donut_smp",
+    calcValue: "DONUT_SMP",
+    description: "Tryb SMP na Donut",
+    emoji: { id: "1489578418432381059", name: "donutsmp" },
   },
 ];
 
-const TEST_PANEL_PAYMENT_OPTIONS = [
+const SHOP_PAYMENT_OPTION_DEFS = [
   {
     label: "BLIK",
-    value: "blik",
-    description: "Płatność BLIK",
+    testValue: "blik",
+    calcValue: "BLIK",
+    description: "Szybki przelew BLIK (0% prowizji)",
+    emoji: { id: "1469107179234525184", name: "BLIK" },
+  },
+  {
+    label: "Kod BLIK",
+    testValue: "kod_blik",
+    calcValue: "Kod BLIK",
+    description: "Kod BLIK (10% prowizji)",
+    emoji: { id: "1469107179234525184", name: "BLIK" },
   },
   {
     label: "PSC",
-    value: "psc",
-    description: "Płatność PaySafeCard",
+    testValue: "psc",
+    calcValue: "PSC",
+    description: "Paysafecard (10% prowizji)",
+    emoji: { id: "1469107238676467940", name: "PSC" },
+  },
+  {
+    label: "PSC bez paragonu",
+    testValue: "psc_bez_paragonu",
+    calcValue: "PSC bez paragonu",
+    description: "Paysafecard (20% prowizji)",
+    emoji: { id: "1469107238676467940", name: "PSC" },
+  },
+  {
+    label: "MYPSC",
+    testValue: "mypsc",
+    calcValue: "MYPSC",
+    description: "MYPSC (20% lub min 10zł)",
+    emoji: { id: "1469107199350669473", name: "MYPSC" },
+  },
+  {
+    label: "PayPal",
+    testValue: "paypal",
+    calcValue: "PayPal",
+    description: "PayPal (10% prowizji)",
+    emoji: { id: "1449354427755659444", name: "PAYPAL" },
+  },
+  {
+    label: "LTC",
+    testValue: "ltc",
+    calcValue: "LTC",
+    description: "Litecoin (10% prowizji)",
+    emoji: { id: "1449186363101548677", name: "LTC" },
   },
 ];
+
+const TEST_PANEL_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
+  label: option.label,
+  value: option.testValue,
+  description: option.description,
+  emoji: option.emoji,
+}));
+
+const TEST_PANEL_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
+  label: option.label,
+  value: option.testValue,
+  description: option.description,
+  emoji: option.emoji,
+}));
+
+const KALKULATOR_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
+  label: option.label,
+  value: option.calcValue,
+  description: option.description,
+  emoji: option.emoji,
+}));
+
+const KALKULATOR_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
+  label: option.label,
+  value: option.calcValue,
+  description: option.description,
+  emoji: option.emoji,
+}));
 
 function getTestPanelOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || null;
@@ -5802,7 +5867,7 @@ async function showTestPanelZakupModal(interaction) {
     .setTitle("Formularz zakupu")
     .addLabelComponents(
       new LabelBuilder()
-        .setLabel("Wybierz serwer")
+        .setLabel("Na jakim serwerze?")
         .setStringSelectMenuComponent(serverSelect),
       new LabelBuilder()
         .setLabel("Forma płatności")
@@ -7189,24 +7254,12 @@ async function handleModalSubmit(interaction) {
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
-        .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
-        );
+        .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
-        .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
-        );
+        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -7255,24 +7308,12 @@ async function handleModalSubmit(interaction) {
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
         .setPlaceholder("Wybierz serwer...")
-        .addOptions(
-          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" } },
-          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635", name: "PYK_MC" } }
-        );
+        .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
         .setPlaceholder("Wybierz metodę płatności...")
-        .addOptions(
-          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1469107179234525184", name: "BLIK" } },
-          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1469107238676467940", name: "PSC" } },
-          { label: "MYPSC", value: "MYPSC", description: "MYPSC (20% lub min 10zł)", emoji: { id: "1469107199350669473", name: "MYPSC" } },
-          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444", name: "PAYPAL" } },
-          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677", name: "LTC" } }
-        );
+        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
