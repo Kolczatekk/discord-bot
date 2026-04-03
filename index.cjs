@@ -4077,8 +4077,7 @@ const nickInput = new TextInputBuilder()
       // set pending note
       pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
       await interaction.reply({
-        content:
-          "> \`⚠️\` **Kliknij ponownie przycisk zamknięcia w ciągu `30` sekund aby potwierdzić __zamknięcie ticketu!__**",
+        embeds: [buildTicketCloseConfirmEmbed("Kliknij przycisk jeszcze raz")],
         flags: [MessageFlags.Ephemeral],
       });
       // schedule expiry
@@ -5845,65 +5844,10 @@ const PANEL_CATEGORY_OPTIONS = [
 ];
 
 const PANEL_FONT_MAP = {
-  A: "𝖠",
-  B: "𝖡",
-  C: "𝖢",
-  D: "𝖣",
-  E: "𝖤",
-  F: "𝖥",
-  G: "𝖦",
-  H: "𝖧",
-  I: "𝖨",
-  J: "𝖩",
-  K: "𝖪",
-  L: "𝖫",
-  M: "𝖬",
-  N: "𝖭",
-  O: "𝖮",
-  P: "𝖯",
-  Q: "𝖰",
-  R: "𝖱",
-  S: "𝖲",
-  T: "𝖳",
-  U: "𝖴",
-  V: "𝖵",
-  W: "𝖶",
-  X: "𝖷",
-  Y: "𝖸",
-  Z: "𝖹",
-  a: "𝖺",
-  b: "𝖻",
-  c: "𝖼",
-  d: "𝖽",
-  e: "𝖾",
-  f: "𝖿",
-  g: "𝗀",
-  h: "𝗁",
-  i: "𝗂",
-  j: "𝗃",
-  k: "𝗄",
-  l: "𝗅",
-  m: "𝗆",
-  n: "𝗇",
-  o: "𝗈",
-  p: "𝗉",
-  q: "𝗊",
-  r: "𝗋",
-  s: "𝗌",
-  t: "𝗍",
-  u: "𝗎",
-  v: "𝗏",
-  w: "𝗐",
-  x: "𝗑",
-  y: "𝗒",
-  z: "𝗓",
 };
 
 function toPanelFont(text = "") {
-  return String(text)
-    .split("")
-    .map((char) => PANEL_FONT_MAP[char] || char)
-    .join("");
+  return String(text);
 }
 
 const TEST_PANEL_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
@@ -6153,6 +6097,18 @@ async function handleTicketPanelCommand(interaction) {
   await sendTicketPanel(interaction);
 }
 
+function buildTicketCloseConfirmEmbed(actionLabel) {
+  return new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      "```\n" +
+        "🎫 New Shop × ZAMYKANIE\n" +
+        "```\n" +
+        `> \`⚠️\` × ${actionLabel}\n` +
+        "> \`⏳\` × Potwierdź w `30s`",
+    );
+}
+
 async function handleCloseTicketCommand(interaction) {
   // Sprawdź uprawnienia przed sprawdzaniem kanału
   if (!isAdminOrSeller(interaction.member)) {
@@ -6217,8 +6173,7 @@ async function handleCloseTicketCommand(interaction) {
   } else {
     pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
     await interaction.reply({
-      content:
-        "> \`⚠️\` Kliknij /zamknij ponownie w ciągu 30 sekund, aby potwierdzić zamknięcie ticketu.",
+      embeds: [buildTicketCloseConfirmEmbed("Użyj `/zamknij` jeszcze raz")],
       flags: [MessageFlags.Ephemeral],
     });
     setTimeout(() => pendingTicketClose.delete(chId), 30_000);
