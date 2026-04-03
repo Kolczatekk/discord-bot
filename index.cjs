@@ -10,6 +10,7 @@ const {
   ChannelType,
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  LabelBuilder,
   ModalBuilder,  
   TextInputBuilder,
   TextInputStyle, 
@@ -72,7 +73,6 @@ const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessa
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
-const pendingTestPanelPurchase = new Map(); // `${guildId}:${userId}` -> { category, server, payment, createdAt }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -3669,36 +3669,6 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
 
-  if (customId === "testpanel_purchase_submit") {
-    const state = pendingTestPanelPurchase.get(
-      getTestPanelPurchaseStateKey(interaction.guildId, interaction.user.id),
-    );
-
-    if (!state || !state.server || !state.payment) {
-      await interaction.reply({
-        content:
-          "> `❌` × Najpierw wybierz serwer i formę płatności w `/testpanel`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const modal = new ModalBuilder()
-      .setCustomId("modal_testpanel_purchase_amount")
-      .setTitle("Formularz zakupu");
-
-    const amountInput = new TextInputBuilder()
-      .setCustomId("kwota")
-      .setLabel("Kwota (PLN)?")
-      .setPlaceholder("Np. 20")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
-    await interaction.showModal(modal);
-    return;
-  }
-
   // KONKURSY: obsługa przycisków konkursowych
   if (customId.startsWith("konkurs_join_")) {
     const msgId = customId.replace("konkurs_join_", "");
@@ -5781,10 +5751,6 @@ const TEST_PANEL_PAYMENT_OPTIONS = [
   },
 ];
 
-function getTestPanelPurchaseStateKey(guildId, userId) {
-  return `${guildId}:${userId}`;
-}
-
 function getTestPanelOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || null;
 }
@@ -5808,59 +5774,45 @@ function buildTestPanelIntroPayload() {
   };
 }
 
-function buildTestPanelPurchasePayload(state = {}) {
-  const serverLabel =
-    getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, state.server) ||
-    "Nie wybrano";
-  const paymentLabel =
-    getTestPanelOptionLabel(TEST_PANEL_PAYMENT_OPTIONS, state.payment) ||
-    "Nie wybrano";
-
-  const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
-    "```\n" +
-      "New Shop × TEST PANEL\n" +
-      "```\n" +
-      "Konfiguracja testowego formularza zakupu.\n" +
-      `> **Kategoria:** \`Kupno itemów\`\n` +
-      `> **Serwer:** \`${serverLabel}\`\n` +
-      `> **Forma płatności:** \`${paymentLabel}\`\n` +
-      "> **Kwota:** `wpiszesz w następnym kroku`",
-  );
-
+async function showTestPanelZakupModal(interaction) {
   const serverSelect = new StringSelectMenuBuilder()
     .setCustomId("testpanel_purchase_server")
     .setPlaceholder("Wybierz serwer")
-    .addOptions(
-      TEST_PANEL_SERVER_OPTIONS.map((option) => ({
-        ...option,
-        default: option.value === state.server,
-      })),
-    );
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(TEST_PANEL_SERVER_OPTIONS);
 
   const paymentSelect = new StringSelectMenuBuilder()
     .setCustomId("testpanel_purchase_payment")
     .setPlaceholder("Wybierz płatność")
-    .addOptions(
-      TEST_PANEL_PAYMENT_OPTIONS.map((option) => ({
-        ...option,
-        default: option.value === state.payment,
-      })),
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(TEST_PANEL_PAYMENT_OPTIONS);
+
+  const amountInput = new TextInputBuilder()
+    .setCustomId("kwota")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Np. 20")
+    .setRequired(true);
+
+  const modal = new ModalBuilder()
+    .setCustomId("modal_testpanel_purchase")
+    .setTitle("Formularz zakupu")
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Wybierz serwer")
+        .setStringSelectMenuComponent(serverSelect),
+      new LabelBuilder()
+        .setLabel("Forma płatności")
+        .setStringSelectMenuComponent(paymentSelect),
+      new LabelBuilder()
+        .setLabel("Kwota (PLN)?")
+        .setTextInputComponent(amountInput),
     );
 
-  const continueButton = new ButtonBuilder()
-    .setCustomId("testpanel_purchase_submit")
-    .setLabel("Wpisz kwotę")
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(!state.server || !state.payment);
-
-  return {
-    embeds: [embed],
-    components: [
-      new ActionRowBuilder().addComponents(serverSelect),
-      new ActionRowBuilder().addComponents(paymentSelect),
-      new ActionRowBuilder().addComponents(continueButton),
-    ],
-  };
+  await interaction.showModal(modal);
 }
 
 async function handleTestPanelCommand(interaction) {
@@ -5871,10 +5823,6 @@ async function handleTestPanelCommand(interaction) {
     });
     return;
   }
-
-  pendingTestPanelPurchase.delete(
-    getTestPanelPurchaseStateKey(interaction.guildId, interaction.user.id),
-  );
 
   await interaction.reply({
     ...buildTestPanelIntroPayload(),
@@ -6420,46 +6368,7 @@ async function handleSelectMenu(interaction) {
       return;
     }
 
-    pendingTestPanelPurchase.set(
-      getTestPanelPurchaseStateKey(interaction.guildId, interaction.user.id),
-      {
-        category: "zakup",
-        server: null,
-        payment: null,
-        createdAt: Date.now(),
-      },
-    );
-
-    await interaction.update(buildTestPanelPurchasePayload());
-    return;
-  }
-
-  if (
-    interaction.customId === "testpanel_purchase_server" ||
-    interaction.customId === "testpanel_purchase_payment"
-  ) {
-    const stateKey = getTestPanelPurchaseStateKey(
-      interaction.guildId,
-      interaction.user.id,
-    );
-    const currentState = pendingTestPanelPurchase.get(stateKey);
-
-    if (!currentState || currentState.category !== "zakup") {
-      await interaction.reply({
-        content: "> `❌` × Ten test wygasł. Użyj `/testpanel` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (interaction.customId === "testpanel_purchase_server") {
-      currentState.server = interaction.values[0] || null;
-    } else {
-      currentState.payment = interaction.values[0] || null;
-    }
-
-    pendingTestPanelPurchase.set(stateKey, currentState);
-    await interaction.update(buildTestPanelPurchasePayload(currentState));
+    await showTestPanelZakupModal(interaction);
     return;
   }
 
@@ -7814,24 +7723,13 @@ async function handleModalSubmit(interaction) {
   let formInfo;
   let ticketTopic;
   let forceOwnerOnlyVisibility = false;
-  let testPanelStateKeyToClear = null;
 
   switch (interaction.customId) {
-    case "modal_testpanel_purchase_amount": {
-      const stateKey = getTestPanelPurchaseStateKey(
-        interaction.guildId,
-        interaction.user.id,
-      );
-      const testState = pendingTestPanelPurchase.get(stateKey);
-
-      if (!testState || !testState.server || !testState.payment) {
-        await interaction.reply({
-          content: "> `❌` × Ten test wygasł. Użyj `/testpanel` ponownie.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
+    case "modal_testpanel_purchase": {
+      const selectedServer =
+        interaction.fields.getStringSelectValues("testpanel_purchase_server")[0];
+      const selectedPayment =
+        interaction.fields.getStringSelectValues("testpanel_purchase_payment")[0];
       const kwotaRaw = interaction.fields.getTextInputValue("kwota") || "";
       let kwotaNum = parseFloat(
         kwotaRaw.replace(/[^0-9,.\-]/g, "").replace(/,/g, "."),
@@ -7870,11 +7768,11 @@ async function handleModalSubmit(interaction) {
       }
 
       const serverLabel =
-        getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, testState.server) ||
-        testState.server;
+        getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, selectedServer) ||
+        selectedServer;
       const paymentLabel =
-        getTestPanelOptionLabel(TEST_PANEL_PAYMENT_OPTIONS, testState.payment) ||
-        testState.payment;
+        getTestPanelOptionLabel(TEST_PANEL_PAYMENT_OPTIONS, selectedPayment) ||
+        selectedPayment;
 
       ticketTypeLabel = "ZAKUP";
       ticketTopic = `Zakup itemów na serwerze: ${serverLabel}`;
@@ -7884,7 +7782,6 @@ async function handleModalSubmit(interaction) {
         `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serverLabel}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentLabel}\``;
-      testPanelStateKeyToClear = stateKey;
       break;
     }
     case "modal_zakup": {
@@ -8529,10 +8426,6 @@ async function handleModalSubmit(interaction) {
       content: `> \`✅\` × Ticket został stworzony <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
-
-    if (testPanelStateKeyToClear) {
-      pendingTestPanelPurchase.delete(testPanelStateKeyToClear);
-    }
 
     if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
       await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
