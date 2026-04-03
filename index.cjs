@@ -5701,6 +5701,7 @@ const SHOP_SERVER_OPTION_DEFS = [
     testValue: "anarchia_lf",
     calcValue: "ANARCHIA_LIFESTEAL",
     description: "Tryb Anarchia LifeSteal na Anarchii",
+    channelSlug: "anarchia-lf",
     emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" },
   },
   {
@@ -5708,6 +5709,7 @@ const SHOP_SERVER_OPTION_DEFS = [
     testValue: "anarchia_boxpvp",
     calcValue: "ANARCHIA_BOXPVP",
     description: "Tryb BoxPvP na Anarchii",
+    channelSlug: "anarchia-boxpvp",
     emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" },
   },
   {
@@ -5715,6 +5717,7 @@ const SHOP_SERVER_OPTION_DEFS = [
     testValue: "pyk_mc",
     calcValue: "PYK_MC",
     description: "Tryb Entropia na PykMc",
+    channelSlug: "pyk-mc",
     emoji: { id: "1457113144412475635", name: "PYK_MC" },
   },
   {
@@ -5722,6 +5725,7 @@ const SHOP_SERVER_OPTION_DEFS = [
     testValue: "donut_smp",
     calcValue: "DONUT_SMP",
     description: "Tryb SMP na Donut",
+    channelSlug: "donut-smp",
     emoji: { id: "1489578418432381059", name: "donutsmp" },
   },
 ];
@@ -5817,43 +5821,82 @@ const PANEL_CATEGORY_OPTIONS = [
   },
 ];
 
+const PANEL_FONT_MAP = {
+  A: "ᴀ",
+  B: "ʙ",
+  C: "ᴄ",
+  D: "ᴅ",
+  E: "ᴇ",
+  F: "ꜰ",
+  G: "ɢ",
+  H: "ʜ",
+  I: "ɪ",
+  J: "ᴊ",
+  K: "ᴋ",
+  L: "ʟ",
+  M: "ᴍ",
+  N: "ɴ",
+  O: "ᴏ",
+  P: "ᴘ",
+  Q: "ǫ",
+  R: "ʀ",
+  S: "ꜱ",
+  T: "ᴛ",
+  U: "ᴜ",
+  V: "ᴠ",
+  W: "ᴡ",
+  X: "x",
+  Y: "ʏ",
+  Z: "ᴢ",
+};
+
+function toPanelFont(text = "") {
+  return String(text)
+    .split("")
+    .map((char) => {
+      const upper = char.toUpperCase();
+      return PANEL_FONT_MAP[upper] || char;
+    })
+    .join("");
+}
+
 const TEST_PANEL_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
-  label: option.label,
+  label: toPanelFont(option.label),
   value: option.testValue,
   description: option.description,
   emoji: option.emoji,
 }));
 
 const TEST_PANEL_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: option.label,
+  label: toPanelFont(option.label),
   value: option.testValue,
   description: option.description,
   emoji: option.emoji,
 }));
 
 const KALKULATOR_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
-  label: option.label,
+  label: toPanelFont(option.label),
   value: option.calcValue,
   description: option.description,
   emoji: option.emoji,
 }));
 
 const KALKULATOR_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: option.label,
+  label: toPanelFont(option.label),
   value: option.calcValue,
   description: option.description,
   emoji: option.emoji,
 }));
 
 const SIMPLE_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: option.label,
+  label: toPanelFont(option.label),
   value: option.testValue,
   description: `Płatność ${option.label}`,
   emoji: option.emoji,
 }));
 
 const PAYOUT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: option.label,
+  label: toPanelFont(option.label),
   value: option.testValue,
   description: `Wypłata ${option.label}`,
   emoji: option.emoji,
@@ -5870,6 +5913,46 @@ const MAX_PURCHASE_PLN = 10_000;
 
 function getTestPanelOptionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || null;
+}
+
+function getShopServerOptionDef(value) {
+  return (
+    SHOP_SERVER_OPTION_DEFS.find(
+      (option) => option.testValue === value || option.calcValue === value,
+    ) || null
+  );
+}
+
+function sanitizeTicketChannelNamePart(value) {
+  return (
+    (value || "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "ticket"
+  );
+}
+
+function formatTicketAmountPart(amount) {
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) return "0zl";
+
+  const normalized = Number.isInteger(parsed)
+    ? String(parsed)
+    : parsed.toFixed(2).replace(/\.?0+$/, "").replace(".", "-");
+
+  return `${normalized}zl`;
+}
+
+function buildPurchaseTicketChannelName(serverValue, amount) {
+  const serverDef = getShopServerOptionDef(serverValue);
+  const serverSlug = serverDef?.channelSlug || sanitizeTicketChannelNamePart(serverValue);
+  const amountPart = formatTicketAmountPart(amount);
+
+  return `${serverSlug}-${amountPart}`.slice(0, 100);
 }
 
 function getModalTextInputValueSafe(interaction, customId) {
@@ -5940,7 +6023,7 @@ async function showZakupModalV2(interaction) {
   const amountInput = new TextInputBuilder()
     .setCustomId("kwota")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Np. 20")
+    .setPlaceholder("Przykład: 20 złotych")
     .setRequired(true);
 
   const modal = new ModalBuilder()
@@ -5954,7 +6037,7 @@ async function showZakupModalV2(interaction) {
         .setLabel("Forma płatności")
         .setStringSelectMenuComponent(paymentSelect),
       new LabelBuilder()
-        .setLabel("Kwota (PLN)?")
+        .setLabel("Kwota (PLN)")
         .setTextInputComponent(amountInput),
     );
 
@@ -6573,13 +6656,12 @@ async function showModyZakupModal(interaction) {
     .setMaxValues(1)
     .addOptions(SIMPLE_PAYMENT_OPTIONS);
 
-  const modsCountSelect = new StringSelectMenuBuilder()
-    .setCustomId("mods_count_select")
-    .setPlaceholder("Wybierz ilość modów")
+  const modsCountInput = new TextInputBuilder()
+    .setCustomId("mods_count")
+    .setPlaceholder("Podaj liczbę od 1 do 4")
+    .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(MOD_COUNT_OPTIONS);
+    .setMaxLength(1);
 
   const modal = new ModalBuilder()
     .setCustomId("modal_mody_zakup")
@@ -6593,7 +6675,7 @@ async function showModyZakupModal(interaction) {
         .setStringSelectMenuComponent(paymentSelect),
       new LabelBuilder()
         .setLabel("Ile modów chcesz kupić?")
-        .setStringSelectMenuComponent(modsCountSelect),
+        .setTextInputComponent(modsCountInput),
     );
 
   await interaction.showModal(modal);
@@ -7083,12 +7165,6 @@ async function showSprzedazModal(interaction) {
     .setMaxValues(1)
     .addOptions(TEST_PANEL_SERVER_OPTIONS);
 
-  const amountInput = new TextInputBuilder()
-    .setCustomId("ile")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: 20zł")
-    .setRequired(true);
-
   const payoutSelect = new StringSelectMenuBuilder()
     .setCustomId("sprzedaz_payout")
     .setPlaceholder("Wybierz formę wypłaty")
@@ -7107,9 +7183,6 @@ async function showSprzedazModal(interaction) {
       new LabelBuilder()
         .setLabel("Na jakim serwerze?")
         .setStringSelectMenuComponent(serverSelect),
-      new LabelBuilder()
-        .setLabel("Ile oczekujesz?")
-        .setTextInputComponent(amountInput),
       new LabelBuilder()
         .setLabel("Forma wypłaty")
         .setStringSelectMenuComponent(payoutSelect),
@@ -7240,6 +7313,14 @@ async function handleModalSubmit(interaction) {
       if (isNaN(kwota) || kwota <= 0) {
         await interaction.reply({
           content: "> `❌` × Podaj **poprawną** kwotę w PLN.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (kwota > MAX_PURCHASE_PLN) {
+        await interaction.reply({
+          content: "> `❌` × Maksymalna kwota w kalkulatorze to **10 000zł**.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -7762,6 +7843,7 @@ async function handleModalSubmit(interaction) {
   let formInfo;
   let ticketTopic;
   let forceOwnerOnlyVisibility = false;
+  let preferredChannelName = null;
 
   switch (interaction.customId) {
     case "modal_testpanel_purchase":
@@ -7845,8 +7927,12 @@ async function handleModalSubmit(interaction) {
         selectedPayment;
 
       ticketTypeLabel = "ZAKUP";
-      ticketTopic = `Zakup itemów na serwerze: ${serverLabel}`;
+      ticketTopic = `Zakup itemów na serwerze: ${serverLabel} (${kwotaNum}zł)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
+      preferredChannelName = buildPurchaseTicketChannelName(
+        selectedServer,
+        kwotaNum,
+      );
 
       formInfo =
         `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serverLabel}\`\n` +
@@ -7966,8 +8052,7 @@ async function handleModalSubmit(interaction) {
         getModalTextInputValueSafe(interaction, "payout_method") ||
         getModalTextInputValueSafe(interaction, "platnosc") ||
         "";
-      const ile = getModalTextInputValueSafe(interaction, "ile") || "";
-      const kwotaSprzedaz = parseFloat(ile.replace(/,/g, '.'));
+      const coTrimmed = co.trim();
 
       if (!serwerRaw) {
         await interaction.reply({
@@ -7985,16 +8070,9 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
+      if (!coTrimmed) {
         await interaction.reply({
-          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-      if (Number.isNaN(kwotaSprzedaz)) {
-        await interaction.reply({
-          content: "> `❌` × Podaj kwotę jako liczbę, np. `25` lub `25.5` (zł).",
+          content: "> `❌` × Opisz, co chcesz sprzedać.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -8009,21 +8087,13 @@ async function handleModalSubmit(interaction) {
       const payoutMethod =
         getTestPanelOptionLabel(PAYOUT_OPTIONS, payoutRaw) ||
         payoutRaw;
-      if (!Number.isNaN(kwotaSprzedaz) && kwotaSprzedaz < 10) {
-        await interaction.reply({
-          content: "> `❌` × Minimalna kwota sprzedaży to **10zł**.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
 
       ticketTopic = `Sprzedaż na serwerze: ${serwer}`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
 
       formInfo =
-        `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${co}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${coTrimmed}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Oczekiwana kwota:** \`${ile}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Forma wypłaty:** \`${payoutMethod}\``;
       break;
     }
@@ -8297,7 +8367,7 @@ async function handleModalSubmit(interaction) {
 
     // create channel with or without parent
     const createOptions = {
-      name: `ticket-${user.username}`,
+      name: preferredChannelName || `ticket-${user.username}`,
       type: ChannelType.GuildText,
       permissionOverwrites: [
         {
