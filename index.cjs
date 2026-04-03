@@ -90,6 +90,8 @@ const contestLeaveBlocks = new Map(); // userId -> { messageId: { leaveCount: nu
 // --- LEGITCHECK-REP info behavior --------------------------------------------------
 // channel ID where users post freeform reps and the bot should post the informational embed
 const REP_CHANNEL_ID = "1449840030947217529";
+const LEGIT_REP_PING_DELETE_DELAY_MS = 4_000;
+const LEGIT_REP_WARNING_DELETE_DELAY_MS = 15_000;
 
 // cooldown (ms) per user between the bot posting the info embed
 const INFO_EMBED_COOLDOWN_MS = 5 * 1000; // default 5s — change to desired value
@@ -3362,7 +3364,7 @@ async function handleModalSubmit(interaction) {
       if (ticketData.userId === user.id) {
         await interaction.reply({
           content:
-            `> \`❌\` × **Masz już otwarty** ticket: <#${channelId}>.\n` +
+            `> \`❌\` × **Masz już otwarty** ticket: <#${channelId}>\n` +
             "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
           flags: [MessageFlags.Ephemeral],
         });
@@ -3486,6 +3488,9 @@ async function handleModalSubmit(interaction) {
       userId: user.id,
       ticketMessageId: sentMsg.id,
       locked: false,
+      ticketTypeLabel,
+      formInfo,
+      openedAt: Date.now(),
     });
     scheduleSavePersistentState();
 
@@ -4054,6 +4059,7 @@ const nickInput = new TextInputBuilder()
           channel,
           interaction.user.id,
           ticketMeta,
+          { closeMethod: "Przycisk zamknięcia" },
         ).catch((e) => console.error("archiveTicketOnClose error:", e));
       } catch (e) {
         console.error("Błąd archiwizacji ticketu (button):", e);
@@ -5839,41 +5845,64 @@ const PANEL_CATEGORY_OPTIONS = [
 ];
 
 const PANEL_FONT_MAP = {
-  A: "𝗔",
-  B: "𝗕",
-  C: "𝗖",
-  D: "𝗗",
-  E: "𝗘",
-  F: "𝗙",
-  G: "𝗚",
-  H: "𝗛",
-  I: "𝗜",
-  J: "𝗝",
-  K: "𝗞",
-  L: "𝗟",
-  M: "𝗠",
-  N: "𝗡",
-  O: "𝗢",
-  P: "𝗣",
-  Q: "𝗤",
-  R: "𝗥",
-  S: "𝗦",
-  T: "𝗧",
-  U: "𝗨",
-  V: "𝗩",
-  W: "𝗪",
-  X: "𝗫",
-  Y: "𝗬",
-  Z: "𝗭",
+  A: "𝖠",
+  B: "𝖡",
+  C: "𝖢",
+  D: "𝖣",
+  E: "𝖤",
+  F: "𝖥",
+  G: "𝖦",
+  H: "𝖧",
+  I: "𝖨",
+  J: "𝖩",
+  K: "𝖪",
+  L: "𝖫",
+  M: "𝖬",
+  N: "𝖭",
+  O: "𝖮",
+  P: "𝖯",
+  Q: "𝖰",
+  R: "𝖱",
+  S: "𝖲",
+  T: "𝖳",
+  U: "𝖴",
+  V: "𝖵",
+  W: "𝖶",
+  X: "𝖷",
+  Y: "𝖸",
+  Z: "𝖹",
+  a: "𝖺",
+  b: "𝖻",
+  c: "𝖼",
+  d: "𝖽",
+  e: "𝖾",
+  f: "𝖿",
+  g: "𝗀",
+  h: "𝗁",
+  i: "𝗂",
+  j: "𝗃",
+  k: "𝗄",
+  l: "𝗅",
+  m: "𝗆",
+  n: "𝗇",
+  o: "𝗈",
+  p: "𝗉",
+  q: "𝗊",
+  r: "𝗋",
+  s: "𝗌",
+  t: "𝗍",
+  u: "𝗎",
+  v: "𝗏",
+  w: "𝗐",
+  x: "𝗑",
+  y: "𝗒",
+  z: "𝗓",
 };
 
 function toPanelFont(text = "") {
   return String(text)
     .split("")
-    .map((char) => {
-      const upper = char.toUpperCase();
-      return PANEL_FONT_MAP[upper] || char;
-    })
+    .map((char) => PANEL_FONT_MAP[char] || char)
     .join("");
 }
 
@@ -6172,6 +6201,7 @@ async function handleCloseTicketCommand(interaction) {
         channel,
         interaction.user.id,
         ticketMeta,
+        { closeMethod: "Komenda /zamknij" },
       ).catch((e) => console.error("archiveTicketOnClose error:", e));
     } catch (e) {
       console.error("Błąd archiwizacji ticketu (command):", e);
@@ -6300,7 +6330,7 @@ async function handleTicketZakonczCommand(interaction) {
 
       setTimeout(() => {
         pingMessage.delete().catch(() => null);
-      }, 4000);
+      }, LEGIT_REP_PING_DELETE_DELAY_MS);
     }
   } catch (err) {
     console.error("Nie udało się wysłać pingu na legit-rep:", err);
@@ -6325,6 +6355,26 @@ async function handleTicketZakonczCommand(interaction) {
   } catch (err) {
     console.error("Nie udało się przenieść ticketu do kategorii zrealizowanej:", err);
   }
+
+  await sendTicketLogEntry(interaction.guild, {
+    title: "Ticket oczekuje na +rep",
+    icon: "🟠",
+    color: COLOR_YELLOW,
+    summary: "Ticket został oznaczony jako zrealizowany i czeka na legit rep od klienta.",
+    ticketChannel: channel,
+    ownerId: ticketOwnerId,
+    actorId: interaction.user.id,
+    claimedById: ticketData?.claimedBy || null,
+    ticketMeta: ticketData,
+    statusLabel: "OCZEKUJE NA +REP",
+    detailLines: [
+      `Typ transakcji: ${typ}`,
+      `Co: ${co}`,
+      `Serwer: ${serwer}`,
+      `Kanał legit-rep: <#${legitRepChannelId}>`,
+      `Wzór: ${repMessage}`,
+    ],
+  }).catch((err) => console.error("ticket-zakoncz log error:", err));
 
   console.log(`Ticket ${channel.id} oczekuje na +rep od użytkownika ${ticketOwnerId} (komenda użyta przez ${interaction.user.username})`);
 }
@@ -6369,6 +6419,8 @@ async function handleZamknijZPowodemCommand(interaction) {
   }
 
   try {
+    const ticketMeta = ticketOwners.get(channel.id) || null;
+
     // Wyślij embed do właściciela ticketu
     const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const embed = new EmbedBuilder()
@@ -6396,6 +6448,16 @@ async function handleZamknijZPowodemCommand(interaction) {
     // Zamknij ticket po 2 sekundach
     setTimeout(async () => {
       try {
+        await archiveTicketOnClose(
+          channel,
+          interaction.user.id,
+          ticketMeta,
+          {
+            closeMethod: "Komenda /zamknij-z-powodem",
+            reason: powod,
+          },
+        ).catch((e) => console.error("archiveTicketOnClose error (reason):", e));
+
         await channel.delete(`Ticket zamknięty przez właściciela z powodem: ${powod}`);
         ticketOwners.delete(channel.id);
         pendingTicketClose.delete(channel.id);
@@ -6971,6 +7033,25 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     } catch {
       // ignore
     }
+
+    await sendTicketLogEntry(interaction.guild, {
+      title: "Ticket przejęty",
+      icon: "🟢",
+      color: 0x57f287,
+      summary: "Ticket został przejęty przez obsługę.",
+      ticketChannel: ch,
+      ownerId: ticketData.userId,
+      actorId: interaction.user.id,
+      claimedById: claimerId,
+      ticketMeta: ticketData,
+      statusLabel: "PRZEJĘTY",
+      detailLines: [
+        przejetaKategoria
+          ? `Przeniesiono do kategorii: ${przejetaKategoria.name}`
+          : "Nie udało się odnaleźć kategorii przejętych.",
+      ],
+    }).catch((err) => console.error("ticket claim log error:", err));
+
     if (!isBtn) {
       await interaction.deleteReply().catch(() => null);
     }
@@ -7055,6 +7136,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 
   try {
     const releaserId = interaction.user.id;
+    const previousClaimerId = ticketData.claimedBy || null;
 
     // Przywróć oryginalną kategorię jeśli istnieje
     if (ticketData.originalCategoryId) {
@@ -7176,14 +7258,27 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       }
 
       if (logCh) {
-        const logEmbed = new EmbedBuilder()
-          .setColor(COLOR_BLUE)
-          .setDescription(`> \`🔓\` × Ticket zwolniony przez <@${interaction.user.id}>`)
-          .setFooter({ text: `Kanał: ${ch.name}` })
-          .setTimestamp();
-        const payload = { embeds: [logEmbed] };
-        if (backupAttachment) payload.files = [backupAttachment];
-        await logCh.send(payload).catch(() => null);
+        await sendTicketLogEntry(interaction.guild, {
+          title: "Ticket zwolniony",
+          icon: "🟡",
+          color: COLOR_YELLOW,
+          summary: "Ticket został zwolniony i wrócił do statusu otwartego.",
+          ticketChannel: ch,
+          ownerId: ticketData.userId,
+          actorId: interaction.user.id,
+          claimedById: previousClaimerId,
+          ticketMeta: ticketData,
+          statusLabel: "OTWARTY",
+          detailLines: [
+            ticketData.originalCategoryId
+              ? `Przywrócono kategorię: <#${ticketData.originalCategoryId}>`
+              : null,
+            backupAttachment
+              ? "Dodano załącznik z historią wiadomości po przejęciu."
+              : null,
+          ],
+          files: backupAttachment ? [backupAttachment] : [],
+        }).catch(() => null);
       }
     } catch (e) {
       console.error("Log unclaim failed:", e);
@@ -7756,10 +7851,25 @@ async function handleModalSubmit(interaction) {
       return;
     }
     try {
+      const oldName = channel.name;
       await channel.setName(newName);
 
-      // prepare DM embed (as requested)
-      // send DM to user
+      await sendTicketLogEntry(interaction.guild, {
+        title: "Zmieniono nazwę ticketu",
+        icon: "📝",
+        color: COLOR_BLUE,
+        summary: "Nazwa ticketu została zmieniona przez obsługę.",
+        ticketChannel: channel,
+        ownerId: data.userId || null,
+        actorId: interaction.user.id,
+        claimedById: data.claimedBy || null,
+        ticketMeta: data,
+        statusLabel: data.claimedBy ? "PRZEJĘTY" : "OTWARTY",
+        detailLines: [
+          `Stara nazwa: ${oldName}`,
+          `Nowa nazwa: ${newName}`,
+        ],
+      }).catch((err) => console.error("ticket rename log error:", err));
 
       await interaction.reply({
         content: `✅ Zmieniono nazwę ticketu na \`${newName}\`.`,
@@ -7829,6 +7939,21 @@ async function handleModalSubmit(interaction) {
         SendMessages: true,
         ReadMessageHistory: true,
       });
+
+      await sendTicketLogEntry(interaction.guild, {
+        title: "Dodano użytkownika do ticketu",
+        icon: "👥",
+        color: COLOR_BLUE,
+        summary: "Do ticketu został dodany dodatkowy użytkownik.",
+        ticketChannel: channel,
+        ownerId: data.userId || null,
+        actorId: interaction.user.id,
+        claimedById: data.claimedBy || null,
+        ticketMeta: data,
+        statusLabel: data.claimedBy ? "PRZEJĘTY" : "OTWARTY",
+        detailLines: [`Dodano użytkownika: <@${userIdToAdd}>`],
+      }).catch((err) => console.error("ticket add-user log error:", err));
+
       await interaction.reply({
         content: `✅ Dodano <@${userIdToAdd}> do ticketu.`,
         flags: [MessageFlags.Ephemeral],
@@ -7894,6 +8019,21 @@ async function handleModalSubmit(interaction) {
       await channel.permissionOverwrites
         .delete(userIdToRemove)
         .catch(() => null);
+
+      await sendTicketLogEntry(interaction.guild, {
+        title: "Usunięto użytkownika z ticketu",
+        icon: "➖",
+        color: COLOR_YELLOW,
+        summary: "Z ticketu usunięto dodatkowego użytkownika.",
+        ticketChannel: channel,
+        ownerId: data.userId || null,
+        actorId: interaction.user.id,
+        claimedById: data.claimedBy || null,
+        ticketMeta: data,
+        statusLabel: data.claimedBy ? "PRZEJĘTY" : "OTWARTY",
+        detailLines: [`Usunięto użytkownika: <@${userIdToRemove}>`],
+      }).catch((err) => console.error("ticket remove-user log error:", err));
+
       await interaction.reply({
         content: `✅ Usunięto <@${userIdToRemove}> z ticketu.`,
         flags: [MessageFlags.Ephemeral],
@@ -8340,6 +8480,9 @@ async function handleModalSubmit(interaction) {
           userId: user.id,
           ticketMessageId: sentMsg.id,
           locked: false,
+          ticketTypeLabel,
+          formInfo,
+          openedAt: Date.now(),
         });
         scheduleSavePersistentState();
 
@@ -8352,7 +8495,7 @@ async function handleModalSubmit(interaction) {
         }).catch(() => { });
 
         await interaction.reply({
-          content: `> \`✅\` × Ticket został stworzony <#${channel.id}>.`,
+          content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
           flags: [MessageFlags.Ephemeral],
         });
       } catch (err) {
@@ -8392,7 +8535,7 @@ async function handleModalSubmit(interaction) {
         if (existingChannel) {
           await interaction.reply({
             content:
-              `> \`❌\` × **Masz już otwarty** ticket: <#${chanId}>.\n` +
+              `> \`❌\` × **Masz już otwarty** ticket: <#${chanId}>\n` +
               "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
             flags: [MessageFlags.Ephemeral],
           });
@@ -8589,6 +8732,9 @@ async function handleModalSubmit(interaction) {
       userId: user.id,
       ticketMessageId: sentMsg.id,
       locked: false,
+      ticketTypeLabel,
+      formInfo,
+      openedAt: Date.now(),
     });
     scheduleSavePersistentState();
 
@@ -8606,7 +8752,7 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      content: `> \`✅\` × Ticket został stworzony <#${channel.id}>`,
+      content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
 
@@ -8926,7 +9072,10 @@ client.on(Events.MessageCreate, async (message) => {
             .setColor(COLOR_RED)
             .setDescription(`• \`❗\` × __**Stosuj się do wzoru legit checka!**__`);
           const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
-          setTimeout(() => warnMsg.delete().catch(() => null), 8000);
+          setTimeout(
+            () => warnMsg.delete().catch(() => null),
+            LEGIT_REP_WARNING_DELETE_DELAY_MS,
+          );
         } catch (err) {
           console.error("Błąd usuwania nieoznaczonego legit-rep:", err);
         }
@@ -8943,7 +9092,10 @@ client.on(Events.MessageCreate, async (message) => {
             );
 
           const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
-          setTimeout(() => warnMsg.delete().catch(() => null), 8000);
+          setTimeout(
+            () => warnMsg.delete().catch(() => null),
+            LEGIT_REP_WARNING_DELETE_DELAY_MS,
+          );
         } catch (err) {
           console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
         }
@@ -8986,6 +9138,9 @@ client.on(Events.MessageCreate, async (message) => {
                     ticketChannel,
                     message.author.id,
                     ticketMeta,
+                    {
+                      closeMethod: "Automatyczne zamknięcie po +rep",
+                    },
                   ).catch((e) => console.error("archiveTicketOnClose error (+rep):", e));
                   await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
                   pendingTicketClose.delete(ticketChannelId);
@@ -11665,29 +11820,238 @@ async function getLogiTicketChannel(guild) {
   return ch;
 }
 
+function truncateTicketLogValue(value, max = 1024) {
+  const text = (value || "").toString().trim();
+  if (!text) return "brak";
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 3))}...`;
+}
+
+function formatTicketLogUser(userId) {
+  if (!userId) return "brak";
+  return `<@${userId}>\n\`${userId}\``;
+}
+
+function formatTicketLogChannel(ticketChannel) {
+  if (!ticketChannel) return "brak";
+  return `<#${ticketChannel.id}>\n\`${ticketChannel.name}\``;
+}
+
+function formatTicketLogCategory(ticketChannel) {
+  if (!ticketChannel?.parentId) return "brak";
+
+  const parent =
+    ticketChannel.parent ||
+    ticketChannel.guild?.channels?.cache?.get(ticketChannel.parentId) ||
+    null;
+
+  if (!parent) return `<#${ticketChannel.parentId}>`;
+  return `<#${ticketChannel.parentId}>\n\`${parent.name}\``;
+}
+
+function formatTicketLogTimestamp(timestamp) {
+  if (!timestamp) return "brak";
+  const unix = Math.floor(timestamp / 1000);
+  return `<t:${unix}:F>\n<t:${unix}:R>`;
+}
+
+function cleanTicketLogText(raw = "") {
+  const lines = String(raw)
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/^>\s*/, "")
+        .replace(/<a?:[A-Za-z0-9_~]+:\d+>\s*/g, "")
+        .replace(/\*\*/g, "")
+        .replace(/`/g, "")
+        .replace(/\s+×\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean);
+
+  return lines.length ? lines.join("\n") : "brak";
+}
+
+function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
+  if (ticketMeta?.ticketTypeLabel) return ticketMeta.ticketTypeLabel;
+  if (!ticketChannel?.guild) return "brak";
+
+  if (ticketChannel.parentId && String(ticketChannel.parentId) === String(REWARDS_CATEGORY_ID)) {
+    return "NAGRODA ZA ZAPROSZENIA";
+  }
+
+  const cats = ticketCategories.get(ticketChannel.guild.id) || {};
+  const zakupCategoryIds = [
+    cats["zakup-0-20"],
+    cats["zakup-20-50"],
+    cats["zakup-50-100"],
+    cats["zakup-100-200"],
+  ].filter(Boolean);
+
+  if (zakupCategoryIds.includes(ticketChannel.parentId) || isModernPurchaseTicketChannelName(ticketChannel.name)) {
+    return "ZAKUP";
+  }
+  if (ticketChannel.parentId === cats["sprzedaz"]) return "SPRZEDAŻ";
+  if (ticketChannel.parentId === cats["inne"]) return "PYTANIE / POMOC";
+  if (ticketChannel.parentId === cats["odbior-nagrody"]) return "NAGRODA ZA ZAPROSZENIA";
+
+  return "TICKET";
+}
+
+function buildTicketLogDetailsValue({ formInfo = "", detailLines = [] } = {}) {
+  const chunks = [];
+  const cleanedFormInfo = cleanTicketLogText(formInfo);
+  if (cleanedFormInfo !== "brak") chunks.push(cleanedFormInfo);
+
+  for (const line of detailLines) {
+    if (!line) continue;
+    chunks.push(`• ${line}`);
+  }
+
+  if (!chunks.length) return "brak";
+  return truncateTicketLogValue(chunks.join("\n"), 1024);
+}
+
+async function sendTicketLogEntry(guild, options = {}) {
+  const logCh = await getLogiTicketChannel(guild);
+  if (!logCh) return null;
+
+  const ticketChannel = options.ticketChannel || null;
+  const ticketMeta = options.ticketMeta || null;
+  const detailsValue = buildTicketLogDetailsValue({
+    formInfo: options.formInfo,
+    detailLines: options.detailLines,
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(options.color ?? COLOR_BLUE)
+    .setAuthor({ name: "New Shop × Logi Ticketów" })
+    .setTitle(`${options.icon || "🎫"} ${options.title || "Akcja na tickecie"}`)
+    .setTimestamp();
+
+  if (options.summary) {
+    embed.setDescription(truncateTicketLogValue(options.summary, 4096));
+  }
+
+  const fields = [
+    {
+      name: "Kanał",
+      value: truncateTicketLogValue(formatTicketLogChannel(ticketChannel)),
+      inline: true,
+    },
+    {
+      name: "Status",
+      value: truncateTicketLogValue(options.statusLabel || "brak"),
+      inline: true,
+    },
+    {
+      name: "Typ",
+      value: truncateTicketLogValue(
+        options.ticketTypeLabel || guessTicketTypeLabel(ticketChannel, ticketMeta),
+      ),
+      inline: true,
+    },
+    {
+      name: "Właściciel",
+      value: truncateTicketLogValue(
+        formatTicketLogUser(options.ownerId ?? ticketMeta?.userId ?? null),
+      ),
+      inline: true,
+    },
+    {
+      name: "Wykonał",
+      value: truncateTicketLogValue(formatTicketLogUser(options.actorId)),
+      inline: true,
+    },
+    {
+      name: "Przejęty przez",
+      value: truncateTicketLogValue(
+        formatTicketLogUser(options.claimedById ?? ticketMeta?.claimedBy ?? null),
+      ),
+      inline: true,
+    },
+    {
+      name: "Kategoria",
+      value: truncateTicketLogValue(formatTicketLogCategory(ticketChannel)),
+      inline: true,
+    },
+    {
+      name: "Utworzony",
+      value: truncateTicketLogValue(
+        formatTicketLogTimestamp(
+          options.openedAt ?? ticketMeta?.openedAt ?? ticketChannel?.createdTimestamp,
+        ),
+      ),
+      inline: true,
+    },
+  ];
+
+  if (typeof options.messageCount === "number") {
+    fields.push({
+      name: "Wiadomości",
+      value: `\`${options.messageCount}\``,
+      inline: true,
+    });
+  }
+
+  if (options.participantsText) {
+    fields.push({
+      name: "Uczestnicy",
+      value: truncateTicketLogValue(options.participantsText, 1024),
+      inline: false,
+    });
+  }
+
+  if (options.reason) {
+    fields.push({
+      name: "Powód",
+      value: truncateTicketLogValue(options.reason, 1024),
+      inline: false,
+    });
+  }
+
+  if (detailsValue !== "brak") {
+    fields.push({
+      name: "Szczegóły",
+      value: detailsValue,
+      inline: false,
+    });
+  }
+
+  embed.addFields(fields.slice(0, 25));
+
+  const payload = { embeds: [embed] };
+  if (options.files?.length) payload.files = options.files;
+  await logCh.send(payload);
+  return logCh;
+}
+
 async function logTicketCreation(guild, ticketChannel, details) {
   try {
-    const logCh = await getLogiTicketChannel(guild);
-    if (!logCh) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle("🎟️ Ticket utworzony")
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        `> \`🆔\` × Kanał: <#${ticketChannel.id}>\n` +
-        `> \`👤\` × Właściciel: <@${details.openerId}> (\`${details.openerId}\`)\n` +
-        `> \`📌\` × Typ ticketu: ${details.ticketTypeLabel}\n` +
-        `> \`📄\` × Informacje:\n${details.formInfo}`,
-      )
-      .setTimestamp();
-
-    await logCh.send({ embeds: [embed] });
+    await sendTicketLogEntry(guild, {
+      title: "Ticket utworzony",
+      icon: "🟢",
+      color: COLOR_BLUE,
+      summary: "Nowy ticket został utworzony i czeka na obsługę.",
+      ticketChannel,
+      ownerId: details.openerId,
+      actorId: details.openerId,
+      claimedById: null,
+      statusLabel: "OTWARTY",
+      ticketTypeLabel: details.ticketTypeLabel,
+      formInfo: details.formInfo,
+      detailLines: [
+        details.ticketMessageId
+          ? `ID wiadomości startowej: ${details.ticketMessageId}`
+          : null,
+      ],
+    });
   } catch (e) {
     console.error("logTicketCreation error:", e);
   }
 }
 
-async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta) {
+async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta, extra = {}) {
   try {
     const guild = ticketChannel.guild;
     const logCh = await getLogiTicketChannel(guild);
@@ -11728,19 +12092,6 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta) {
       ? `${participantsPreview.map((id) => `<@${id}>`).join(" ")}${participants.length > participantsPreview.length ? ` (+${participants.length - participantsPreview.length})` : ""}`
       : "brak";
 
-    const embed = new EmbedBuilder()
-      .setTitle("🎟️ Ticket zamknięty")
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        `> \`🆔\` × Kanał: **${ticketChannel.name}** (\`${ticketChannel.id}\`)\n` +
-          `> \`👤\` × Właściciel: ${openerId ? `<@${openerId}> (\`${openerId}\`)` : "unknown"}\n` +
-          `> \`🧑‍💼\` × Przejęty przez: ${claimedById ? `<@${claimedById}> (\`${claimedById}\`)` : "brak"}\n` +
-          `> \`🔒\` × Zamknął: <@${closedById}> (\`${closedById}\`)\n` +
-          `> \`💬\` × Wiadomości: **${messages.length}**\n` +
-          `> \`👥\` × Uczestnicy: ${participantsText}`,
-      )
-      .setTimestamp();
-
     // Build transcript
     const lines = messages.map((m) => {
       const time = new Date(m.createdTimestamp).toLocaleString("pl-PL");
@@ -11760,9 +12111,12 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta) {
     let transcriptText =
       `Ticket: ${ticketChannel.name}\n` +
       `Channel ID: ${ticketChannel.id}\n` +
+      `Close method: ${extra.closeMethod || "standard"}\n` +
+      `Close reason: ${extra.reason || "brak"}\n` +
       `Closed by: ${closedById}\n` +
       `Opened by: ${openerId || "unknown"}\n` +
       `Claimed by: ${claimedById || "brak"}\n` +
+      `Type: ${guessTicketTypeLabel(ticketChannel, ticketMeta)}\n` +
       `Messages: ${messages.length}\n` +
       `Participants: ${participants.join(", ") || "brak"}\n\n` +
       `--- MESSAGES ---\n\n` +
@@ -11780,7 +12134,28 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta) {
     const fileName = `ticket-${ticketChannel.name.replace(/[^a-z0-9-_]/gi, "_")}-${Date.now()}.txt`;
     const attachment = new AttachmentBuilder(buffer, { name: fileName });
 
-    await logCh.send({ embeds: [embed], files: [attachment] });
+    await sendTicketLogEntry(guild, {
+      title: "Ticket zamknięty",
+      icon: "🔴",
+      color: COLOR_RED,
+      summary: "Ticket został zamknięty i zapisany w logach wraz z transkryptem.",
+      ticketChannel,
+      ownerId: openerId,
+      actorId: closedById,
+      claimedById,
+      ticketMeta,
+      ticketTypeLabel: guessTicketTypeLabel(ticketChannel, ticketMeta),
+      statusLabel: "ZAMKNIĘTY",
+      formInfo: ticketMeta?.formInfo,
+      detailLines: [
+        extra.closeMethod ? `Sposób zamknięcia: ${extra.closeMethod}` : null,
+        "Transkrypt rozmowy został dodany jako załącznik.",
+      ],
+      reason: extra.reason || null,
+      messageCount: messages.length,
+      participantsText,
+      files: [attachment],
+    });
   } catch (e) {
     console.error("archiveTicketOnClose error:", e);
   }
