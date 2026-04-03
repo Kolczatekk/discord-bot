@@ -72,6 +72,7 @@ const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessa
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
+const pendingTestPanelPurchase = new Map(); // `${guildId}:${userId}` -> { category, server, payment, createdAt }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -1318,6 +1319,11 @@ const commands = [
   new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("testpanel")
+    .setDescription("Otwórz prywatny testowy TicketPanel")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
@@ -3663,6 +3669,36 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
 
+  if (customId === "testpanel_purchase_submit") {
+    const state = pendingTestPanelPurchase.get(
+      getTestPanelPurchaseStateKey(interaction.guildId, interaction.user.id),
+    );
+
+    if (!state || !state.server || !state.payment) {
+      await interaction.reply({
+        content:
+          "> `❌` × Najpierw wybierz serwer i formę płatności w `/testpanel`.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId("modal_testpanel_purchase_amount")
+      .setTitle("Formularz zakupu");
+
+    const amountInput = new TextInputBuilder()
+      .setCustomId("kwota")
+      .setLabel("Kwota (PLN)?")
+      .setPlaceholder("Np. 20")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
+    await interaction.showModal(modal);
+    return;
+  }
+
   // KONKURSY: obsługa przycisków konkursowych
   if (customId.startsWith("konkurs_join_")) {
     const msgId = customId.replace("konkurs_join_", "");
@@ -4242,6 +4278,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "ticketpanel":
       await handleTicketPanelCommand(interaction);
+      break;
+    case "testpanel":
+      await handleTestPanelCommand(interaction);
       break;
     case "zamknij":
       await handleCloseTicketCommand(interaction);
@@ -5703,6 +5742,146 @@ async function handleTicketCommand(interaction) {
   });
 }
 
+const TEST_PANEL_CATEGORY_OPTIONS = [
+  {
+    label: "Kupno itemów",
+    value: "zakup",
+    description: "Testowy formularz zakupu itemów",
+  },
+];
+
+const TEST_PANEL_SERVER_OPTIONS = [
+  {
+    label: "Anarchia LF",
+    value: "anarchia_lf",
+    description: "Zakup na serwerze Anarchia LF",
+  },
+  {
+    label: "Donut SMP",
+    value: "donut_smp",
+    description: "Zakup na serwerze Donut SMP",
+  },
+  {
+    label: "Anarchia BoxPvP",
+    value: "anarchia_boxpvp",
+    description: "Zakup na serwerze Anarchia BoxPvP",
+  },
+];
+
+const TEST_PANEL_PAYMENT_OPTIONS = [
+  {
+    label: "BLIK",
+    value: "blik",
+    description: "Płatność BLIK",
+  },
+  {
+    label: "PSC",
+    value: "psc",
+    description: "Płatność PaySafeCard",
+  },
+];
+
+function getTestPanelPurchaseStateKey(guildId, userId) {
+  return `${guildId}:${userId}`;
+}
+
+function getTestPanelOptionLabel(options, value) {
+  return options.find((option) => option.value === value)?.label || null;
+}
+
+function buildTestPanelIntroPayload() {
+  const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
+    "```\n" +
+      "New Shop × TEST PANEL\n" +
+      "```\n" +
+      "Wybierz kategorię do przetestowania.",
+  );
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId("testpanel_category")
+    .setPlaceholder("Wybierz kategorię")
+    .addOptions(TEST_PANEL_CATEGORY_OPTIONS);
+
+  return {
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(selectMenu)],
+  };
+}
+
+function buildTestPanelPurchasePayload(state = {}) {
+  const serverLabel =
+    getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, state.server) ||
+    "Nie wybrano";
+  const paymentLabel =
+    getTestPanelOptionLabel(TEST_PANEL_PAYMENT_OPTIONS, state.payment) ||
+    "Nie wybrano";
+
+  const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
+    "```\n" +
+      "New Shop × TEST PANEL\n" +
+      "```\n" +
+      "Konfiguracja testowego formularza zakupu.\n" +
+      `> **Kategoria:** \`Kupno itemów\`\n` +
+      `> **Serwer:** \`${serverLabel}\`\n` +
+      `> **Forma płatności:** \`${paymentLabel}\`\n` +
+      "> **Kwota:** `wpiszesz w następnym kroku`",
+  );
+
+  const serverSelect = new StringSelectMenuBuilder()
+    .setCustomId("testpanel_purchase_server")
+    .setPlaceholder("Wybierz serwer")
+    .addOptions(
+      TEST_PANEL_SERVER_OPTIONS.map((option) => ({
+        ...option,
+        default: option.value === state.server,
+      })),
+    );
+
+  const paymentSelect = new StringSelectMenuBuilder()
+    .setCustomId("testpanel_purchase_payment")
+    .setPlaceholder("Wybierz płatność")
+    .addOptions(
+      TEST_PANEL_PAYMENT_OPTIONS.map((option) => ({
+        ...option,
+        default: option.value === state.payment,
+      })),
+    );
+
+  const continueButton = new ButtonBuilder()
+    .setCustomId("testpanel_purchase_submit")
+    .setLabel("Wpisz kwotę")
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(!state.server || !state.payment);
+
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(serverSelect),
+      new ActionRowBuilder().addComponents(paymentSelect),
+      new ActionRowBuilder().addComponents(continueButton),
+    ],
+  };
+}
+
+async function handleTestPanelCommand(interaction) {
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  pendingTestPanelPurchase.delete(
+    getTestPanelPurchaseStateKey(interaction.guildId, interaction.user.id),
+  );
+
+  await interaction.reply({
+    ...buildTestPanelIntroPayload(),
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
 async function handleTicketPanelCommand(interaction) {
   // Sprawdź czy właściciel
   if (interaction.user.id !== interaction.guild.ownerId) {
@@ -6227,6 +6406,60 @@ async function handleSelectMenu(interaction) {
   // KALKULATOR select menu handlers
   if (interaction.customId === "kalkulator_tryb" || interaction.customId === "kalkulator_metoda") {
     await handleKalkulatorSelect(interaction);
+    return;
+  }
+
+  if (interaction.customId === "testpanel_category") {
+    const selectedCategory = interaction.values[0];
+
+    if (selectedCategory !== "zakup") {
+      await interaction.reply({
+        content: "> `❌` × Ta kategoria testowa nie jest jeszcze dostępna.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    pendingTestPanelPurchase.set(
+      getTestPanelPurchaseStateKey(interaction.guildId, interaction.user.id),
+      {
+        category: "zakup",
+        server: null,
+        payment: null,
+        createdAt: Date.now(),
+      },
+    );
+
+    await interaction.update(buildTestPanelPurchasePayload());
+    return;
+  }
+
+  if (
+    interaction.customId === "testpanel_purchase_server" ||
+    interaction.customId === "testpanel_purchase_payment"
+  ) {
+    const stateKey = getTestPanelPurchaseStateKey(
+      interaction.guildId,
+      interaction.user.id,
+    );
+    const currentState = pendingTestPanelPurchase.get(stateKey);
+
+    if (!currentState || currentState.category !== "zakup") {
+      await interaction.reply({
+        content: "> `❌` × Ten test wygasł. Użyj `/testpanel` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (interaction.customId === "testpanel_purchase_server") {
+      currentState.server = interaction.values[0] || null;
+    } else {
+      currentState.payment = interaction.values[0] || null;
+    }
+
+    pendingTestPanelPurchase.set(stateKey, currentState);
+    await interaction.update(buildTestPanelPurchasePayload(currentState));
     return;
   }
 
@@ -7581,8 +7814,79 @@ async function handleModalSubmit(interaction) {
   let formInfo;
   let ticketTopic;
   let forceOwnerOnlyVisibility = false;
+  let testPanelStateKeyToClear = null;
 
   switch (interaction.customId) {
+    case "modal_testpanel_purchase_amount": {
+      const stateKey = getTestPanelPurchaseStateKey(
+        interaction.guildId,
+        interaction.user.id,
+      );
+      const testState = pendingTestPanelPurchase.get(stateKey);
+
+      if (!testState || !testState.server || !testState.payment) {
+        await interaction.reply({
+          content: "> `❌` × Ten test wygasł. Użyj `/testpanel` ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      const kwotaRaw = interaction.fields.getTextInputValue("kwota") || "";
+      let kwotaNum = parseFloat(
+        kwotaRaw.replace(/[^0-9,.\-]/g, "").replace(/,/g, "."),
+      );
+
+      if (Number.isNaN(kwotaNum)) {
+        await interaction.reply({
+          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5`.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
+
+      if (kwotaNum < 5) {
+        await interaction.reply({
+          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (kwotaNum <= 20) {
+        categoryId = categories["zakup-0-20"];
+        ticketType = "zakup-0-20";
+      } else if (kwotaNum <= 50) {
+        categoryId = categories["zakup-20-50"];
+        ticketType = "zakup-20-50";
+      } else if (kwotaNum <= 100) {
+        categoryId = categories["zakup-50-100"];
+        ticketType = "zakup-50-100";
+      } else {
+        categoryId = categories["zakup-100-200"];
+        ticketType = "zakup-100-200";
+      }
+
+      const serverLabel =
+        getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, testState.server) ||
+        testState.server;
+      const paymentLabel =
+        getTestPanelOptionLabel(TEST_PANEL_PAYMENT_OPTIONS, testState.payment) ||
+        testState.payment;
+
+      ticketTypeLabel = "ZAKUP";
+      ticketTopic = `Zakup itemów na serwerze: ${serverLabel}`;
+      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
+
+      formInfo =
+        `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serverLabel}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Metoda płatności:** \`${paymentLabel}\``;
+      testPanelStateKeyToClear = stateKey;
+      break;
+    }
     case "modal_zakup": {
       const serwer = interaction.fields.getTextInputValue("serwer");
       const kwotaRaw = interaction.fields.getTextInputValue("kwota");
@@ -8225,6 +8529,10 @@ async function handleModalSubmit(interaction) {
       content: `> \`✅\` × Ticket został stworzony <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
+
+    if (testPanelStateKeyToClear) {
+      pendingTestPanelPurchase.delete(testPanelStateKeyToClear);
+    }
 
     if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
       await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
