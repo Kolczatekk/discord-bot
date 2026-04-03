@@ -198,7 +198,7 @@ const guildVanityUses = new Map(); // guildId -> last known vanity invite uses
 const inviteCounts = new Map(); // guildId -> Map<inviterId, count>  (current cycle count)
 const inviterOfMember = new Map(); // `${guildId}:${memberId}` -> inviterId
 const INVITE_REWARD_THRESHOLD = 5;
-const INVITE_REWARD_TEXT = "50k$"; // <-- zmienione z 40k$ na 50k$
+const INVITE_REWARD_TEXT = "70k$";
 
 // Nowa struktura do śledzenia nagród za konkretne progi
 // guildId -> Map<userId, Set<rewardLevel>> gdzie rewardLevel to "5", "10", "15", etc.
@@ -3044,13 +3044,13 @@ async function handleModalSubmit(interaction) {
     }
 
     // Sprawdź typ kodu
-    if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
-      await interaction.reply({
-        content:
-          "❌ Kod na 50k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
+      if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
+        await interaction.reply({
+          content:
+            "❌ Kod na 70k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
     }
 
     if (codeData.used) {
@@ -7713,7 +7713,7 @@ async function handleModalSubmit(interaction) {
     if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
       await interaction.reply({
         content:
-          "❌ Kod na 50k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
+          "❌ Kod na 70k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -8342,7 +8342,7 @@ async function handleModalSubmit(interaction) {
         ? `\n> <a:arrowwhite:1469100658606211233> × **Kod wygasa za:** <t:${expiryTs}:R>`
         : "";
 
-      const formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
+      const formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "70k$"}\`${expiryLine}`;
 
       try {
         let parentToUse = categoryId;
@@ -10046,8 +10046,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
           // Zapisz kod
           activeCodes.set(rewardCode, {
             oderId: inviterId,
-            rewardAmount: 50000,
-            rewardText: "50k$",
+            rewardAmount: 70000,
+            rewardText: "70k$",
             type: "invite_cash",
             created: Date.now(),
             expiresAt,
@@ -10069,7 +10069,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
                 "```\n" +
                 rewardCode +
                 "\n```\n" +
-                `\`💰\` × **Wartość:** \`50k\$\`\n` +
+                `\`💰\` × **Wartość:** \`70k\$\`\n` +
                 `\`🕑\` × **Kod wygaśnie za:** <t:${expiryTs}:R>\n\n` +
                 `\`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
                 `\`Odbiór nagrody\` i w polu wpisz otrzymany kod.`
@@ -10385,7 +10385,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
           "📩 New Shop × ZAPROSZENIA\n" +
           "```\n" +
       `> \`👤\` × <@${userId}> **posiada:** \`${displayedInvites}\` **${inviteWord}**!\n` +
-      `> \`💸\` × **Brakuje ci zaproszeń do nagrody ${INVITE_REWARD_TEXT}:** \`${missingToReward}\`\n\n` +
+      `> \`💸\` × **Brakuje ci zaproszeń do nagrody:** \`${missingToReward}\`\n\n` +
       `> \`👥\` × **Prawdziwe osoby które dołączyły:** \`${displayedInvites}\`\n` +
       `> \`🚶\` × **Osoby które opuściły serwer:** \`${left}\`\n` +
       `> \`⚠️\` × **Niespełniające kryteriów (< konto 2 mies.):** \`${fake}\`\n` +
@@ -10646,7 +10646,6 @@ async function handleZaprosieniaStatsCommand(interaction) {
             "```\n" +
             codesList +
             "\n```\n" +
-            `> \`💸\` × **Otrzymałeś:** \`${INVITE_REWARD_TEXT}\`\n` +
             `> \`🕑\` × **Kod wygaśnie za:** <t:${expiresAtSeconds}:R> \n\n` +
             `> \`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
             `> \`Odbiór nagrody\` i w polu wpisz otrzymany kod.`,
