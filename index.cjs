@@ -1338,15 +1338,21 @@ const commands = [
     )
     .addStringOption((option) =>
       option
-        .setName("ile")
-        .setDescription("Kwota transakcji (np. 22,5k, 50k, 200k)")
+        .setName("co")
+        .setDescription("Co zostało kupione / sprzedane / odebrane")
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("serwer")
-        .setDescription("Nazwa serwera (np. anarchia lf)")
+        .setDescription("Wybierz serwer")
         .setRequired(true)
+        .addChoices(
+          { name: "Anarchia LF", value: "Anarchia LF" },
+          { name: "Anarchia BoxPvP", value: "Anarchia BoxPvP" },
+          { name: "Pyk MC", value: "Pyk MC" },
+          { name: "Donut SMP", value: "Donut SMP" }
+        )
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -2213,6 +2219,7 @@ async function findBotMessageWithEmbed(channel, matchFn) {
 // Helper: determine if a channel is considered a ticket channel (based on categories)
 function isTicketChannel(channel) {
   if (!channel || !channel.guild) return false;
+  if (ticketOwners.has(channel.id)) return true;
   if (channel.parentId && String(channel.parentId) === String(REWARDS_CATEGORY_ID))
     return true;
   const cats = ticketCategories.get(channel.guild.id);
@@ -2224,6 +2231,7 @@ function isTicketChannel(channel) {
   // fallback: name starts with ticket-
   if (channel.name && channel.name.toLowerCase().startsWith("ticket-"))
     return true;
+  if (isModernPurchaseTicketChannelName(channel.name)) return true;
   return false;
 }
 
@@ -3353,7 +3361,9 @@ async function handleModalSubmit(interaction) {
     for (const [channelId, ticketData] of ticketOwners.entries()) {
       if (ticketData.userId === user.id) {
         await interaction.reply({
-          content: `❌ Masz już otwarty ticket: <#${channelId}>`,
+          content:
+            `> \`❌\` × **Masz już otwarty** ticket: <#${channelId}>.\n` +
+            "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -5736,6 +5746,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     testValue: "blik",
     calcValue: "BLIK",
     description: "Szybki przelew BLIK (0% prowizji)",
+    channelSlug: "blik",
     emoji: { id: "1469107179234525184", name: "BLIK" },
   },
   {
@@ -5743,6 +5754,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     testValue: "kod_blik",
     calcValue: "Kod BLIK",
     description: "Kod BLIK (10% prowizji)",
+    channelSlug: "kod-blik",
     emoji: { id: "1469107179234525184", name: "BLIK" },
   },
   {
@@ -5750,6 +5762,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     testValue: "psc",
     calcValue: "PSC",
     description: "Paysafecard (10% prowizji)",
+    channelSlug: "psc",
     emoji: { id: "1469107238676467940", name: "PSC" },
   },
   {
@@ -5757,6 +5770,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     testValue: "psc_bez_paragonu",
     calcValue: "PSC bez paragonu",
     description: "Paysafecard (20% prowizji)",
+    channelSlug: "psc-bez-paragonu",
     emoji: { id: "1469107238676467940", name: "PSC" },
   },
   {
@@ -5764,6 +5778,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     testValue: "mypsc",
     calcValue: "MYPSC",
     description: "MYPSC (20% lub min 10zł)",
+    channelSlug: "mypsc",
     emoji: { id: "1469107199350669473", name: "MYPSC" },
   },
   {
@@ -5771,6 +5786,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     testValue: "paypal",
     calcValue: "PayPal",
     description: "PayPal (10% prowizji)",
+    channelSlug: "paypal",
     emoji: { id: "1449354427755659444", name: "PAYPAL" },
   },
   {
@@ -5778,6 +5794,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     testValue: "ltc",
     calcValue: "LTC",
     description: "Litecoin (10% prowizji)",
+    channelSlug: "ltc",
     emoji: { id: "1449186363101548677", name: "LTC" },
   },
 ];
@@ -5822,32 +5839,32 @@ const PANEL_CATEGORY_OPTIONS = [
 ];
 
 const PANEL_FONT_MAP = {
-  A: "ᴀ",
-  B: "ʙ",
-  C: "ᴄ",
-  D: "ᴅ",
-  E: "ᴇ",
-  F: "ꜰ",
-  G: "ɢ",
-  H: "ʜ",
-  I: "ɪ",
-  J: "ᴊ",
-  K: "ᴋ",
-  L: "ʟ",
-  M: "ᴍ",
-  N: "ɴ",
-  O: "ᴏ",
-  P: "ᴘ",
-  Q: "ǫ",
-  R: "ʀ",
-  S: "ꜱ",
-  T: "ᴛ",
-  U: "ᴜ",
-  V: "ᴠ",
-  W: "ᴡ",
-  X: "x",
-  Y: "ʏ",
-  Z: "ᴢ",
+  A: "𝗔",
+  B: "𝗕",
+  C: "𝗖",
+  D: "𝗗",
+  E: "𝗘",
+  F: "𝗙",
+  G: "𝗚",
+  H: "𝗛",
+  I: "𝗜",
+  J: "𝗝",
+  K: "𝗞",
+  L: "𝗟",
+  M: "𝗠",
+  N: "𝗡",
+  O: "𝗢",
+  P: "𝗣",
+  Q: "𝗤",
+  R: "𝗥",
+  S: "𝗦",
+  T: "𝗧",
+  U: "𝗨",
+  V: "𝗩",
+  W: "𝗪",
+  X: "𝗫",
+  Y: "𝗬",
+  Z: "𝗭",
 };
 
 function toPanelFont(text = "") {
@@ -5923,6 +5940,22 @@ function getShopServerOptionDef(value) {
   );
 }
 
+function getShopPaymentOptionDef(value) {
+  return (
+    SHOP_PAYMENT_OPTION_DEFS.find(
+      (option) => option.testValue === value || option.calcValue === value,
+    ) || null
+  );
+}
+
+function getShopServerLabel(value) {
+  return getShopServerOptionDef(value)?.label || value;
+}
+
+function getShopPaymentLabel(value) {
+  return getShopPaymentOptionDef(value)?.label || value;
+}
+
 function sanitizeTicketChannelNamePart(value) {
   return (
     (value || "")
@@ -5947,12 +5980,35 @@ function formatTicketAmountPart(amount) {
   return `${normalized}zl`;
 }
 
-function buildPurchaseTicketChannelName(serverValue, amount) {
+function buildPurchaseTicketChannelName(serverValue, paymentValue) {
   const serverDef = getShopServerOptionDef(serverValue);
   const serverSlug = serverDef?.channelSlug || sanitizeTicketChannelNamePart(serverValue);
-  const amountPart = formatTicketAmountPart(amount);
+  const paymentDef = getShopPaymentOptionDef(paymentValue);
+  const paymentSlug =
+    paymentDef?.channelSlug || sanitizeTicketChannelNamePart(paymentValue);
 
-  return `${serverSlug}-${amountPart}`.slice(0, 100);
+  return `${serverSlug}-${paymentSlug}`.slice(0, 100);
+}
+
+function isModernPurchaseTicketChannelName(name) {
+  const normalized = (name || "").toString().toLowerCase();
+  if (!normalized) return false;
+
+  const isPaymentName = SHOP_SERVER_OPTION_DEFS.some((serverOption) =>
+    SHOP_PAYMENT_OPTION_DEFS.some(
+      (paymentOption) =>
+        normalized === `${serverOption.channelSlug}-${paymentOption.channelSlug}`,
+    ),
+  );
+
+  if (isPaymentName) return true;
+
+  return SHOP_SERVER_OPTION_DEFS.some((serverOption) => {
+    if (!normalized.startsWith(`${serverOption.channelSlug}-`)) return false;
+
+    const suffix = normalized.slice(serverOption.channelSlug.length + 1);
+    return /^\d+(?:-\d+)?zl$/.test(suffix);
+  });
 }
 
 function getModalTextInputValueSafe(interaction, customId) {
@@ -6023,7 +6079,7 @@ async function showZakupModalV2(interaction) {
   const amountInput = new TextInputBuilder()
     .setCustomId("kwota")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: 20 złotych")
+    .setPlaceholder("Przykład 20zł")
     .setRequired(true);
 
   const modal = new ModalBuilder()
@@ -6167,7 +6223,9 @@ async function handleTicketZakonczCommand(interaction) {
 
   // Pobierz parametry
   const typ = interaction.options.getString("typ");
-  const ile = interaction.options.getString("ile");
+  const co =
+    interaction.options.getString("co") ||
+    interaction.options.getString("ile");
   const serwer = interaction.options.getString("serwer");
 
   // Pobierz właściciela ticketu
@@ -6195,7 +6253,7 @@ async function handleTicketZakonczCommand(interaction) {
     repVerb = "wręczył nagrodę";
   }
 
-  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${ile} ${serwer}`;
+  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${co} ${serwer}`;
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
@@ -6218,9 +6276,7 @@ async function handleTicketZakonczCommand(interaction) {
     flags: [MessageFlags.Ephemeral],
   });
 
-  // Wyślij ping właściciela + embed + wzór (bez reply na slash)
-  await interaction.channel.send({ content: `<@${ticketOwnerId}>` });
-
+  // Wyślij embed + wzór na ticket
   await interaction.channel.send({
     embeds: [embed],
     files: [gifAttachment]
@@ -6229,6 +6285,26 @@ async function handleTicketZakonczCommand(interaction) {
   await interaction.channel.send({
     content: repMessage,
   });
+
+  // Oznacz właściciela ticketu na kanale legit-rep i usuń ping po chwili
+  try {
+    const legitRepChannel = await interaction.guild.channels
+      .fetch(legitRepChannelId)
+      .catch(() => null);
+
+    if (legitRepChannel && legitRepChannel.isTextBased()) {
+      const pingMessage = await legitRepChannel.send({
+        content: `<@${ticketOwnerId}>`,
+        allowedMentions: { users: [ticketOwnerId] },
+      });
+
+      setTimeout(() => {
+        pingMessage.delete().catch(() => null);
+      }, 4000);
+    }
+  } catch (err) {
+    console.error("Nie udało się wysłać pingu na legit-rep:", err);
+  }
 
   // Zapisz informację o oczekiwaniu na +rep dla tego ticketu
   pendingTicketClose.set(channel.id, {
@@ -7919,19 +7995,15 @@ async function handleModalSubmit(interaction) {
         ticketType = "zakup-100-200";
       }
 
-      const serverLabel =
-        getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, selectedServer) ||
-        selectedServer;
-      const paymentLabel =
-        getTestPanelOptionLabel(TEST_PANEL_PAYMENT_OPTIONS, selectedPayment) ||
-        selectedPayment;
+      const serverLabel = getShopServerLabel(selectedServer);
+      const paymentLabel = getShopPaymentLabel(selectedPayment);
 
       ticketTypeLabel = "ZAKUP";
       ticketTopic = `Zakup itemów na serwerze: ${serverLabel} (${kwotaNum}zł)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       preferredChannelName = buildPurchaseTicketChannelName(
         selectedServer,
-        kwotaNum,
+        selectedPayment,
       );
 
       formInfo =
@@ -8004,9 +8076,7 @@ async function handleModalSubmit(interaction) {
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       forceOwnerOnlyVisibility = true;
 
-      const paymentMethod =
-        getTestPanelOptionLabel(SIMPLE_PAYMENT_OPTIONS, paymentMethodRaw) ||
-        paymentMethodRaw;
+      const paymentMethod = getShopPaymentLabel(paymentMethodRaw);
 
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\`\n` +
@@ -8034,9 +8104,7 @@ async function handleModalSubmit(interaction) {
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       forceOwnerOnlyVisibility = true;
 
-      const paymentMethod =
-        getTestPanelOptionLabel(SIMPLE_PAYMENT_OPTIONS, paymentMethodRaw) ||
-        paymentMethodRaw;
+      const paymentMethod = getShopPaymentLabel(paymentMethodRaw);
 
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\``;
       break;
@@ -8081,12 +8149,8 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
       ticketTypeLabel = "SPRZEDAŻ";
-      const serwer =
-        getTestPanelOptionLabel(TEST_PANEL_SERVER_OPTIONS, serwerRaw) ||
-        serwerRaw;
-      const payoutMethod =
-        getTestPanelOptionLabel(PAYOUT_OPTIONS, payoutRaw) ||
-        payoutRaw;
+      const serwer = getShopServerLabel(serwerRaw);
+      const payoutMethod = getShopPaymentLabel(payoutRaw);
 
       ticketTopic = `Sprzedaż na serwerze: ${serwer}`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
@@ -8327,7 +8391,9 @@ async function handleModalSubmit(interaction) {
           .catch(() => null);
         if (existingChannel) {
           await interaction.reply({
-            content: `❌ Masz już otwarty ticket: <#${chanId}> — zamknij go zanim otworzysz nowy.`,
+            content:
+              `> \`❌\` × **Masz już otwarty** ticket: <#${chanId}>.\n` +
+              "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
             flags: [MessageFlags.Ephemeral],
           });
           return;
