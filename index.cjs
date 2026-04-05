@@ -3964,6 +3964,33 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
+  const embedTestPublishManualMatch = customId.match(
+    /^embedtest_publish_manual_(\d+)$/,
+  );
+  if (embedTestPublishManualMatch) {
+    const [, messageId] = embedTestPublishManualMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.showModal(buildEmbedTestPublishManualModal(state));
+    return;
+  }
+
   if (customId === "embedtest_buy_open") {
     await showZakupModalV2(interaction);
     return;
@@ -6023,6 +6050,28 @@ function buildEmbedTestSectionContent(title, body, guildId) {
   return lines.join("\n");
 }
 
+function isEmbedTestPublishTarget(channel) {
+  return (
+    !!channel &&
+    typeof channel.isSendable === "function" &&
+    channel.isSendable() &&
+    !(typeof channel.isDMBased === "function" && channel.isDMBased())
+  );
+}
+
+function parseEmbedTestChannelInput(input) {
+  const value = (input || "").trim();
+  if (!value) return null;
+
+  const mentionMatch = value.match(/^<#(\d+)>$/);
+  if (mentionMatch) return mentionMatch[1];
+
+  const idMatch = value.match(/^(\d{5,})$/);
+  if (idMatch) return idMatch[1];
+
+  return null;
+}
+
 function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
   const paymentsChannel = findEmbedTestPaymentsChannel(guild);
   const buyUrl = getDiscordMessageUrl(guild.id, targetChannel.id);
@@ -6043,7 +6092,7 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     title: "ANARCHIA LF CENNIK",
     cashSectionTitle: "KASA:",
     cashBody:
-      "<:kasa_2:1476700165082710178> `7,5k$ ➜ 1 ZŁ`",
+      ":strzałka: <:kasa_2:1476700165082710178> `7,5k$ ➜ 1 ZŁ`",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
       "-# Jeśli item posiada wartość 1MLN na rynku, jego koszt w sklepie wynosi 133zł",
@@ -6243,7 +6292,7 @@ function buildEmbedTestPublishPrompt(state) {
       "```\n" +
         "📤 New Shop × PUBLIKACJA\n" +
         "```\n" +
-        "> `📍` × Wybierz kanał, do którego mam wysłać gotową wersję\n" +
+        "> `📍` × Wybierz kanał albo wpisz go ręcznie po ID / #mention\n" +
         "> `✅` × Po wysłaniu ta sesja zostanie zakończona",
     );
 
@@ -6251,14 +6300,38 @@ function buildEmbedTestPublishPrompt(state) {
     .setCustomId(`embedtest_publish_channel_${state.messageId}`)
     .setPlaceholder("Wybierz kanał docelowy")
     .setMinValues(1)
-    .setMaxValues(1)
-    .addChannelTypes(ChannelType.GuildText);
+    .setMaxValues(1);
+
+  const manualButton = new ButtonBuilder()
+    .setCustomId(`embedtest_publish_manual_${state.messageId}`)
+    .setLabel("Wpisz kanał")
+    .setStyle(ButtonStyle.Secondary);
 
   return {
     embeds: [embed],
-    components: [new ActionRowBuilder().addComponents(channelSelect)],
+    components: [
+      new ActionRowBuilder().addComponents(channelSelect),
+      new ActionRowBuilder().addComponents(manualButton),
+    ],
     flags: [MessageFlags.Ephemeral],
   };
+}
+
+function buildEmbedTestPublishManualModal(state) {
+  const modal = new ModalBuilder()
+    .setCustomId(`embedtest_publish_manual_modal_${state.messageId}`)
+    .setTitle("Wybierz kanał docelowy");
+
+  const channelInput = new TextInputBuilder()
+    .setCustomId("target_channel")
+    .setLabel("Kanał")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(64)
+    .setPlaceholder("#kanał lub ID kanału");
+
+  modal.addComponents(new ActionRowBuilder().addComponents(channelInput));
+  return modal;
 }
 
 function buildEmbedTestHeaderModal(state) {
@@ -6441,6 +6514,57 @@ async function updateEmbedTestMessage(state) {
 
   await message.edit(buildEmbedTestMessagePayload(state));
   return true;
+}
+
+async function publishEmbedTestToChannel(interaction, state, targetChannel) {
+  if (!isEmbedTestPublishTarget(targetChannel)) {
+    await interaction.reply({
+      content: "> `❌` × Wybierz poprawny kanał, na który bot może wysłać wiadomość.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return false;
+  }
+
+  try {
+    const sentMessage = await targetChannel.send(buildEmbedTestMessagePayload(state));
+    embedTestStates.delete(state.messageId);
+
+    const payload = {
+      embeds: [
+        new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
+          "```\n" +
+            "✅ New Shop × GOTOWE\n" +
+            "```\n" +
+            `> \`📤\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
+            `> \`🔗\` × [Otwórz wiadomość](${getDiscordMessageUrl(
+              interaction.guildId,
+              targetChannel.id,
+              sentMessage.id,
+            )})`,
+        ),
+      ],
+      components: [],
+    };
+
+    if (typeof interaction.update === "function" && interaction.isMessageComponent()) {
+      await interaction.update(payload);
+    } else {
+      await interaction.reply({
+        ...payload,
+        flags: [MessageFlags.Ephemeral],
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error("embedtest publish failed:", error);
+    await interaction.reply({
+      content:
+        "> `❌` × Nie udało się wysłać gotowej wersji do wybranego kanału. Sprawdź uprawnienia bota.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return false;
+  }
 }
 
 async function handleEmbedTestCommand(interaction) {
@@ -6849,7 +6973,7 @@ async function showZakupModalV2(interaction) {
   const amountInput = new TextInputBuilder()
     .setCustomId("kwota")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład 20zł")
+    .setPlaceholder("Przykład: 20zł")
     .setRequired(true);
 
   const modal = new ModalBuilder()
@@ -7433,45 +7557,7 @@ async function handleSelectMenu(interaction) {
     const targetChannel = await interaction.guild.channels
       .fetch(targetChannelId)
       .catch(() => null);
-
-    if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
-      await interaction.reply({
-        content: "> `❌` × Wybierz poprawny kanał tekstowy.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    try {
-      const sentMessage = await targetChannel.send(
-        buildEmbedTestMessagePayload(state),
-      );
-      embedTestStates.delete(messageId);
-
-      await interaction.update({
-        embeds: [
-          new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
-            "```\n" +
-              "✅ New Shop × GOTOWE\n" +
-              "```\n" +
-              `> \`📤\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
-              `> \`🔗\` × [Otwórz wiadomość](${getDiscordMessageUrl(
-                interaction.guildId,
-                targetChannel.id,
-                sentMessage.id,
-              )})`,
-          ),
-        ],
-        components: [],
-      });
-    } catch (error) {
-      console.error("embedtest publish failed:", error);
-      await interaction.reply({
-        content:
-          "> `❌` × Nie udało się wysłać gotowej wersji do wybranego kanału. Sprawdź uprawnienia bota.",
-        flags: [MessageFlags.Ephemeral],
-      });
-    }
+    await publishEmbedTestToChannel(interaction, state, targetChannel);
     return;
   }
 
@@ -8270,6 +8356,49 @@ async function handleModalSubmit(interaction) {
   if (!guildId || !interaction.guild) return;
 
   const cid = interaction.customId || "";
+
+  const embedTestPublishManualMatch = cid.match(
+    /^embedtest_publish_manual_modal_(\d+)$/,
+  );
+  if (embedTestPublishManualMatch) {
+    const [, messageId] = embedTestPublishManualMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const channelId = parseEmbedTestChannelInput(
+      interaction.fields.getTextInputValue("target_channel"),
+    );
+
+    if (!channelId) {
+      await interaction.reply({
+        content: "> `❌` × Wpisz poprawne ID kanału albo `#mention`.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const targetChannel = await interaction.guild.channels
+      .fetch(channelId)
+      .catch(() => null);
+
+    await publishEmbedTestToChannel(interaction, state, targetChannel);
+    return;
+  }
 
   const embedTestHeaderMatch = cid.match(/^embedtest_modal_header_(\d+)$/);
   if (embedTestHeaderMatch) {
