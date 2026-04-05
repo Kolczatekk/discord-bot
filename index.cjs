@@ -6143,6 +6143,83 @@ function getEmbedTestPrimaryButtonActionDef(value) {
   );
 }
 
+function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
+  const normalized = (input || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (!normalized) {
+    return getEmbedTestPrimaryButtonActionDef(fallback);
+  }
+
+  const directMatch = EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS.find(
+    (option) => option.value === normalized,
+  );
+  if (directMatch) return directMatch;
+
+  if (
+    normalized === "zakup itemow" ||
+    normalized === "zakup itemy" ||
+    normalized === "itemy" ||
+    normalized === "item" ||
+    normalized === "zakup"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("zakup");
+  }
+
+  if (
+    normalized === "zakup autorynku" ||
+    normalized === "autorynek" ||
+    normalized === "auto rynek"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("zakup_autorynku");
+  }
+
+  if (
+    normalized === "zakup autorskiego moda" ||
+    normalized === "zakup moda" ||
+    normalized === "mod" ||
+    normalized === "mody" ||
+    normalized === "moda"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("zakup_moda");
+  }
+
+  if (normalized === "sprzedaz" || normalized === "sprzedaz itemow") {
+    return getEmbedTestPrimaryButtonActionDef("sprzedaz");
+  }
+
+  if (
+    normalized === "nagroda" ||
+    normalized === "nagroda za zaproszenia" ||
+    normalized === "odbior"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("odbior");
+  }
+
+  if (
+    normalized === "pomoc" ||
+    normalized === "pytanie" ||
+    normalized === "pytanie / pomoc" ||
+    normalized === "inne"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("inne");
+  }
+
+  if (
+    normalized === "panel" ||
+    normalized === "panel kategorii" ||
+    normalized === "kategorie"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("panel");
+  }
+
+  return null;
+}
+
 function getEmbedTestSpecialEmojiMarkup(token) {
   const normalized = (token || "")
     .toString()
@@ -6492,9 +6569,6 @@ function buildEmbedTestMessagePayload(state) {
 
 function buildEmbedTestControls(state) {
   const currentColor = getEmbedTestColorDef(state.accentColorKey);
-  const currentPrimaryButtonAction = getEmbedTestPrimaryButtonActionDef(
-    state.buttonOneAction,
-  );
   const colorSelect = new StringSelectMenuBuilder()
     .setCustomId(`embedtest_color_${state.messageId}`)
     .setPlaceholder(`Kolor embeda: ${currentColor.label}`)
@@ -6507,20 +6581,6 @@ function buildEmbedTestControls(state) {
         description: option.description,
         emoji: option.emoji,
         default: option.value === state.accentColorKey,
-      })),
-    );
-  const buttonActionSelect = new StringSelectMenuBuilder()
-    .setCustomId(`embedtest_button_action_${state.messageId}`)
-    .setPlaceholder(`Kup teraz otwiera: ${currentPrimaryButtonAction.label}`)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(
-      EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS.map((option) => ({
-        label: option.label,
-        value: option.value,
-        description: option.description,
-        emoji: option.emoji,
-        default: option.value === currentPrimaryButtonAction.value,
       })),
     );
 
@@ -6547,7 +6607,6 @@ function buildEmbedTestControls(state) {
         .setLabel("Zakończ")
         .setStyle(ButtonStyle.Success),
     ),
-    new ActionRowBuilder().addComponents(buttonActionSelect),
     new ActionRowBuilder().addComponents(colorSelect),
   ];
 }
@@ -6568,7 +6627,7 @@ function buildEmbedTestControlPayload(state, statusLine) {
         `> \`✅\` × ${statusLine}\n` +
         `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
         "> `🛠️` × Edytuj go przyciskami poniżej\n" +
-        "> `🎨` × Kolor i akcję Kup teraz zmienisz z menu pod spodem",
+        "> `🎨` × Kolor zmienisz z menu pod spodem",
     );
 
   return {
@@ -6694,6 +6753,9 @@ function buildEmbedTestButtonsModal(state) {
   const modal = new ModalBuilder()
     .setCustomId(`embedtest_modal_buttons_${state.messageId}`)
     .setTitle("Edytuj przyciski");
+  const currentPrimaryButtonAction = getEmbedTestPrimaryButtonActionDef(
+    state.buttonOneAction,
+  );
 
   const buttonOneLabelInput = new TextInputBuilder()
     .setCustomId("button_one_label")
@@ -6719,12 +6781,27 @@ function buildEmbedTestButtonsModal(state) {
     .setMaxLength(400)
     .setPlaceholder("https://...");
 
+  const buttonOneActionInput = new TextInputBuilder()
+    .setCustomId("button_one_action")
+    .setLabel("Co otwiera przycisk 1")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder(
+      "zakup / autorynek / mod / sprzedaz / odbior / pomoc / panel",
+    );
+
   setTextInputValueIfPresent(buttonOneLabelInput, state.buttonOneLabel);
   setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
   setTextInputValueIfPresent(buttonTwoUrlInput, state.buttonTwoUrl);
+  setTextInputValueIfPresent(
+    buttonOneActionInput,
+    currentPrimaryButtonAction.value,
+  );
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(buttonOneLabelInput),
+    new ActionRowBuilder().addComponents(buttonOneActionInput),
     new ActionRowBuilder().addComponents(buttonTwoLabelInput),
     new ActionRowBuilder().addComponents(buttonTwoUrlInput),
   );
@@ -7894,54 +7971,6 @@ async function handleSelectMenu(interaction) {
     return;
   }
 
-  const embedTestPrimaryButtonActionMatch = interaction.customId.match(
-    /^embedtest_button_action_(\d+)$/,
-  );
-  if (embedTestPrimaryButtonActionMatch) {
-    const [, messageId] = embedTestPrimaryButtonActionMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const selectedAction = getEmbedTestPrimaryButtonActionDef(
-      interaction.values[0],
-    );
-    state.buttonOneAction = selectedAction.value;
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.update(
-      buildEmbedTestControlPayload(
-        state,
-        `Kup teraz otwiera teraz: ${selectedAction.label}`,
-      ),
-    );
-    return;
-  }
-
   // KALKULATOR select menu handlers
   if (interaction.customId === "kalkulator_tryb" || interaction.customId === "kalkulator_metoda") {
     await handleKalkulatorSelect(interaction);
@@ -8856,6 +8885,9 @@ async function handleModalSubmit(interaction) {
     const buttonTwoUrl = interaction.fields
       .getTextInputValue("button_two_url")
       .trim();
+    const buttonOneActionInput = interaction.fields
+      .getTextInputValue("button_one_action")
+      .trim();
 
     const buttonOneLabel = interaction.fields
       .getTextInputValue("button_one_label")
@@ -8863,6 +8895,10 @@ async function handleModalSubmit(interaction) {
     const buttonTwoLabel = interaction.fields
       .getTextInputValue("button_two_label")
       .trim();
+    const parsedButtonOneAction = parseEmbedTestPrimaryButtonActionInput(
+      buttonOneActionInput,
+      state.buttonOneAction || "zakup",
+    );
 
     if (buttonTwoUrl && !isHttpUrl(buttonTwoUrl)) {
       await interaction.reply({
@@ -8880,7 +8916,17 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
+    if (!parsedButtonOneAction) {
+      await interaction.reply({
+        content:
+          "> `❌` × Dla przycisku 1 wpisz jedną z akcji: `zakup`, `autorynek`, `mod`, `sprzedaz`, `odbior`, `pomoc` albo `panel`.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
     state.buttonOneLabel = buttonOneLabel;
+    state.buttonOneAction = parsedButtonOneAction.value;
     state.buttonTwoLabel = buttonTwoLabel;
     state.buttonTwoUrl = buttonTwoUrl;
     embedTestStates.set(messageId, state);
@@ -8896,7 +8942,10 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      ...buildEmbedTestControlPayload(state, "Zaktualizowałem przyciski embeda"),
+      ...buildEmbedTestControlPayload(
+        state,
+        `Zaktualizowałem przyciski embeda, a Kup teraz otwiera: ${parsedButtonOneAction.label}`,
+      ),
       flags: [MessageFlags.Ephemeral],
     });
     return;
