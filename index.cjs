@@ -4267,7 +4267,7 @@ const nickInput = new TextInputBuilder()
     // select menu with placeholder like the screenshot
     const select = new StringSelectMenuBuilder()
       .setCustomId(`ticket_settings_select_${channel.id}`)
-      .setPlaceholder("❌ × Nie wybrano żadnej z akcji...")
+      .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
       .addOptions([
         {
           label: "Dodaj osobę",
@@ -5993,7 +5993,7 @@ async function handleTicketCommand(interaction) {
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("ticket_category")
-    .setPlaceholder("Wybierz kategorię...")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .addOptions([
       {
         label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
@@ -7349,13 +7349,13 @@ const KALKULATOR_MODE_OPTIONS = [
     label: "Ile otrzymam?",
     value: "otrzymam",
     description: "Podasz kwotę w PLN i zobaczysz ile waluty dostaniesz",
-    emoji: "💵",
+    emoji: { id: "1476700165082710178", name: "kasa_2" },
   },
   {
     label: "Ile muszę dać?",
     value: "muszedac",
-    description: "Podasz ilość waluty i zobaczysz ile zapłacisz",
-    emoji: "🧮",
+    description: "Podasz ilość waluty i zobaczysz, ile musisz za nią zapłacić",
+    emoji: { id: "1476700165082710178", name: "kasa_2" },
   },
 ];
 
@@ -9427,12 +9427,12 @@ async function handleModalSubmit(interaction) {
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder("Wybierz serwer...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
@@ -9481,12 +9481,12 @@ async function handleModalSubmit(interaction) {
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder("Wybierz serwer...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
