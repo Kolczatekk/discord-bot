@@ -5796,13 +5796,14 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     guildId: guild.id,
     channelId: targetChannel.id,
     messageId: null,
-    title: "ANARCHIA LF - CENNIK GG",
-    cashSectionTitle: "CENNIK KASY :",
-    cashBody: "• 💸 `KASA 8000$ - 1 PLN`",
-    itemsSectionTitle: "CENNIK ITEMÓW :",
+    title: "ANARCHIA LF",
+    cashSectionTitle: "KASA",
+    cashBody:
+      "**💸 Kurs zakupu:** `8000$ = 1 PLN`\n-# Kupujesz dokładnie tyle, ile potrzebujesz",
+    itemsSectionTitle: "ITEMY",
     itemsBody:
-      "• **Każdy item można kupić! Cena do dogadania na tickecie**\n*(item wart milion na l4 MC Rynku kosztuje około 125 pln)*",
-    buttonOneLabel: "Kup teraz!",
+      "**🛒 Każdy item można kupić**\n-# Cenę ustalamy indywidualnie po otwarciu ticketa",
+    buttonOneLabel: "Kup teraz",
     buttonOneUrl: buyUrl,
     buttonTwoLabel: "Płatności",
     buttonTwoUrl: paymentsUrl,
@@ -5832,19 +5833,22 @@ function buildEmbedTestMessagePayload(state) {
   }
 
   const container = new ContainerBuilder()
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`## ${state.title}`),
-    )
-    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .setAccentColor(COLOR_BLUE)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**${state.cashSectionTitle}**\n\n${state.cashBody}`,
+        `## \`💠 NEW SHOP × CENNIK\`\n**${state.title}**\n-# Oferta przygotowana w stylu New Shop`,
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**${state.itemsSectionTitle}**\n\n${state.itemsBody}`,
+        `### **${state.cashSectionTitle}**\n${state.cashBody}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### **${state.itemsSectionTitle}**\n${state.itemsBody}`,
       ),
     );
 
