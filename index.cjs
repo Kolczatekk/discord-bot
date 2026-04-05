@@ -78,6 +78,7 @@ const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
+const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -3960,34 +3961,16 @@ const nickInput = new TextInputBuilder()
       return;
     }
 
+    pendingEmbedTestPublish.set(
+      getPendingEmbedTestPublishKey(interaction.guildId, interaction.user.id),
+      {
+        messageId,
+        sourceChannelId: interaction.channelId,
+        expiresAt: Date.now() + 2 * 60 * 1000,
+      },
+    );
+
     await interaction.reply(buildEmbedTestPublishPrompt(state));
-    return;
-  }
-
-  const embedTestPublishManualMatch = customId.match(
-    /^embedtest_publish_manual_(\d+)$/,
-  );
-  if (embedTestPublishManualMatch) {
-    const [, messageId] = embedTestPublishManualMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.showModal(buildEmbedTestPublishManualModal(state));
     return;
   }
 
@@ -6072,6 +6055,47 @@ function parseEmbedTestChannelInput(input) {
   return null;
 }
 
+function getPendingEmbedTestPublishKey(guildId, userId) {
+  return `${guildId}:${userId}`;
+}
+
+function normalizeEmbedTestChannelLookup(value) {
+  return (value || "")
+    .toString()
+    .trim()
+    .replace(/^#/, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function resolveEmbedTestPublishTargetFromMessage(message) {
+  if (!message.guild) return null;
+
+  const mentionedChannel = message.mentions?.channels?.first() || null;
+  if (isEmbedTestPublishTarget(mentionedChannel)) {
+    return mentionedChannel;
+  }
+
+  const channelId = parseEmbedTestChannelInput(message.content);
+  if (channelId) {
+    const byId = message.guild.channels.cache.get(channelId) || null;
+    if (isEmbedTestPublishTarget(byId)) {
+      return byId;
+    }
+  }
+
+  const lookup = normalizeEmbedTestChannelLookup(message.content);
+  if (!lookup) return null;
+
+  return (
+    message.guild.channels.cache.find((channel) => {
+      if (!isEmbedTestPublishTarget(channel)) return false;
+      return normalizeEmbedTestChannelLookup(channel.name) === lookup;
+    }) || null
+  );
+}
+
 function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
   const paymentsChannel = findEmbedTestPaymentsChannel(guild);
   const buyUrl = getDiscordMessageUrl(guild.id, targetChannel.id);
@@ -6292,46 +6316,16 @@ function buildEmbedTestPublishPrompt(state) {
       "```\n" +
         "📤 New Shop × PUBLIKACJA\n" +
         "```\n" +
-        "> `📍` × Wybierz kanał albo wpisz go ręcznie po ID / #mention\n" +
-        "> `✅` × Po wysłaniu ta sesja zostanie zakończona",
+        "> `📍` × Wyślij teraz na czacie kanał docelowy\n" +
+        "> `✍️` × Przykład: `#‼️×〢anarchia-lf` albo ID kanału\n" +
+        "> `⏳` × Masz `2 min` na wysłanie kanału",
     );
-
-  const channelSelect = new ChannelSelectMenuBuilder()
-    .setCustomId(`embedtest_publish_channel_${state.messageId}`)
-    .setPlaceholder("Wybierz kanał docelowy")
-    .setMinValues(1)
-    .setMaxValues(1);
-
-  const manualButton = new ButtonBuilder()
-    .setCustomId(`embedtest_publish_manual_${state.messageId}`)
-    .setLabel("Wpisz kanał")
-    .setStyle(ButtonStyle.Secondary);
 
   return {
     embeds: [embed],
-    components: [
-      new ActionRowBuilder().addComponents(channelSelect),
-      new ActionRowBuilder().addComponents(manualButton),
-    ],
+    components: [],
     flags: [MessageFlags.Ephemeral],
   };
-}
-
-function buildEmbedTestPublishManualModal(state) {
-  const modal = new ModalBuilder()
-    .setCustomId(`embedtest_publish_manual_modal_${state.messageId}`)
-    .setTitle("Wybierz kanał docelowy");
-
-  const channelInput = new TextInputBuilder()
-    .setCustomId("target_channel")
-    .setLabel("Kanał")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(64)
-    .setPlaceholder("#kanał lub ID kanału");
-
-  modal.addComponents(new ActionRowBuilder().addComponents(channelInput));
-  return modal;
 }
 
 function buildEmbedTestHeaderModal(state) {
@@ -6516,6 +6510,19 @@ async function updateEmbedTestMessage(state) {
   return true;
 }
 
+async function sendEmbedTestToTargetChannel(state, targetChannel) {
+  if (!isEmbedTestPublishTarget(targetChannel)) {
+    return null;
+  }
+
+  const sentMessage = await targetChannel.send(buildEmbedTestMessagePayload(state));
+  embedTestStates.delete(state.messageId);
+  pendingEmbedTestPublish.delete(
+    getPendingEmbedTestPublishKey(state.guildId, state.ownerId),
+  );
+  return sentMessage;
+}
+
 async function publishEmbedTestToChannel(interaction, state, targetChannel) {
   if (!isEmbedTestPublishTarget(targetChannel)) {
     await interaction.reply({
@@ -6526,8 +6533,14 @@ async function publishEmbedTestToChannel(interaction, state, targetChannel) {
   }
 
   try {
-    const sentMessage = await targetChannel.send(buildEmbedTestMessagePayload(state));
-    embedTestStates.delete(state.messageId);
+    const sentMessage = await sendEmbedTestToTargetChannel(state, targetChannel);
+    if (!sentMessage) {
+      await interaction.reply({
+        content: "> `❌` × Wybierz poprawny kanał, na który bot może wysłać wiadomość.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return false;
+    }
 
     const payload = {
       embeds: [
@@ -8357,49 +8370,6 @@ async function handleModalSubmit(interaction) {
 
   const cid = interaction.customId || "";
 
-  const embedTestPublishManualMatch = cid.match(
-    /^embedtest_publish_manual_modal_(\d+)$/,
-  );
-  if (embedTestPublishManualMatch) {
-    const [, messageId] = embedTestPublishManualMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const channelId = parseEmbedTestChannelInput(
-      interaction.fields.getTextInputValue("target_channel"),
-    );
-
-    if (!channelId) {
-      await interaction.reply({
-        content: "> `❌` × Wpisz poprawne ID kanału albo `#mention`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const targetChannel = await interaction.guild.channels
-      .fetch(channelId)
-      .catch(() => null);
-
-    await publishEmbedTestToChannel(interaction, state, targetChannel);
-    return;
-  }
-
   const embedTestHeaderMatch = cid.match(/^embedtest_modal_header_(\d+)$/);
   if (embedTestHeaderMatch) {
     const [, messageId] = embedTestHeaderMatch;
@@ -9981,6 +9951,86 @@ async function handleModalSubmit(interaction) {
 // message create handler: enforce channel restrictions and keep existing legitcheck behavior
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
+
+  if (message.guild) {
+    const pendingKey = getPendingEmbedTestPublishKey(
+      message.guild.id,
+      message.author.id,
+    );
+    const pending = pendingEmbedTestPublish.get(pendingKey);
+
+    if (pending) {
+      if (pending.expiresAt <= Date.now()) {
+        pendingEmbedTestPublish.delete(pendingKey);
+      } else if (pending.sourceChannelId !== message.channelId) {
+        // czekamy tylko na wiadomość w tym samym kanale, w którym kliknięto Zakończ
+      } else {
+        const state = embedTestStates.get(pending.messageId);
+        if (!state || state.ownerId !== message.author.id) {
+          pendingEmbedTestPublish.delete(pendingKey);
+        } else {
+          const targetChannel = resolveEmbedTestPublishTargetFromMessage(message);
+
+          if (!targetChannel) {
+            const warn = await message.reply({
+              content:
+                "> `❌` × Nie znalazłem tego kanału. Wyślij `#kanał` albo ID kanału.",
+            }).catch(() => null);
+
+            if (warn) {
+              setTimeout(() => warn.delete().catch(() => null), 7_000);
+            }
+            return;
+          }
+
+          try {
+            const sentMessage = await sendEmbedTestToTargetChannel(
+              state,
+              targetChannel,
+            );
+
+            if (!sentMessage) {
+              const warn = await message.reply({
+                content:
+                  "> `❌` × Nie mogę wysłać tam wiadomości. Wybierz inny kanał.",
+              }).catch(() => null);
+              if (warn) {
+                setTimeout(() => warn.delete().catch(() => null), 7_000);
+              }
+              return;
+            }
+
+            await message.delete().catch(() => null);
+
+            const confirm = await message.channel.send({
+              content:
+                `> \`✅\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
+                `> \`🔗\` × ${getDiscordMessageUrl(
+                  message.guild.id,
+                  targetChannel.id,
+                  sentMessage.id,
+                )}`,
+            }).catch(() => null);
+
+            if (confirm) {
+              setTimeout(() => confirm.delete().catch(() => null), 10_000);
+            }
+            return;
+          } catch (error) {
+            console.error("embedtest publish by message failed:", error);
+            const warn = await message.reply({
+              content:
+                "> `❌` × Nie udało się opublikować embeda. Sprawdź uprawnienia bota.",
+            }).catch(() => null);
+            if (warn) {
+              setTimeout(() => warn.delete().catch(() => null), 8_000);
+            }
+            return;
+          }
+        }
+      }
+    }
+  }
 
   // ANTI-DISCORD-INVITE: delete invite links and timeout user for 30 minutes
   try {
