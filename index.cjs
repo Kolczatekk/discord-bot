@@ -79,6 +79,7 @@ const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerN
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
+const embedTestEmojiCacheReady = new Map(); // guildId -> timestamp ostatniego fetch emoji
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -5929,6 +5930,25 @@ function getEmbedTestSpecialEmojiMarkup(token) {
   return EMBED_TEST_SPECIAL_EMOJI_MARKUP[normalized] || null;
 }
 
+async function ensureEmbedTestEmojiCache(guildId) {
+  if (!guildId) return;
+
+  const lastFetch = embedTestEmojiCacheReady.get(guildId) || 0;
+  if (Date.now() - lastFetch < 60_000) {
+    return;
+  }
+
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return;
+
+  try {
+    await guild.emojis.fetch();
+    embedTestEmojiCacheReady.set(guildId, Date.now());
+  } catch (error) {
+    console.error("embedtest emoji fetch failed:", error);
+  }
+}
+
 function findGuildEmojiByName(guildId, emojiName) {
   if (!guildId || !emojiName) return null;
 
@@ -5938,6 +5958,9 @@ function findGuildEmojiByName(guildId, emojiName) {
   const normalized = emojiName.toLowerCase();
   return (
     guild.emojis.cache.find((emoji) => emoji.name?.toLowerCase() === normalized) ||
+    client.emojis?.cache?.find(
+      (emoji) => emoji.name?.toLowerCase() === normalized,
+    ) ||
     null
   );
 }
@@ -6109,19 +6132,21 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     guildId: guild.id,
     channelId: targetChannel.id,
     messageId: null,
-    accentColorKey: "yellow",
-    accentColor: COLOR_YELLOW,
-    headerBadge: "<:anarchia_gg:1469444521308852324>",
+    accentColorKey: "blue",
+    accentColor: COLOR_BLUE,
+    headerBadge: ":jump_dirt:",
     headerNote: "",
-    title: "ANARCHIA LF CENNIK",
-    cashSectionTitle: "KASA:",
+    title: "ANARCHIA LF - CENNIK <:anarchia_gg:1469444521308852324>",
+    cashSectionTitle: "WALUTA SERWEROWA:",
     cashBody:
-      ":strzałka: <:kasa_2:1476700165082710178> `7,5k$ ➜ 1 ZŁ`",
+      "-# zakupiona kasa wysyłana jest na /gift\n\n" +
+      ":strzałka: <:kasa_2:1476700165082710178> `7,5k$ ➜ 1 ZŁ`\n\n" +
+      ":strzałka: <:kasa_2:1476700165082710178> `8k$ ➜ 1 ZŁ` **(powyżej 200zł)**",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
-      "-# Jeśli item posiada wartość 1MLN na rynku, jego koszt w sklepie wynosi 133zł",
+      "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
     buttonOneLabel: "Kup teraz",
-    buttonOneEmoji: "💸",
+    buttonOneEmoji: "🛒",
     buttonOneUrl: buyUrl,
     buttonTwoLabel: "Płatności",
     buttonTwoEmoji: ":arrowwhite:",
@@ -6497,6 +6522,8 @@ function buildEmbedTestEmojisModal(state) {
 }
 
 async function updateEmbedTestMessage(state) {
+  await ensureEmbedTestEmojiCache(state.guildId);
+
   const guild = client.guilds.cache.get(state.guildId) || null;
   if (!guild) return false;
 
@@ -6511,6 +6538,8 @@ async function updateEmbedTestMessage(state) {
 }
 
 async function sendEmbedTestToTargetChannel(state, targetChannel) {
+  await ensureEmbedTestEmojiCache(state.guildId);
+
   if (!isEmbedTestPublishTarget(targetChannel)) {
     return null;
   }
@@ -6615,6 +6644,7 @@ async function handleEmbedTestCommand(interaction) {
   );
 
   try {
+    await ensureEmbedTestEmojiCache(interaction.guild.id);
     const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
     state.messageId = sent.id;
     embedTestStates.set(sent.id, state);
