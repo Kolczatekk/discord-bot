@@ -2936,6 +2936,10 @@ async function handleModalSubmit(interaction) {
     try {
       const kwotaStr = interaction.fields.getTextInputValue("kwota");
       const kwota = parseFloat(kwotaStr.replace(",", "."));
+      const selectedServer =
+        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
+      const selectedPayment =
+        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (isNaN(kwota) || kwota <= 0) {
         await interaction.reply({
@@ -2963,7 +2967,22 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      // Zapisz kwotę i pokaż menu z wyborem trybu i metody
+      if (selectedServer && selectedPayment) {
+        const result = buildKalkulatorResultMessage({
+          typ: "otrzymam",
+          kwota,
+          tryb: selectedServer,
+          metoda: selectedPayment,
+        });
+
+        await interaction.reply({
+          content: result.error || result.message,
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // Fallback dla starszych wiadomości kalkulatora
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
 
@@ -3008,6 +3027,10 @@ async function handleModalSubmit(interaction) {
     try {
       const walutaStr = interaction.fields.getTextInputValue("waluta");
       const waluta = parseShortNumber(walutaStr);
+      const selectedServer =
+        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
+      const selectedPayment =
+        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (!waluta || waluta <= 0 || waluta > 999_000_000) {
         await interaction.reply({
@@ -3026,7 +3049,22 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      // Zapisz walutę i pokaż menu z wyborem trybu i metody
+      if (selectedServer && selectedPayment) {
+        const result = buildKalkulatorResultMessage({
+          typ: "muszedac",
+          waluta,
+          tryb: selectedServer,
+          metoda: selectedPayment,
+        });
+
+        await interaction.reply({
+          content: result.error || result.message,
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // Fallback dla starszych wiadomości kalkulatora
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
 
@@ -3615,73 +3653,19 @@ async function handleKalkulatorSubmit(interaction, typ) {
       return;
     }
 
-    const feePercent = getPaymentFeePercent(userData.metoda);
-    const minPurchase = getMinPurchasePln(userData.metoda);
+    const result = buildKalkulatorResultMessage({
+      typ,
+      kwota: userData.kwota,
+      waluta: userData.waluta,
+      tryb: userData.tryb,
+      metoda: userData.metoda,
+    });
 
-    if (typ === "otrzymam") {
-      const kwota = userData.kwota;
-      if (kwota < minPurchase) {
-        await interaction.editReply({
-          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
-          embeds: [],
-          components: []
-        });
-        return;
-      }
-      const { fee, feeLabel } = calculateFeePln(kwota, userData.metoda);
-      const effectivePln = kwota - fee;
-      const rate = getRateForPlnAmount(kwota, userData.tryb);
-      const waluta = Math.floor(effectivePln * rate);
-      const kwotaZl = Math.trunc(Number(kwota) || 0);
-      const walutaShort = formatShortWaluta(waluta);
-
-      const msg = `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${userData.metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
-
-      await interaction.editReply({
-        content: msg,
-        embeds: [],
-        components: []
-      });
-    } else {
-      const waluta = userData.waluta;
-      const server = (userData.tryb || "").toString().toUpperCase();
-      let rate;
-      if (server === "ANARCHIA_BOXPVP") {
-        rate = ANARCHIA_BOXPVP_RATE;
-      } else if (server === "ANARCHIA_LIFESTEAL") {
-        rate = getAnarchiaLifestealRateForWaluta(waluta, userData.metoda);
-      } else if (server === "PYK_MC") {
-        rate = PYK_MC_RATE;
-      } else if (server === "DONUT_SMP") {
-        rate = DONUT_SMP_RATE;
-      } else {
-        rate = ANARCHIA_LIFESTEAL_RATE;
-      }
-      const baseRaw = waluta / rate;
-      const basePln = round2(baseRaw);
-      const { fee, feeLabel } = calculateFeePln(basePln, userData.metoda);
-      const totalPln = round2(basePln + fee);
-
-      const totalZl = Math.trunc(Number(totalPln) || 0);
-      if (totalZl < minPurchase) {
-        await interaction.editReply({
-          content: `> \`❌\` × **Minimalne zakupy** dla ${userData.metoda} to **${minPurchase}zł**.`,
-          embeds: [],
-          components: []
-        });
-        return;
-      }
-      const walutaInt = Math.floor(Number(waluta) || 0);
-      const walutaShort = formatShortWaluta(walutaInt);
-
-      const msg = `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${userData.metoda} prowizja: ${feeLabel})**`;
-
-      await interaction.editReply({
-        content: msg,
-        embeds: [],
-        components: []
-      });
-    }
+    await interaction.editReply({
+      content: result.error || result.message,
+      embeds: [],
+      components: []
+    });
 
     // Wyczyść dane użytkownika
     kalkulatorData.delete(userId);
@@ -4136,42 +4120,14 @@ const nickInput = new TextInputBuilder()
 
   // KALKULATOR: ile otrzymam?
   if (customId === "kalkulator_ile_otrzymam") {
-    const modal = new ModalBuilder()
-      .setCustomId("modal_ile_otrzymam")
-      .setTitle("New Shop × Obliczanie");
-
-    const kwotaInput = new TextInputBuilder()
-      .setCustomId("kwota")
-      .setLabel("Kwota (PLN)")
-      .setPlaceholder("np. 50")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(kwotaInput)
-    );
-
-    await interaction.showModal(modal);
+    await interaction.showModal(buildKalkulatorModal("otrzymam"));
+    return;
   }
 
   // KALKULATOR: ile muszę dać?
   if (customId === "kalkulator_ile_musze_dac") {
-    const modal = new ModalBuilder()
-      .setCustomId("modal_ile_musze_dac")
-      .setTitle("New Shop × Obliczanie");
-
-    const walutaInput = new TextInputBuilder()
-      .setCustomId("waluta")
-      .setLabel("Ilość waluty (np. 125k / 1m)")
-      .setPlaceholder("np. 125k")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(walutaInput)
-    );
-
-    await interaction.showModal(modal);
+    await interaction.showModal(buildKalkulatorModal("muszedac"));
+    return;
   }
 
   // Ticket close - double confirmation logic BUT restricted to admins/sellers
@@ -5123,20 +5079,14 @@ async function handlePanelKalkulatorCommand(interaction) {
       "> <a:arrowwhite:1469100658606211233> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
     );
 
-  const btnIleOtrzymam = new ButtonBuilder()
-    .setCustomId("kalkulator_ile_otrzymam")
-    .setLabel("Ile otrzymam?")
-    .setStyle(ButtonStyle.Secondary);
+  const typeSelect = new StringSelectMenuBuilder()
+    .setCustomId("kalkulator_typ")
+    .setPlaceholder("Wybierz pytanie...")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(KALKULATOR_MODE_OPTIONS);
 
-  const btnIleMuszeDac = new ButtonBuilder()
-    .setCustomId("kalkulator_ile_musze_dac")
-    .setLabel("Ile muszę dać?")
-    .setStyle(ButtonStyle.Secondary);
-
-  const row = new ActionRowBuilder().addComponents(
-    btnIleOtrzymam,
-    btnIleMuszeDac,
-  );
+  const row = new ActionRowBuilder().addComponents(typeSelect);
 
   await interaction.reply({
     content: "> `✅` × **Panel** kalkulatora został wysłany na ten **kanał**.",
@@ -5144,6 +5094,112 @@ async function handlePanelKalkulatorCommand(interaction) {
   });
 
   await interaction.channel.send({ embeds: [embed], components: [row] });
+}
+
+function buildKalkulatorModal(typ) {
+  const isOtrzymam = typ === "otrzymam";
+  const modal = new ModalBuilder()
+    .setCustomId(isOtrzymam ? "modal_ile_otrzymam" : "modal_ile_musze_dac")
+    .setTitle("New Shop × Obliczanie");
+
+  const valueInput = new TextInputBuilder()
+    .setCustomId(isOtrzymam ? "kwota" : "waluta")
+    .setLabel(isOtrzymam ? "Kwota (PLN)" : "Ilość waluty")
+    .setPlaceholder(isOtrzymam ? "np. 50" : "np. 125k")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+
+  const serverSelect = new StringSelectMenuBuilder()
+    .setCustomId("kalkulator_server")
+    .setPlaceholder("Wybierz serwer...")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(KALKULATOR_SERVER_OPTIONS);
+
+  const paymentSelect = new StringSelectMenuBuilder()
+    .setCustomId("kalkulator_payment")
+    .setPlaceholder("Wybierz metodę płatności...")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(KALKULATOR_PAYMENT_OPTIONS);
+
+  modal.addLabelComponents(
+    new LabelBuilder()
+      .setLabel(isOtrzymam ? "Ile otrzymam?" : "Ile muszę dać?")
+      .setTextInputComponent(valueInput),
+    new LabelBuilder()
+      .setLabel("Wybierz serwer...")
+      .setStringSelectMenuComponent(serverSelect),
+    new LabelBuilder()
+      .setLabel("Wybierz metodę płatności...")
+      .setStringSelectMenuComponent(paymentSelect),
+  );
+
+  return modal;
+}
+
+function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
+  if (!tryb || !metoda) {
+    return {
+      error: "> `❌` × **Proszę** wybrać zarówno serwer jak i metodę **płatności**.",
+    };
+  }
+
+  const minPurchase = getMinPurchasePln(metoda);
+
+  if (typ === "otrzymam") {
+    if (kwota < minPurchase) {
+      return {
+        error: `> \`❌\` × **Minimalne zakupy** dla ${metoda} to **${minPurchase}zł**.`,
+      };
+    }
+
+    const { fee, feeLabel } = calculateFeePln(kwota, metoda);
+    const effectivePln = kwota - fee;
+    const rate = getRateForPlnAmount(kwota, tryb);
+    const calculatedWaluta = Math.floor(effectivePln * rate);
+    const kwotaZl = Math.trunc(Number(kwota) || 0);
+    const walutaShort = formatShortWaluta(calculatedWaluta);
+
+    return {
+      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta} $)**`,
+    };
+  }
+
+  const server = (tryb || "").toString().toUpperCase();
+  let rate;
+  if (server === "ANARCHIA_BOXPVP") {
+    rate = ANARCHIA_BOXPVP_RATE;
+  } else if (server === "ANARCHIA_LIFESTEAL") {
+    rate = getAnarchiaLifestealRateForWaluta(waluta, metoda);
+  } else if (server === "PYK_MC") {
+    rate = PYK_MC_RATE;
+  } else if (server === "DONUT_SMP") {
+    rate = DONUT_SMP_RATE;
+  } else {
+    rate = ANARCHIA_LIFESTEAL_RATE;
+  }
+
+  const baseRaw = waluta / rate;
+  const basePln = round2(baseRaw);
+  const { fee, feeLabel } = calculateFeePln(basePln, metoda);
+  const totalPln = round2(basePln + fee);
+  const totalZl = Math.trunc(Number(totalPln) || 0);
+
+  if (totalZl < minPurchase) {
+    return {
+      error: `> \`❌\` × **Minimalne zakupy** dla ${metoda} to **${minPurchase}zł**.`,
+    };
+  }
+
+  const walutaInt = Math.floor(Number(waluta) || 0);
+  const walutaShort = formatShortWaluta(walutaInt);
+
+  return {
+    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**`,
+  };
 }
 
 async function handleAdminOdprzejmij(interaction) {
@@ -7288,6 +7344,21 @@ const AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS = [
   },
 ];
 
+const KALKULATOR_MODE_OPTIONS = [
+  {
+    label: "Ile otrzymam?",
+    value: "otrzymam",
+    description: "Podasz kwotę w PLN i zobaczysz ile waluty dostaniesz",
+    emoji: "💵",
+  },
+  {
+    label: "Ile muszę dać?",
+    value: "muszedac",
+    description: "Podasz ilość waluty i zobaczysz ile zapłacisz",
+    emoji: "🧮",
+  },
+];
+
 const PANEL_CATEGORY_OPTIONS = [
   {
     label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
@@ -7539,6 +7610,13 @@ async function showTestPanelZakupModal(interaction) {
 }
 
 async function showZakupModalV2(interaction) {
+  const itemInput = new TextInputBuilder()
+    .setCustomId("co_kupic")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Przykład: Kasa na Anarchia.gg")
+    .setRequired(true)
+    .setMaxLength(120);
+
   const serverSelect = new StringSelectMenuBuilder()
     .setCustomId("zakup_server")
     .setPlaceholder("Wybierz serwer")
@@ -7565,6 +7643,9 @@ async function showZakupModalV2(interaction) {
     .setCustomId("modal_zakup")
     .setTitle("Formularz zakupu")
     .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Co chcesz kupić?")
+        .setTextInputComponent(itemInput),
       new LabelBuilder()
         .setLabel("Na jakim serwerze?")
         .setStringSelectMenuComponent(serverSelect),
@@ -8190,6 +8271,12 @@ async function handleSelectMenu(interaction) {
         `Ustawiłem kolor embeda na ${selectedColor.label}`,
       ),
     );
+    return;
+  }
+
+  if (interaction.customId === "kalkulator_typ") {
+    const selectedType = interaction.values[0];
+    await interaction.showModal(buildKalkulatorModal(selectedType));
     return;
   }
 
@@ -9891,6 +9978,8 @@ async function handleModalSubmit(interaction) {
   switch (interaction.customId) {
     case "modal_testpanel_purchase":
     case "modal_zakup": {
+      const itemToBuy =
+        (getModalTextInputValueSafe(interaction, "co_kupic") || "").trim();
       const selectedServer =
         getModalStringSelectValueSafe(interaction, "zakup_server") ||
         getModalStringSelectValueSafe(interaction, "testpanel_purchase_server") ||
@@ -9948,6 +10037,14 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
+      if (!itemToBuy) {
+        await interaction.reply({
+          content: "> `❌` × Podaj, co chcesz kupić przed wysłaniem formularza.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       if (kwotaNum <= 20) {
         categoryId = categories["zakup-0-20"];
         ticketType = "zakup-0-20";
@@ -9974,6 +10071,7 @@ async function handleModalSubmit(interaction) {
       );
 
       formInfo =
+        `> <a:arrowwhite:1469100658606211233> × **Co chcesz kupić:** \`${itemToBuy}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serverLabel}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentLabel}\``;
