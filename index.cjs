@@ -9,6 +9,7 @@ const {
   PermissionFlagsBits,
   ChannelType,
   ActionRowBuilder,
+  ChannelSelectMenuBuilder,
   ContainerBuilder,
   StringSelectMenuBuilder,
   LabelBuilder,
@@ -3936,6 +3937,33 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
+  const embedTestPublishStartMatch = customId.match(
+    /^embedtest_publish_start_(\d+)$/,
+  );
+  if (embedTestPublishStartMatch) {
+    const [, messageId] = embedTestPublishStartMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply(buildEmbedTestPublishPrompt(state));
+    return;
+  }
+
   const embedTestEditMatch = customId.match(
     /^embedtest_edit_(header|content|buttons|emojis)_(\d+)$/,
   );
@@ -5866,6 +5894,46 @@ function getEmbedTestColorDef(value) {
   );
 }
 
+function findGuildEmojiByName(guildId, emojiName) {
+  if (!guildId || !emojiName) return null;
+
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return null;
+
+  const normalized = emojiName.toLowerCase();
+  return (
+    guild.emojis.cache.find((emoji) => emoji.name?.toLowerCase() === normalized) ||
+    null
+  );
+}
+
+function toGuildEmojiMarkup(emoji) {
+  if (!emoji) return "";
+  return `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`;
+}
+
+function replaceNamedGuildEmojis(text, guildId) {
+  const source = (text || "").toString();
+  if (!source) return "";
+
+  const preserved = [];
+  const masked = source.replace(/<a?:[a-zA-Z0-9_]+:\d+>/g, (match) => {
+    const token = `__EMBEDTEST_EMOJI_${preserved.length}__`;
+    preserved.push({ token, markup: match });
+    return token;
+  });
+
+  const replaced = masked.replace(/:([a-zA-Z0-9_]+):/g, (match, name) => {
+    const emoji = findGuildEmojiByName(guildId, name);
+    return emoji ? toGuildEmojiMarkup(emoji) : match;
+  });
+
+  return preserved.reduce(
+    (content, item) => content.replace(item.token, item.markup),
+    replaced,
+  );
+}
+
 function setTextInputValueIfPresent(input, value) {
   if (typeof value === "string" && value.length > 0) {
     input.setValue(value);
@@ -5874,7 +5942,7 @@ function setTextInputValueIfPresent(input, value) {
   return input;
 }
 
-function parseButtonEmojiInput(input) {
+function parseButtonEmojiInput(input, guildId) {
   const value = (input || "").trim();
   if (!value) return null;
 
@@ -5888,18 +5956,33 @@ function parseButtonEmojiInput(input) {
     };
   }
 
+  const customEmojiByNameMatch = value.match(/^:([a-zA-Z0-9_]+):$/);
+  if (customEmojiByNameMatch) {
+    const emoji = findGuildEmojiByName(guildId, customEmojiByNameMatch[1]);
+    return emoji
+      ? { id: emoji.id, name: emoji.name, animated: emoji.animated }
+      : null;
+  }
+
+  if (/^[a-zA-Z0-9_]+$/.test(value)) {
+    const emoji = findGuildEmojiByName(guildId, value);
+    if (emoji) {
+      return { id: emoji.id, name: emoji.name, animated: emoji.animated };
+    }
+  }
+
   return { name: value };
 }
 
-function buildEmbedTestSectionContent(title, body) {
+function buildEmbedTestSectionContent(title, body, guildId) {
   const lines = [];
 
   if (title) {
-    lines.push(`### **${title}**`);
+    lines.push(`**${replaceNamedGuildEmojis(title, guildId)}**`);
   }
 
   if (body) {
-    lines.push(body);
+    lines.push(replaceNamedGuildEmojis(body, guildId));
   }
 
   return lines.join("\n");
@@ -5918,22 +6001,22 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     guildId: guild.id,
     channelId: targetChannel.id,
     messageId: null,
-    accentColorKey: "blue",
-    accentColor: COLOR_BLUE,
-    headerBadge: "💠 NEW SHOP × CENNIK",
-    headerNote: "-# Oferta przygotowana w stylu New Shop",
-    title: "ANARCHIA LF",
-    cashSectionTitle: "KASA",
+    accentColorKey: "yellow",
+    accentColor: COLOR_YELLOW,
+    headerBadge: ":gg:",
+    headerNote: "",
+    title: "ANARCHIA LF CENNIK",
+    cashSectionTitle: "KASA:",
     cashBody:
-      "**💸 Kurs zakupu:** `8000$ = 1 PLN`\n-# Kupujesz dokładnie tyle, ile potrzebujesz",
-    itemsSectionTitle: "ITEMY",
+      "💸 `7,5k$ ➜ 1 ZŁ`",
+    itemsSectionTitle: "ITEMY:",
     itemsBody:
-      "**🛒 Każdy item można kupić**\n-# Cenę ustalamy indywidualnie po otwarciu ticketa",
+      "-# Jeśli item posiada wartość 1MLN na rynku, jego koszt w sklepie wynosi 133zł",
     buttonOneLabel: "Kup teraz",
     buttonOneEmoji: "💸",
     buttonOneUrl: buyUrl,
     buttonTwoLabel: "Płatności",
-    buttonTwoEmoji: "",
+    buttonTwoEmoji: ":arrowwhite:",
     buttonTwoUrl: paymentsUrl,
   };
 }
@@ -5941,27 +6024,38 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
 function buildEmbedTestMessagePayload(state) {
   const buttons = [];
   const headerLines = [];
-  const buttonOneEmoji = parseButtonEmojiInput(state.buttonOneEmoji);
-  const buttonTwoEmoji = parseButtonEmojiInput(state.buttonTwoEmoji);
+  const buttonOneEmoji = parseButtonEmojiInput(
+    state.buttonOneEmoji,
+    state.guildId,
+  );
+  const buttonTwoEmoji = parseButtonEmojiInput(
+    state.buttonTwoEmoji,
+    state.guildId,
+  );
   const cashSectionContent = buildEmbedTestSectionContent(
     state.cashSectionTitle,
     state.cashBody,
+    state.guildId,
   );
   const itemsSectionContent = buildEmbedTestSectionContent(
     state.itemsSectionTitle,
     state.itemsBody,
+    state.guildId,
   );
 
+  const headingParts = [];
   if (state.headerBadge) {
-    headerLines.push(`## ${state.headerBadge}`);
+    headingParts.push(replaceNamedGuildEmojis(state.headerBadge, state.guildId));
   }
-
   if (state.title) {
-    headerLines.push(`**${state.title}**`);
+    headingParts.push(replaceNamedGuildEmojis(state.title, state.guildId));
+  }
+  if (headingParts.length) {
+    headerLines.push(`## ${headingParts.join(" ")}`);
   }
 
   if (state.headerNote) {
-    headerLines.push(state.headerNote);
+    headerLines.push(replaceNamedGuildEmojis(state.headerNote, state.guildId));
   }
 
   if (state.buttonOneLabel && isHttpUrl(state.buttonOneUrl)) {
@@ -6073,6 +6167,10 @@ function buildEmbedTestControls(state) {
         .setCustomId(`embedtest_edit_emojis_${state.messageId}`)
         .setLabel("Emoji")
         .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`embedtest_publish_start_${state.messageId}`)
+        .setLabel("Zakończ")
+        .setStyle(ButtonStyle.Success),
     ),
     new ActionRowBuilder().addComponents(colorSelect),
   ];
@@ -6100,6 +6198,31 @@ function buildEmbedTestControlPayload(state, statusLine) {
   return {
     embeds: [embed],
     components: buildEmbedTestControls(state),
+  };
+}
+
+function buildEmbedTestPublishPrompt(state) {
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      "```\n" +
+        "📤 New Shop × PUBLIKACJA\n" +
+        "```\n" +
+        "> `📍` × Wybierz kanał, do którego mam wysłać gotową wersję\n" +
+        "> `✅` × Po wysłaniu ta sesja zostanie zakończona",
+    );
+
+  const channelSelect = new ChannelSelectMenuBuilder()
+    .setCustomId(`embedtest_publish_channel_${state.messageId}`)
+    .setPlaceholder("Wybierz kanał docelowy")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addChannelTypes(ChannelType.GuildText);
+
+  return {
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(channelSelect)],
+    flags: [MessageFlags.Ephemeral],
   };
 }
 
@@ -7258,6 +7381,75 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
 }
 
 async function handleSelectMenu(interaction) {
+  const embedTestPublishChannelMatch = interaction.customId.match(
+    /^embedtest_publish_channel_(\d+)$/,
+  );
+  if (embedTestPublishChannelMatch) {
+    const [, messageId] = embedTestPublishChannelMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const targetChannelId = interaction.values[0];
+    const targetChannel = await interaction.guild.channels
+      .fetch(targetChannelId)
+      .catch(() => null);
+
+    if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+      await interaction.reply({
+        content: "> `❌` × Wybierz poprawny kanał tekstowy.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    try {
+      const sentMessage = await targetChannel.send(
+        buildEmbedTestMessagePayload(state),
+      );
+      embedTestStates.delete(messageId);
+
+      await interaction.update({
+        embeds: [
+          new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
+            "```\n" +
+              "✅ New Shop × GOTOWE\n" +
+              "```\n" +
+              `> \`📤\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
+              `> \`🔗\` × [Otwórz wiadomość](${getDiscordMessageUrl(
+                interaction.guildId,
+                targetChannel.id,
+                sentMessage.id,
+              )})`,
+          ),
+        ],
+        components: [],
+      });
+    } catch (error) {
+      console.error("embedtest publish failed:", error);
+      await interaction.reply({
+        content:
+          "> `❌` × Nie udało się wysłać gotowej wersji do wybranego kanału. Sprawdź uprawnienia bota.",
+        flags: [MessageFlags.Ephemeral],
+      });
+    }
+    return;
+  }
+
   const embedTestColorMatch = interaction.customId.match(
     /^embedtest_color_(\d+)$/,
   );
