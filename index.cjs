@@ -3996,11 +3996,41 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
-  if (customId === "embedtest_buy_open") {
-    await interaction.reply({
-      ...buildTicketPanelPayload(),
-      flags: [MessageFlags.Ephemeral],
-    });
+  const embedTestBuyOpenMatch = customId.match(
+    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel))?$/,
+  );
+  if (embedTestBuyOpenMatch) {
+    const action = embedTestBuyOpenMatch[1] || "zakup";
+
+    switch (action) {
+      case "zakup":
+        await showZakupModal(interaction);
+        break;
+      case "zakup_autorynku":
+        await showAutoRynekZakupModal(interaction);
+        break;
+      case "zakup_moda":
+        await showModyZakupModal(interaction);
+        break;
+      case "sprzedaz":
+        await showSprzedazModal(interaction);
+        break;
+      case "odbior":
+        await showOdbiorModal(interaction);
+        break;
+      case "inne":
+        await showInneModal(interaction);
+        break;
+      case "panel":
+        await interaction.reply({
+          ...buildTicketPanelPayload(),
+          flags: [MessageFlags.Ephemeral],
+        });
+        break;
+      default:
+        await showZakupModal(interaction);
+        break;
+    }
     return;
   }
 
@@ -6044,6 +6074,51 @@ const EMBED_TEST_COLOR_OPTIONS = [
   },
 ];
 
+const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
+  {
+    value: "zakup",
+    label: "Zakup itemów",
+    description: "Otwiera formularz zakupu itemów",
+    emoji: "🛒",
+  },
+  {
+    value: "zakup_autorynku",
+    label: "Zakup autorynku",
+    description: "Otwiera formularz zakupu autorynku",
+    emoji: "🏪",
+  },
+  {
+    value: "zakup_moda",
+    label: "Zakup autorskiego moda",
+    description: "Otwiera formularz zakupu moda",
+    emoji: "🧩",
+  },
+  {
+    value: "sprzedaz",
+    label: "Sprzedaż",
+    description: "Otwiera formularz sprzedaży",
+    emoji: "💸",
+  },
+  {
+    value: "odbior",
+    label: "Nagroda za zaproszenia",
+    description: "Otwiera formularz odbioru nagrody",
+    emoji: "🎁",
+  },
+  {
+    value: "inne",
+    label: "Pytanie / pomoc",
+    description: "Otwiera formularz pomocy",
+    emoji: "❓",
+  },
+  {
+    value: "panel",
+    label: "Panel kategorii",
+    description: "Pokazuje cały panel ticketów",
+    emoji: "📩",
+  },
+];
+
 const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
   gg: "<:anarchia_gg:1469444521308852324>",
   kasa: "<:kasa_2:1476700165082710178>",
@@ -6057,6 +6132,14 @@ function getEmbedTestColorDef(value) {
   return (
     EMBED_TEST_COLOR_OPTIONS.find((option) => option.value === value) ||
     EMBED_TEST_COLOR_OPTIONS[0]
+  );
+}
+
+function getEmbedTestPrimaryButtonActionDef(value) {
+  return (
+    EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS.find(
+      (option) => option.value === value,
+    ) || EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS[0]
   );
 }
 
@@ -6288,6 +6371,7 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
       "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
     buttonOneLabel: "Kup teraz",
     buttonOneEmoji: "🛒",
+    buttonOneAction: "zakup",
     buttonOneUrl: buyUrl,
     buttonTwoLabel: "Płatności",
     buttonTwoEmoji: "💳",
@@ -6336,7 +6420,7 @@ function buildEmbedTestMessagePayload(state) {
     const button = new ButtonBuilder()
       .setLabel(state.buttonOneLabel)
       .setStyle(ButtonStyle.Secondary)
-      .setCustomId("embedtest_buy_open");
+      .setCustomId(`embedtest_buy_open_${state.buttonOneAction || "zakup"}`);
 
     if (buttonOneEmoji) {
       button.setEmoji(buttonOneEmoji);
@@ -6408,6 +6492,9 @@ function buildEmbedTestMessagePayload(state) {
 
 function buildEmbedTestControls(state) {
   const currentColor = getEmbedTestColorDef(state.accentColorKey);
+  const currentPrimaryButtonAction = getEmbedTestPrimaryButtonActionDef(
+    state.buttonOneAction,
+  );
   const colorSelect = new StringSelectMenuBuilder()
     .setCustomId(`embedtest_color_${state.messageId}`)
     .setPlaceholder(`Kolor embeda: ${currentColor.label}`)
@@ -6420,6 +6507,20 @@ function buildEmbedTestControls(state) {
         description: option.description,
         emoji: option.emoji,
         default: option.value === state.accentColorKey,
+      })),
+    );
+  const buttonActionSelect = new StringSelectMenuBuilder()
+    .setCustomId(`embedtest_button_action_${state.messageId}`)
+    .setPlaceholder(`Kup teraz otwiera: ${currentPrimaryButtonAction.label}`)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS.map((option) => ({
+        label: option.label,
+        value: option.value,
+        description: option.description,
+        emoji: option.emoji,
+        default: option.value === currentPrimaryButtonAction.value,
       })),
     );
 
@@ -6446,6 +6547,7 @@ function buildEmbedTestControls(state) {
         .setLabel("Zakończ")
         .setStyle(ButtonStyle.Success),
     ),
+    new ActionRowBuilder().addComponents(buttonActionSelect),
     new ActionRowBuilder().addComponents(colorSelect),
   ];
 }
@@ -6466,7 +6568,7 @@ function buildEmbedTestControlPayload(state, statusLine) {
         `> \`✅\` × ${statusLine}\n` +
         `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
         "> `🛠️` × Edytuj go przyciskami poniżej\n" +
-        "> `🎨` × Kolor zmienisz z menu pod spodem",
+        "> `🎨` × Kolor i akcję Kup teraz zmienisz z menu pod spodem",
     );
 
   return {
@@ -7787,6 +7889,54 @@ async function handleSelectMenu(interaction) {
       buildEmbedTestControlPayload(
         state,
         `Ustawiłem kolor embeda na ${selectedColor.label}`,
+      ),
+    );
+    return;
+  }
+
+  const embedTestPrimaryButtonActionMatch = interaction.customId.match(
+    /^embedtest_button_action_(\d+)$/,
+  );
+  if (embedTestPrimaryButtonActionMatch) {
+    const [, messageId] = embedTestPrimaryButtonActionMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const selectedAction = getEmbedTestPrimaryButtonActionDef(
+      interaction.values[0],
+    );
+    state.buttonOneAction = selectedAction.value;
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.update(
+      buildEmbedTestControlPayload(
+        state,
+        `Kup teraz otwiera teraz: ${selectedAction.label}`,
       ),
     );
     return;
