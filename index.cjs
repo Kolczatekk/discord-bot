@@ -3997,7 +3997,10 @@ const nickInput = new TextInputBuilder()
   }
 
   if (customId === "embedtest_buy_open") {
-    await showZakupModalV2(interaction);
+    await interaction.reply({
+      ...buildTicketPanelPayload(),
+      flags: [MessageFlags.Ephemeral],
+    });
     return;
   }
 
