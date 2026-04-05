@@ -9,8 +9,9 @@ const {
   PermissionFlagsBits,
   ChannelType,
   ActionRowBuilder,
-  ChannelSelectMenuBuilder,
   ContainerBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
   StringSelectMenuBuilder,
   LabelBuilder,
   ModalBuilder,  
@@ -1620,6 +1621,26 @@ const commands = [
         )
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildText),
+    )
+    .addStringOption((o) =>
+      o
+        .setName("data")
+        .setDescription("Czy dodać datę na dole karty")
+        .setRequired(false)
+        .addChoices(
+          { name: "zdata", value: "zdata" },
+          { name: "bezdaty", value: "bezdaty" },
+        ),
+    )
+    .addStringOption((o) =>
+      o
+        .setName("pingi")
+        .setDescription("Jak obsłużyć pingi w treści")
+        .setRequired(false)
+        .addChoices(
+          { name: "zpingiem", value: "zpingiem" },
+          { name: "bezpingu", value: "bezpingu" },
+        ),
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -5107,16 +5128,125 @@ async function handleAdminOdprzejmij(interaction) {
   await ticketUnclaimCommon(interaction, channel.id, null, { reason: null });
 }
 
-/*
-  UPDATED: Interactive /sendmessage handler
-  Flow:
-  - Admin uses /sendmessage [kanal optional]
-  - Bot replies ephemeral asking the admin to send the message content in the same channel within 2 minutes.
-  - Admin posts the message (can include animated emoji like <a:name:id>, images/GIFs as attachments).
-  - Bot forwards the submitted content + attachments + embeds to the target channel as a single EMBED with blue color.
-*/
+function replaceEmbedAliasTokens(text = "") {
+  const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
+  const alertEmoji = "<a:alert:1474431227972026469>";
+  const alertEmoji2 = "<a:alertownik2:1477688955221835807>";
+  const minecraftEmoji2 = "<a:minecraft2:1480590181944791122>";
+  const ironLoveEmoji = "<a:iron_love:1480590229697069210>";
+  const starEmoji = "<:star:1474431260133691567>";
+
+  return (text || "")
+    .replace(/:strzałka:/gi, arrowEmoji)
+    .replace(/:alertownik:/gi, alertEmoji)
+    .replace(/:alertownik2:/gi, alertEmoji2)
+    .replace(/:minecraft2:/gi, minecraftEmoji2)
+    .replace(/:iron_love:/gi, ironLoveEmoji)
+    .replace(/:startownik:/gi, starEmoji);
+}
+
+function extractEmbedPingTokens(text = "") {
+  const pingRegex = /<@!?\d+>|<@&\d+>|@everyone|@here/g;
+  const matches = text.match(pingRegex) || [];
+  const unique = [];
+
+  for (const match of matches) {
+    if (!unique.includes(match)) {
+      unique.push(match);
+    }
+  }
+
+  const cleaned = text
+    .replace(pingRegex, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return {
+    pingContent: unique.join(" "),
+    cleanedContent: cleaned,
+  };
+}
+
+function collectEmbedMediaFromMessage(message) {
+  const mediaUrls = [];
+  const fileUrls = [];
+
+  for (const attachment of message.attachments.values()) {
+    const contentType = (attachment.contentType || "").toLowerCase();
+    const name = (attachment.name || "").toLowerCase();
+    const isMedia =
+      contentType.startsWith("image/") ||
+      contentType.startsWith("video/") ||
+      /\.(png|jpe?g|gif|webp|bmp|mp4|mov|webm|m4v)$/i.test(name);
+
+    if (isMedia) {
+      mediaUrls.push(attachment.url);
+    } else {
+      fileUrls.push(attachment.url);
+    }
+  }
+
+  return { mediaUrls, fileUrls };
+}
+
+function buildSendMessageCardPayload({
+  bodyText,
+  mediaUrls,
+  includeDate,
+  pingMode,
+  pingContent,
+  fileUrls,
+}) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  const trimmedBody = (bodyText || "").trim();
+
+  if (trimmedBody) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(trimmedBody),
+    );
+  }
+
+  if (mediaUrls.length) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        mediaUrls.map((url) => new MediaGalleryItemBuilder().setURL(url)),
+      ),
+    );
+  }
+
+  if (includeDate) {
+    if (trimmedBody || mediaUrls.length) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# Wysłano <t:${Math.floor(Date.now() / 1000)}:f>`,
+      ),
+    );
+  }
+
+  if (!container.components.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# (brak treści)"),
+    );
+  }
+
+  return {
+    content: pingMode === "zpingiem" && pingContent ? pingContent : undefined,
+    components: [container],
+    files: fileUrls.length ? fileUrls : undefined,
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions:
+      pingMode === "zpingiem"
+        ? { parse: ["users", "roles", "everyone"] }
+        : { parse: [] },
+  };
+}
+
 async function handleSendMessageCommand(interaction) {
-  // Sprawdź czy właściciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
       content: "> `❗` × Brak wymaganych uprawnień.",
@@ -5125,9 +5255,11 @@ async function handleSendMessageCommand(interaction) {
     return;
   }
 
-  // Target channel (optional)
   const targetChannel =
     interaction.options.getChannel("kanal") || interaction.channel;
+  const dateMode = interaction.options.getString("data") || "bezdaty";
+  const pingMode = interaction.options.getString("pingi") || "bezpingu";
+  const includeDate = dateMode === "zdata";
 
   if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
     await interaction.reply({
@@ -5137,13 +5269,14 @@ async function handleSendMessageCommand(interaction) {
     return;
   }
 
-  // Ask user to send the message they want forwarded
   try {
     await interaction.reply({
       content:
-        "✉️ Napisz w tym kanale (w ciągu 2 minut) wiadomość, którą mam wysłać w docelowym kanale.\n" +
-        `Docelowy kanał: <#${targetChannel.id}>\n\n` +
-        "Możesz wysłać tekst (w tym animowane emoji w formacie `<a:nazwa:id>`), załączyć GIF/obraz, lub wkleić emoji. Wpisz `anuluj`, aby przerwać.",
+        "✉️ Napisz w tym kanale w ciągu 2 minut wiadomość, którą mam wysłać.\n" +
+        `Docelowy kanał: <#${targetChannel.id}>\n` +
+        `Tryb daty: \`${dateMode}\`\n` +
+        `Tryb pingów: \`${pingMode}\`\n\n` +
+        "Możesz używać markdownu Discorda jak `###`, `**tekst**`, `-# tekst`, wysłać GIF/filmik/obraz i wpisać `anuluj`, aby przerwać.",
       flags: [MessageFlags.Ephemeral],
     });
   } catch (e) {
@@ -5170,80 +5303,41 @@ async function handleSendMessageCommand(interaction) {
 
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
-    const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
-    const alertEmoji = '<a:alert:1474431227972026469>';
-    const alertEmoji2 = '<a:alertownik2:1477688955221835807>';
-    const minecraftEmoji2 = '<a:minecraft2:1480590181944791122>';
-    const ironLoveEmoji = '<a:iron_love:1480590229697069210>';
-    const starEmoji = '<:star:1474431260133691567>';
-    const content = contentRaw
-      .replace(/:strzałka:/gi, arrowEmoji)
-      .replace(/:alertownik:/gi, alertEmoji)
-      .replace(/:alertownik2:/gi, alertEmoji2)
-      .replace(/:minecraft2:/gi, minecraftEmoji2)
-      .replace(/:iron_love:/gi, ironLoveEmoji)
-      .replace(/:startownik:/gi, starEmoji);
-    if (content.toLowerCase() === "anuluj") {
+    await ensureEmbedTestEmojiCache(interaction.guild.id);
+    const contentWithAliases = replaceNamedGuildEmojis(
+      replaceEmbedAliasTokens(contentRaw),
+      interaction.guild.id,
+    );
+
+    if (contentWithAliases.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
           content: "> `❌` × **Anulowano** wysyłanie wiadomości.",
           flags: [MessageFlags.Ephemeral],
         });
-      } catch (e) { }
+      } catch (e) {}
       collector.stop("cancelled");
       return;
     }
 
-    // Prepare files from attachments:
-    const files = [];
-    let imageAttachment = null;
-    for (const att of msg.attachments.values()) {
-      if (att.contentType && att.contentType.startsWith('image/')) {
-        imageAttachment = att.url;
-      } else {
-        files.push(att.url);
-      }
-    }
-
-    // Build embed with blue color to send as the message (user requested)
-    const sendEmbed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription((content || "`(brak treści)`").replace(/<@!?\d+>|@everyone|@here/g, ''))
-      .setTimestamp();
-    
-    // Add image to embed if present
-    if (imageAttachment) {
-      sendEmbed.setImage(imageAttachment);
-    }
-
-    // Forward embeds if the user pasted/embeded some
-    const userEmbeds = msg.embeds?.length
-      ? msg.embeds.map((e) => e.toJSON())
-      : [];
+    const { pingContent, cleanedContent } = extractEmbedPingTokens(
+      contentWithAliases,
+    );
+    const { mediaUrls, fileUrls } = collectEmbedMediaFromMessage(msg);
+    const finalBodyText =
+      pingMode === "zpingiem" ? cleanedContent : contentWithAliases;
 
     try {
-      // Send to the target channel as embed + attachments (attachments included directly)
-      const sendOptions = {
-        embeds: [sendEmbed],
-        files: files.length ? files : undefined,
-      };
-      
-      // Extract pings from content and send as separate message
-      const pings = content.match(/<@!?\d+>|@everyone|@here/g);
-      if (pings && pings.length > 0) {
-        await targetChannel.send({ content: pings.join(' ') });
-      }
-      
-      await targetChannel.send(sendOptions);
+      const sendOptions = buildSendMessageCardPayload({
+        bodyText: finalBodyText,
+        mediaUrls,
+        includeDate,
+        pingMode,
+        pingContent,
+        fileUrls,
+      });
 
-      // If the user also had embeds, append them as a follow-up (optional)
-      if (userEmbeds.length) {
-        try {
-          await targetChannel.send({ embeds: userEmbeds });
-        } catch (e) {
-          // ignore
-        }
-      }
+      await targetChannel.send(sendOptions);
 
       await interaction.followUp({
         content: `✅ Wiadomość została wysłana do <#${targetChannel.id}>.`,
@@ -5257,10 +5351,7 @@ async function handleSendMessageCommand(interaction) {
             "❌ Nie udało się wysłać wiadomości (sprawdź uprawnienia bota do wysyłania wiadomości/załączników).",
           flags: [MessageFlags.Ephemeral],
         });
-      } catch (e) { }
-    } finally {
-      // Optionally delete the user's message to keep the channel clean. Uncomment if desired.
-      // try { await msg.delete().catch(()=>null); } catch(e){}
+      } catch (e) {}
     }
   });
 
@@ -5269,10 +5360,10 @@ async function handleSendMessageCommand(interaction) {
       try {
         await interaction.followUp({
           content:
-            "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /sendmessage aby spróbować jeszcze raz.",
+            "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /embed aby spróbować jeszcze raz.",
           flags: [MessageFlags.Ephemeral],
         });
-      } catch (e) { }
+      } catch (e) {}
     }
   });
 }
