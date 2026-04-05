@@ -9,10 +9,13 @@ const {
   PermissionFlagsBits,
   ChannelType,
   ActionRowBuilder,
+  ContainerBuilder,
   StringSelectMenuBuilder,
   LabelBuilder,
   ModalBuilder,  
+  SeparatorBuilder,
   TextInputBuilder,
+  TextDisplayBuilder,
   TextInputStyle, 
   PermissionsBitField,
   ButtonBuilder,
@@ -5806,24 +5809,7 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
   };
 }
 
-function buildEmbedTestDescription(state) {
-  return [
-    "────────────────────",
-    `**${state.cashSectionTitle}**`,
-    state.cashBody,
-    "",
-    "────────────────────",
-    `**${state.itemsSectionTitle}**`,
-    state.itemsBody,
-  ].join("\n");
-}
-
 function buildEmbedTestMessagePayload(state) {
-  const embed = new EmbedBuilder()
-    .setColor(0x2b2d31)
-    .setTitle(state.title)
-    .setDescription(buildEmbedTestDescription(state));
-
   const buttons = [];
 
   if (isHttpUrl(state.buttonOneUrl)) {
@@ -5845,16 +5831,33 @@ function buildEmbedTestMessagePayload(state) {
     );
   }
 
-  const payload = {
-    embeds: [embed],
-    components: [],
-  };
+  const container = new ContainerBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`## ${state.title}`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**${state.cashSectionTitle}**\n\n${state.cashBody}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**${state.itemsSectionTitle}**\n\n${state.itemsBody}`,
+      ),
+    );
 
   if (buttons.length) {
-    payload.components = [new ActionRowBuilder().addComponents(...buttons)];
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(...buttons),
+    );
   }
 
-  return payload;
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
 }
 
 function buildEmbedTestControls(messageId) {
