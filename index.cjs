@@ -3937,7 +3937,7 @@ const nickInput = new TextInputBuilder()
   }
 
   const embedTestEditMatch = customId.match(
-    /^embedtest_edit_(content|buttons)_(\d+)$/,
+    /^embedtest_edit_(header|content|buttons)_(\d+)$/,
   );
   if (embedTestEditMatch) {
     const [, mode, messageId] = embedTestEditMatch;
@@ -3956,6 +3956,11 @@ const nickInput = new TextInputBuilder()
         content: "> `❗` × Tylko autor testu może edytować ten embed.",
         flags: [MessageFlags.Ephemeral],
       });
+      return;
+    }
+
+    if (mode === "header") {
+      await interaction.showModal(buildEmbedTestHeaderModal(state));
       return;
     }
 
@@ -5796,6 +5801,8 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     guildId: guild.id,
     channelId: targetChannel.id,
     messageId: null,
+    headerBadge: "💠 NEW SHOP × CENNIK",
+    headerNote: "-# Oferta przygotowana w stylu New Shop",
     title: "ANARCHIA LF",
     cashSectionTitle: "KASA",
     cashBody:
@@ -5812,6 +5819,11 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
 
 function buildEmbedTestMessagePayload(state) {
   const buttons = [];
+  const headerLines = [`## ${state.headerBadge}`, `**${state.title}**`];
+
+  if (state.headerNote) {
+    headerLines.push(state.headerNote);
+  }
 
   if (isHttpUrl(state.buttonOneUrl)) {
     buttons.push(
@@ -5835,9 +5847,7 @@ function buildEmbedTestMessagePayload(state) {
   const container = new ContainerBuilder()
     .setAccentColor(COLOR_BLUE)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `## \`💠 NEW SHOP × CENNIK\`\n**${state.title}**\n-# Oferta przygotowana w stylu New Shop`,
-      ),
+      new TextDisplayBuilder().setContent(headerLines.join("\n")),
     )
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
@@ -5867,6 +5877,10 @@ function buildEmbedTestMessagePayload(state) {
 function buildEmbedTestControls(messageId) {
   return [
     new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`embedtest_edit_header_${messageId}`)
+        .setLabel("Edytuj górę")
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`embedtest_edit_content_${messageId}`)
         .setLabel("Edytuj treść")
@@ -5901,6 +5915,37 @@ function buildEmbedTestControlPayload(state, statusLine) {
     embeds: [embed],
     components: buildEmbedTestControls(state.messageId),
   };
+}
+
+function buildEmbedTestHeaderModal(state) {
+  const modal = new ModalBuilder()
+    .setCustomId(`embedtest_modal_header_${state.messageId}`)
+    .setTitle("Edytuj górę embeda");
+
+  const badgeInput = new TextInputBuilder()
+    .setCustomId("header_badge")
+    .setLabel("Nagłówek górny")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(150)
+    .setPlaceholder("np. <:anarchialf:123456789> NEW SHOP × CENNIK")
+    .setValue(state.headerBadge);
+
+  const noteInput = new TextInputBuilder()
+    .setCustomId("header_note")
+    .setLabel("Mały opis pod nagłówkiem")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(180)
+    .setPlaceholder("-# Krótki dopisek pod tytułem")
+    .setValue(state.headerNote || "");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(badgeInput),
+    new ActionRowBuilder().addComponents(noteInput),
+  );
+
+  return modal;
 }
 
 function buildEmbedTestContentModal(state) {
@@ -7731,6 +7776,52 @@ async function handleModalSubmit(interaction) {
   if (!guildId || !interaction.guild) return;
 
   const cid = interaction.customId || "";
+
+  const embedTestHeaderMatch = cid.match(/^embedtest_modal_header_(\d+)$/);
+  if (embedTestHeaderMatch) {
+    const [, messageId] = embedTestHeaderMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    state.headerBadge = interaction.fields
+      .getTextInputValue("header_badge")
+      .trim();
+    state.headerNote = interaction.fields
+      .getTextInputValue("header_note")
+      .trim();
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(state, "Zaktualizowałem górę embeda"),
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
   const embedTestContentMatch = cid.match(/^embedtest_modal_content_(\d+)$/);
   if (embedTestContentMatch) {
