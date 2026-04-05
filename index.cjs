@@ -5808,7 +5808,6 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
 
 function buildEmbedTestDescription(state) {
   return [
-    `**${state.title}**`,
     "────────────────────",
     `**${state.cashSectionTitle}**`,
     state.cashBody,
@@ -5821,7 +5820,8 @@ function buildEmbedTestDescription(state) {
 
 function buildEmbedTestMessagePayload(state) {
   const embed = new EmbedBuilder()
-    .setColor(0x2f3136)
+    .setColor(0x2b2d31)
+    .setTitle(state.title)
     .setDescription(buildEmbedTestDescription(state));
 
   const buttons = [];
