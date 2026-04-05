@@ -1642,6 +1642,12 @@ const commands = [
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildText),
     )
+    .addAttachmentOption((o) =>
+      o
+        .setName("filmik")
+        .setDescription("Opcjonalny filmik, gif albo obraz do osadzenia w karcie")
+        .setRequired(false),
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("mody")
@@ -6420,13 +6426,38 @@ function resolveEmbedTestPublishTargetFromMessage(message) {
   );
 }
 
-function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
+function normalizeEmbedTestAttachment(attachment) {
+  if (!attachment?.url) return null;
+
+  const contentType = (attachment.contentType || "").toLowerCase();
+  const name = (attachment.name || "").toLowerCase();
+  const isMedia =
+    contentType.startsWith("image/") ||
+    contentType.startsWith("video/") ||
+    /\.(png|jpe?g|gif|webp|bmp|mp4|mov|webm|m4v)$/i.test(name);
+
+  if (!isMedia) return null;
+
+  return {
+    url: attachment.url,
+    name: attachment.name || null,
+    contentType: attachment.contentType || null,
+  };
+}
+
+function createDefaultEmbedTestState(
+  guild,
+  targetChannel,
+  ownerId,
+  mediaAttachment = null,
+) {
   const paymentsChannel = findEmbedTestPaymentsChannel(guild);
   const buyUrl = getDiscordMessageUrl(guild.id, targetChannel.id);
   const paymentsUrl = getDiscordMessageUrl(
     guild.id,
     paymentsChannel?.id || targetChannel.id,
   );
+  const normalizedMediaAttachment = normalizeEmbedTestAttachment(mediaAttachment);
 
   return {
     ownerId,
@@ -6453,12 +6484,16 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     buttonTwoLabel: "Płatności",
     buttonTwoEmoji: "💳",
     buttonTwoUrl: paymentsUrl,
+    mediaUrls: normalizedMediaAttachment ? [normalizedMediaAttachment.url] : [],
   };
 }
 
 function buildEmbedTestMessagePayload(state) {
   const buttons = [];
   const headerLines = [];
+  const mediaUrls = Array.isArray(state.mediaUrls)
+    ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
+    : [];
   const buttonOneEmoji = parseButtonEmojiInput(
     state.buttonOneEmoji,
     state.guildId,
@@ -6546,6 +6581,18 @@ function buildEmbedTestMessagePayload(state) {
 
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(itemsSectionContent),
+    );
+  }
+
+  if (mediaUrls.length) {
+    if (headerLines.length || cashSectionContent || itemsSectionContent) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        mediaUrls.map((url) => new MediaGalleryItemBuilder().setURL(url)),
+      ),
     );
   }
 
@@ -6948,6 +6995,7 @@ async function handleEmbedTestCommand(interaction) {
 
   const targetChannel =
     interaction.options.getChannel("kanal") || interaction.channel;
+  const mediaAttachment = interaction.options.getAttachment("filmik");
 
   if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
     await interaction.reply({
@@ -6957,10 +7005,20 @@ async function handleEmbedTestCommand(interaction) {
     return;
   }
 
+  if (mediaAttachment && !normalizeEmbedTestAttachment(mediaAttachment)) {
+    await interaction.reply({
+      content:
+        "> `❌` × Załącznik w `/embedtest` musi być filmikiem, gifem albo obrazem.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
   const state = createDefaultEmbedTestState(
     interaction.guild,
     targetChannel,
     interaction.user.id,
+    mediaAttachment,
   );
 
   try {
