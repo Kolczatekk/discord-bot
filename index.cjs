@@ -3937,7 +3937,7 @@ const nickInput = new TextInputBuilder()
   }
 
   const embedTestEditMatch = customId.match(
-    /^embedtest_edit_(header|content|buttons)_(\d+)$/,
+    /^embedtest_edit_(header|content|buttons|emojis)_(\d+)$/,
   );
   if (embedTestEditMatch) {
     const [, mode, messageId] = embedTestEditMatch;
@@ -3966,6 +3966,11 @@ const nickInput = new TextInputBuilder()
 
     if (mode === "content") {
       await interaction.showModal(buildEmbedTestContentModal(state));
+      return;
+    }
+
+    if (mode === "emojis") {
+      await interaction.showModal(buildEmbedTestEmojisModal(state));
       return;
     }
 
@@ -5788,6 +5793,118 @@ function findEmbedTestPaymentsChannel(guild) {
   );
 }
 
+const EMBED_TEST_COLOR_OPTIONS = [
+  {
+    value: "blue",
+    label: "Niebieski",
+    description: "Domyślny styl New Shop",
+    emoji: "🔵",
+    color: COLOR_BLUE,
+  },
+  {
+    value: "cyan",
+    label: "Cyan",
+    description: "Jasny chłodny akcent",
+    emoji: "🩵",
+    color: 0x3cc8ff,
+  },
+  {
+    value: "green",
+    label: "Zielony",
+    description: "Miękki zielony akcent",
+    emoji: "🟢",
+    color: 0x57f287,
+  },
+  {
+    value: "yellow",
+    label: "Żółty",
+    description: "Mocniejszy jasny styl",
+    emoji: "🟡",
+    color: 0xfee75c,
+  },
+  {
+    value: "orange",
+    label: "Pomarańczowy",
+    description: "Ciepły pomarańczowy akcent",
+    emoji: "🟠",
+    color: 0xffa543,
+  },
+  {
+    value: "red",
+    label: "Czerwony",
+    description: "Mocny kontrastowy styl",
+    emoji: "🔴",
+    color: 0xed4245,
+  },
+  {
+    value: "pink",
+    label: "Różowy",
+    description: "Jaśniejszy neonowy wariant",
+    emoji: "🩷",
+    color: 0xeb459e,
+  },
+  {
+    value: "purple",
+    label: "Fioletowy",
+    description: "Delikatny ciemniejszy akcent",
+    emoji: "🟣",
+    color: 0x9b59b6,
+  },
+  {
+    value: "gray",
+    label: "Szary",
+    description: "Bardziej stonowany wygląd",
+    emoji: "⚫",
+    color: 0x4f545c,
+  },
+];
+
+function getEmbedTestColorDef(value) {
+  return (
+    EMBED_TEST_COLOR_OPTIONS.find((option) => option.value === value) ||
+    EMBED_TEST_COLOR_OPTIONS[0]
+  );
+}
+
+function setTextInputValueIfPresent(input, value) {
+  if (typeof value === "string" && value.length > 0) {
+    input.setValue(value);
+  }
+
+  return input;
+}
+
+function parseButtonEmojiInput(input) {
+  const value = (input || "").trim();
+  if (!value) return null;
+
+  const customEmojiMatch = value.match(/^<(a?):([a-zA-Z0-9_]+):(\d+)>$/);
+  if (customEmojiMatch) {
+    const [, animatedFlag, name, id] = customEmojiMatch;
+    return {
+      id,
+      name,
+      animated: animatedFlag === "a",
+    };
+  }
+
+  return { name: value };
+}
+
+function buildEmbedTestSectionContent(title, body) {
+  const lines = [];
+
+  if (title) {
+    lines.push(`### **${title}**`);
+  }
+
+  if (body) {
+    lines.push(body);
+  }
+
+  return lines.join("\n");
+}
+
 function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
   const paymentsChannel = findEmbedTestPaymentsChannel(guild);
   const buyUrl = getDiscordMessageUrl(guild.id, targetChannel.id);
@@ -5801,6 +5918,8 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     guildId: guild.id,
     channelId: targetChannel.id,
     messageId: null,
+    accentColorKey: "blue",
+    accentColor: COLOR_BLUE,
     headerBadge: "💠 NEW SHOP × CENNIK",
     headerNote: "-# Oferta przygotowana w stylu New Shop",
     title: "ANARCHIA LF",
@@ -5811,60 +5930,105 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     itemsBody:
       "**🛒 Każdy item można kupić**\n-# Cenę ustalamy indywidualnie po otwarciu ticketa",
     buttonOneLabel: "Kup teraz",
+    buttonOneEmoji: "💸",
     buttonOneUrl: buyUrl,
     buttonTwoLabel: "Płatności",
+    buttonTwoEmoji: "",
     buttonTwoUrl: paymentsUrl,
   };
 }
 
 function buildEmbedTestMessagePayload(state) {
   const buttons = [];
-  const headerLines = [`## ${state.headerBadge}`, `**${state.title}**`];
+  const headerLines = [];
+  const buttonOneEmoji = parseButtonEmojiInput(state.buttonOneEmoji);
+  const buttonTwoEmoji = parseButtonEmojiInput(state.buttonTwoEmoji);
+  const cashSectionContent = buildEmbedTestSectionContent(
+    state.cashSectionTitle,
+    state.cashBody,
+  );
+  const itemsSectionContent = buildEmbedTestSectionContent(
+    state.itemsSectionTitle,
+    state.itemsBody,
+  );
+
+  if (state.headerBadge) {
+    headerLines.push(`## ${state.headerBadge}`);
+  }
+
+  if (state.title) {
+    headerLines.push(`**${state.title}**`);
+  }
 
   if (state.headerNote) {
     headerLines.push(state.headerNote);
   }
 
-  if (isHttpUrl(state.buttonOneUrl)) {
-    buttons.push(
-      new ButtonBuilder()
-        .setLabel(state.buttonOneLabel)
-        .setEmoji("💸")
-        .setStyle(ButtonStyle.Link)
-        .setURL(state.buttonOneUrl),
-    );
+  if (state.buttonOneLabel && isHttpUrl(state.buttonOneUrl)) {
+    const button = new ButtonBuilder()
+      .setLabel(state.buttonOneLabel)
+      .setStyle(ButtonStyle.Link)
+      .setURL(state.buttonOneUrl);
+
+    if (buttonOneEmoji) {
+      button.setEmoji(buttonOneEmoji);
+    }
+
+    buttons.push(button);
   }
 
-  if (isHttpUrl(state.buttonTwoUrl)) {
-    buttons.push(
-      new ButtonBuilder()
-        .setLabel(state.buttonTwoLabel)
-        .setStyle(ButtonStyle.Link)
-        .setURL(state.buttonTwoUrl),
-    );
+  if (state.buttonTwoLabel && isHttpUrl(state.buttonTwoUrl)) {
+    const button = new ButtonBuilder()
+      .setLabel(state.buttonTwoLabel)
+      .setStyle(ButtonStyle.Link)
+      .setURL(state.buttonTwoUrl);
+
+    if (buttonTwoEmoji) {
+      button.setEmoji(buttonTwoEmoji);
+    }
+
+    buttons.push(button);
   }
 
-  const container = new ContainerBuilder()
-    .setAccentColor(COLOR_BLUE)
-    .addTextDisplayComponents(
+  const container = new ContainerBuilder().setAccentColor(
+    state.accentColor || COLOR_BLUE,
+  );
+
+  if (headerLines.length) {
+    container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(headerLines.join("\n")),
-    )
-    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### **${state.cashSectionTitle}**\n${state.cashBody}`,
-      ),
-    )
-    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### **${state.itemsSectionTitle}**\n${state.itemsBody}`,
-      ),
     );
+  }
+
+  if (cashSectionContent) {
+    if (headerLines.length) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(cashSectionContent),
+    );
+  }
+
+  if (itemsSectionContent) {
+    if (headerLines.length || cashSectionContent) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(itemsSectionContent),
+    );
+  }
 
   if (buttons.length) {
     container.addActionRowComponents(
       new ActionRowBuilder().addComponents(...buttons),
+    );
+  }
+
+  if (!container.components.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# Pusty embed testowy"),
     );
   }
 
@@ -5874,22 +6038,43 @@ function buildEmbedTestMessagePayload(state) {
   };
 }
 
-function buildEmbedTestControls(messageId) {
+function buildEmbedTestControls(state) {
+  const currentColor = getEmbedTestColorDef(state.accentColorKey);
+  const colorSelect = new StringSelectMenuBuilder()
+    .setCustomId(`embedtest_color_${state.messageId}`)
+    .setPlaceholder(`Kolor embeda: ${currentColor.label}`)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      EMBED_TEST_COLOR_OPTIONS.map((option) => ({
+        label: option.label,
+        value: option.value,
+        description: option.description,
+        emoji: option.emoji,
+        default: option.value === state.accentColorKey,
+      })),
+    );
+
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`embedtest_edit_header_${messageId}`)
+        .setCustomId(`embedtest_edit_header_${state.messageId}`)
         .setLabel("Edytuj górę")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`embedtest_edit_content_${messageId}`)
+        .setCustomId(`embedtest_edit_content_${state.messageId}`)
         .setLabel("Edytuj treść")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`embedtest_edit_buttons_${messageId}`)
+        .setCustomId(`embedtest_edit_buttons_${state.messageId}`)
         .setLabel("Edytuj przyciski")
         .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`embedtest_edit_emojis_${state.messageId}`)
+        .setLabel("Emoji")
+        .setStyle(ButtonStyle.Secondary),
     ),
+    new ActionRowBuilder().addComponents(colorSelect),
   ];
 }
 
@@ -5908,12 +6093,13 @@ function buildEmbedTestControlPayload(state, statusLine) {
         "```\n" +
         `> \`✅\` × ${statusLine}\n` +
         `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
-        "> `🛠️` × Edytuj go przyciskami poniżej",
+        "> `🛠️` × Edytuj go przyciskami poniżej\n" +
+        "> `🎨` × Kolor zmienisz z menu pod spodem",
     );
 
   return {
     embeds: [embed],
-    components: buildEmbedTestControls(state.messageId),
+    components: buildEmbedTestControls(state),
   };
 }
 
@@ -5926,10 +6112,9 @@ function buildEmbedTestHeaderModal(state) {
     .setCustomId("header_badge")
     .setLabel("Nagłówek górny")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(150)
-    .setPlaceholder("np. <:anarchialf:123456789> NEW SHOP × CENNIK")
-    .setValue(state.headerBadge);
+    .setPlaceholder("np. <:anarchialf:123456789> NEW SHOP × CENNIK");
 
   const noteInput = new TextInputBuilder()
     .setCustomId("header_note")
@@ -5937,8 +6122,10 @@ function buildEmbedTestHeaderModal(state) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(180)
-    .setPlaceholder("-# Krótki dopisek pod tytułem")
-    .setValue(state.headerNote || "");
+    .setPlaceholder("-# Krótki dopisek pod tytułem");
+
+  setTextInputValueIfPresent(badgeInput, state.headerBadge);
+  setTextInputValueIfPresent(noteInput, state.headerNote || "");
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(badgeInput),
@@ -5957,41 +6144,47 @@ function buildEmbedTestContentModal(state) {
     .setCustomId("title")
     .setLabel("Tytuł")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(120)
-    .setValue(state.title);
+    .setPlaceholder("np. ANARCHIA LF");
 
   const cashTitleInput = new TextInputBuilder()
     .setCustomId("cash_section_title")
     .setLabel("Nagłówek sekcji 1")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(80)
-    .setValue(state.cashSectionTitle);
+    .setPlaceholder("np. KASA");
 
   const cashBodyInput = new TextInputBuilder()
     .setCustomId("cash_body")
     .setLabel("Treść sekcji 1")
     .setStyle(TextInputStyle.Paragraph)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(1000)
-    .setValue(state.cashBody);
+    .setPlaceholder("Możesz używać **pogrubień** i -# małego opisu");
 
   const itemsTitleInput = new TextInputBuilder()
     .setCustomId("items_section_title")
     .setLabel("Nagłówek sekcji 2")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(80)
-    .setValue(state.itemsSectionTitle);
+    .setPlaceholder("np. ITEMY");
 
   const itemsBodyInput = new TextInputBuilder()
     .setCustomId("items_body")
     .setLabel("Treść sekcji 2")
     .setStyle(TextInputStyle.Paragraph)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(1000)
-    .setValue(state.itemsBody);
+    .setPlaceholder("Wpisz opis drugiej sekcji");
+
+  setTextInputValueIfPresent(titleInput, state.title);
+  setTextInputValueIfPresent(cashTitleInput, state.cashSectionTitle);
+  setTextInputValueIfPresent(cashBodyInput, state.cashBody);
+  setTextInputValueIfPresent(itemsTitleInput, state.itemsSectionTitle);
+  setTextInputValueIfPresent(itemsBodyInput, state.itemsBody);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(titleInput),
@@ -6013,39 +6206,76 @@ function buildEmbedTestButtonsModal(state) {
     .setCustomId("button_one_label")
     .setLabel("Nazwa przycisku 1")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(80)
-    .setValue(state.buttonOneLabel);
+    .setPlaceholder("np. Kup teraz");
 
   const buttonOneUrlInput = new TextInputBuilder()
     .setCustomId("button_one_url")
     .setLabel("Link przycisku 1")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(400)
-    .setValue(state.buttonOneUrl);
+    .setPlaceholder("https://...");
 
   const buttonTwoLabelInput = new TextInputBuilder()
     .setCustomId("button_two_label")
     .setLabel("Nazwa przycisku 2")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(80)
-    .setValue(state.buttonTwoLabel);
+    .setPlaceholder("np. Płatności");
 
   const buttonTwoUrlInput = new TextInputBuilder()
     .setCustomId("button_two_url")
     .setLabel("Link przycisku 2")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true)
+    .setRequired(false)
     .setMaxLength(400)
-    .setValue(state.buttonTwoUrl);
+    .setPlaceholder("https://...");
+
+  setTextInputValueIfPresent(buttonOneLabelInput, state.buttonOneLabel);
+  setTextInputValueIfPresent(buttonOneUrlInput, state.buttonOneUrl);
+  setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
+  setTextInputValueIfPresent(buttonTwoUrlInput, state.buttonTwoUrl);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(buttonOneLabelInput),
     new ActionRowBuilder().addComponents(buttonOneUrlInput),
     new ActionRowBuilder().addComponents(buttonTwoLabelInput),
     new ActionRowBuilder().addComponents(buttonTwoUrlInput),
+  );
+
+  return modal;
+}
+
+function buildEmbedTestEmojisModal(state) {
+  const modal = new ModalBuilder()
+    .setCustomId(`embedtest_modal_emojis_${state.messageId}`)
+    .setTitle("Edytuj emoji");
+
+  const buttonOneEmojiInput = new TextInputBuilder()
+    .setCustomId("button_one_emoji")
+    .setLabel("Emoji przycisku 1")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("np. 💸 lub <:anarchialf:123456789>");
+
+  const buttonTwoEmojiInput = new TextInputBuilder()
+    .setCustomId("button_two_emoji")
+    .setLabel("Emoji przycisku 2")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("np. 💳 lub <:donutsmp:123456789>");
+
+  setTextInputValueIfPresent(buttonOneEmojiInput, state.buttonOneEmoji || "");
+  setTextInputValueIfPresent(buttonTwoEmojiInput, state.buttonTwoEmoji || "");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(buttonOneEmojiInput),
+    new ActionRowBuilder().addComponents(buttonTwoEmojiInput),
   );
 
   return modal;
@@ -7028,6 +7258,53 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
 }
 
 async function handleSelectMenu(interaction) {
+  const embedTestColorMatch = interaction.customId.match(
+    /^embedtest_color_(\d+)$/,
+  );
+  if (embedTestColorMatch) {
+    const [, messageId] = embedTestColorMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const selectedColor = getEmbedTestColorDef(interaction.values[0]);
+    state.accentColorKey = selectedColor.value;
+    state.accentColor = selectedColor.color;
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.update(
+      buildEmbedTestControlPayload(
+        state,
+        `Ustawiłem kolor embeda na ${selectedColor.label}`,
+      ),
+    );
+    return;
+  }
+
   // KALKULATOR select menu handlers
   if (interaction.customId === "kalkulator_tryb" || interaction.customId === "kalkulator_metoda") {
     await handleKalkulatorSelect(interaction);
@@ -7823,6 +8100,52 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
+  const embedTestEmojisMatch = cid.match(/^embedtest_modal_emojis_(\d+)$/);
+  if (embedTestEmojisMatch) {
+    const [, messageId] = embedTestEmojisMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    state.buttonOneEmoji = interaction.fields
+      .getTextInputValue("button_one_emoji")
+      .trim();
+    state.buttonTwoEmoji = interaction.fields
+      .getTextInputValue("button_two_emoji")
+      .trim();
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(state, "Zaktualizowałem emoji embeda"),
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
   const embedTestContentMatch = cid.match(/^embedtest_modal_content_(\d+)$/);
   if (embedTestContentMatch) {
     const [, messageId] = embedTestContentMatch;
@@ -7900,21 +8223,48 @@ async function handleModalSubmit(interaction) {
       .getTextInputValue("button_two_url")
       .trim();
 
-    if (!isHttpUrl(buttonOneUrl) || !isHttpUrl(buttonTwoUrl)) {
+    const buttonOneLabel = interaction.fields
+      .getTextInputValue("button_one_label")
+      .trim();
+    const buttonTwoLabel = interaction.fields
+      .getTextInputValue("button_two_label")
+      .trim();
+
+    if (buttonOneUrl && !isHttpUrl(buttonOneUrl)) {
       await interaction.reply({
-        content: "> `❌` × Oba przyciski muszą mieć poprawny link zaczynający się od `http` lub `https`.",
+        content: "> `❌` × Link przycisku 1 musi zaczynać się od `http` lub `https`.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
     }
 
-    state.buttonOneLabel = interaction.fields
-      .getTextInputValue("button_one_label")
-      .trim();
+    if (buttonTwoUrl && !isHttpUrl(buttonTwoUrl)) {
+      await interaction.reply({
+        content: "> `❌` × Link przycisku 2 musi zaczynać się od `http` lub `https`.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (buttonOneUrl && !buttonOneLabel) {
+      await interaction.reply({
+        content: "> `❌` × Jeśli przycisk 1 ma link, podaj też jego nazwę.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (buttonTwoUrl && !buttonTwoLabel) {
+      await interaction.reply({
+        content: "> `❌` × Jeśli przycisk 2 ma link, podaj też jego nazwę.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    state.buttonOneLabel = buttonOneLabel;
     state.buttonOneUrl = buttonOneUrl;
-    state.buttonTwoLabel = interaction.fields
-      .getTextInputValue("button_two_label")
-      .trim();
+    state.buttonTwoLabel = buttonTwoLabel;
     state.buttonTwoUrl = buttonTwoUrl;
     embedTestStates.set(messageId, state);
 
