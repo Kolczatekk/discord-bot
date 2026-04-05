@@ -73,6 +73,7 @@ const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessa
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
+const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -1590,6 +1591,20 @@ const commands = [
   new SlashCommandBuilder()
     .setName("embed")
     .setDescription("Wyślij wiadomość przez bota (tylko właściciel)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addChannelOption((o) =>
+      o
+        .setName("kanal")
+        .setDescription(
+          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
+        )
+        .setRequired(false)
+        .addChannelTypes(ChannelType.GuildText),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("embedtest")
+    .setDescription("Wyślij testowy embed w stylu cennika i edytuj go przyciskami")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addChannelOption((o) =>
       o
@@ -3918,6 +3933,38 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
+  const embedTestEditMatch = customId.match(
+    /^embedtest_edit_(content|buttons)_(\d+)$/,
+  );
+  if (embedTestEditMatch) {
+    const [, mode, messageId] = embedTestEditMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (mode === "content") {
+      await interaction.showModal(buildEmbedTestContentModal(state));
+      return;
+    }
+
+    await interaction.showModal(buildEmbedTestButtonsModal(state));
+    return;
+  }
+
   // NEW: verification panel button
   if (customId.startsWith("verify_panel_")) {
     // very simple puzzles for preschool level: addition and multiplication with small numbers
@@ -4271,6 +4318,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "embed":
       await handleSendMessageCommand(interaction);
+      break;
+    case "embedtest":
+      await handleEmbedTestCommand(interaction);
       break;
     case "mody":
       await handleModyCommand(interaction);
@@ -5700,6 +5750,323 @@ async function handleTicketCommand(interaction) {
     components: [row],
     flags: [MessageFlags.Ephemeral],
   });
+}
+
+function getDiscordMessageUrl(guildId, channelId, messageId = null) {
+  if (!guildId || !channelId) return "https://discord.com/channels/@me";
+  if (messageId) return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
+  return `https://discord.com/channels/${guildId}/${channelId}`;
+}
+
+function findEmbedTestPaymentsChannel(guild) {
+  if (!guild) return null;
+
+  const normalize = (s = "") =>
+    s
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9 ]/gi, "")
+      .trim()
+      .toLowerCase();
+
+  return (
+    guild.channels.cache.find(
+      (channel) =>
+        channel.type === ChannelType.GuildText &&
+        (normalize(channel.name).includes("platnosci") ||
+          normalize(channel.name).includes("platnosc")),
+    ) || null
+  );
+}
+
+function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
+  const paymentsChannel = findEmbedTestPaymentsChannel(guild);
+  const buyUrl = getDiscordMessageUrl(guild.id, targetChannel.id);
+  const paymentsUrl = getDiscordMessageUrl(
+    guild.id,
+    paymentsChannel?.id || targetChannel.id,
+  );
+
+  return {
+    ownerId,
+    guildId: guild.id,
+    channelId: targetChannel.id,
+    messageId: null,
+    title: "ANARCHIA LF - CENNIK GG",
+    cashSectionTitle: "CENNIK KASY :",
+    cashBody: "• 💸 `KASA 8000$ - 1 PLN`",
+    itemsSectionTitle: "CENNIK ITEMÓW :",
+    itemsBody:
+      "• **Każdy item można kupić! Cena do dogadania na tickecie**\n*(item wart milion na l4 MC Rynku kosztuje około 125 pln)*",
+    buttonOneLabel: "Kup teraz!",
+    buttonOneUrl: buyUrl,
+    buttonTwoLabel: "Płatności",
+    buttonTwoUrl: paymentsUrl,
+  };
+}
+
+function buildEmbedTestDescription(state) {
+  return [
+    `**${state.title}**`,
+    "────────────────────",
+    `**${state.cashSectionTitle}**`,
+    state.cashBody,
+    "",
+    "────────────────────",
+    `**${state.itemsSectionTitle}**`,
+    state.itemsBody,
+  ].join("\n");
+}
+
+function buildEmbedTestMessagePayload(state) {
+  const embed = new EmbedBuilder()
+    .setColor(0x2f3136)
+    .setDescription(buildEmbedTestDescription(state));
+
+  const buttons = [];
+
+  if (isHttpUrl(state.buttonOneUrl)) {
+    buttons.push(
+      new ButtonBuilder()
+        .setLabel(state.buttonOneLabel)
+        .setEmoji("💸")
+        .setStyle(ButtonStyle.Link)
+        .setURL(state.buttonOneUrl),
+    );
+  }
+
+  if (isHttpUrl(state.buttonTwoUrl)) {
+    buttons.push(
+      new ButtonBuilder()
+        .setLabel(state.buttonTwoLabel)
+        .setStyle(ButtonStyle.Link)
+        .setURL(state.buttonTwoUrl),
+    );
+  }
+
+  const payload = {
+    embeds: [embed],
+    components: [],
+  };
+
+  if (buttons.length) {
+    payload.components = [new ActionRowBuilder().addComponents(...buttons)];
+  }
+
+  return payload;
+}
+
+function buildEmbedTestControls(messageId) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`embedtest_edit_content_${messageId}`)
+        .setLabel("Edytuj treść")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`embedtest_edit_buttons_${messageId}`)
+        .setLabel("Edytuj przyciski")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+function buildEmbedTestControlPayload(state, statusLine) {
+  const jumpUrl = getDiscordMessageUrl(
+    state.guildId,
+    state.channelId,
+    state.messageId,
+  );
+
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      "```\n" +
+        "🧪 New Shop × EMBED TEST\n" +
+        "```\n" +
+        `> \`✅\` × ${statusLine}\n` +
+        `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
+        "> `🛠️` × Edytuj go przyciskami poniżej",
+    );
+
+  return {
+    embeds: [embed],
+    components: buildEmbedTestControls(state.messageId),
+  };
+}
+
+function buildEmbedTestContentModal(state) {
+  const modal = new ModalBuilder()
+    .setCustomId(`embedtest_modal_content_${state.messageId}`)
+    .setTitle("Edytuj embed testowy");
+
+  const titleInput = new TextInputBuilder()
+    .setCustomId("title")
+    .setLabel("Tytuł")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(120)
+    .setValue(state.title);
+
+  const cashTitleInput = new TextInputBuilder()
+    .setCustomId("cash_section_title")
+    .setLabel("Nagłówek sekcji 1")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(80)
+    .setValue(state.cashSectionTitle);
+
+  const cashBodyInput = new TextInputBuilder()
+    .setCustomId("cash_body")
+    .setLabel("Treść sekcji 1")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(1000)
+    .setValue(state.cashBody);
+
+  const itemsTitleInput = new TextInputBuilder()
+    .setCustomId("items_section_title")
+    .setLabel("Nagłówek sekcji 2")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(80)
+    .setValue(state.itemsSectionTitle);
+
+  const itemsBodyInput = new TextInputBuilder()
+    .setCustomId("items_body")
+    .setLabel("Treść sekcji 2")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(1000)
+    .setValue(state.itemsBody);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(titleInput),
+    new ActionRowBuilder().addComponents(cashTitleInput),
+    new ActionRowBuilder().addComponents(cashBodyInput),
+    new ActionRowBuilder().addComponents(itemsTitleInput),
+    new ActionRowBuilder().addComponents(itemsBodyInput),
+  );
+
+  return modal;
+}
+
+function buildEmbedTestButtonsModal(state) {
+  const modal = new ModalBuilder()
+    .setCustomId(`embedtest_modal_buttons_${state.messageId}`)
+    .setTitle("Edytuj przyciski");
+
+  const buttonOneLabelInput = new TextInputBuilder()
+    .setCustomId("button_one_label")
+    .setLabel("Nazwa przycisku 1")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(80)
+    .setValue(state.buttonOneLabel);
+
+  const buttonOneUrlInput = new TextInputBuilder()
+    .setCustomId("button_one_url")
+    .setLabel("Link przycisku 1")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(400)
+    .setValue(state.buttonOneUrl);
+
+  const buttonTwoLabelInput = new TextInputBuilder()
+    .setCustomId("button_two_label")
+    .setLabel("Nazwa przycisku 2")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(80)
+    .setValue(state.buttonTwoLabel);
+
+  const buttonTwoUrlInput = new TextInputBuilder()
+    .setCustomId("button_two_url")
+    .setLabel("Link przycisku 2")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(400)
+    .setValue(state.buttonTwoUrl);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(buttonOneLabelInput),
+    new ActionRowBuilder().addComponents(buttonOneUrlInput),
+    new ActionRowBuilder().addComponents(buttonTwoLabelInput),
+    new ActionRowBuilder().addComponents(buttonTwoUrlInput),
+  );
+
+  return modal;
+}
+
+async function updateEmbedTestMessage(state) {
+  const guild = client.guilds.cache.get(state.guildId) || null;
+  if (!guild) return false;
+
+  const channel = await guild.channels.fetch(state.channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return false;
+
+  const message = await channel.messages.fetch(state.messageId).catch(() => null);
+  if (!message) return false;
+
+  await message.edit(buildEmbedTestMessagePayload(state));
+  return true;
+}
+
+async function handleEmbedTestCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetChannel =
+    interaction.options.getChannel("kanal") || interaction.channel;
+
+  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+    await interaction.reply({
+      content: "> `❌` × **Wybierz** poprawny kanał tekstowy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const state = createDefaultEmbedTestState(
+    interaction.guild,
+    targetChannel,
+    interaction.user.id,
+  );
+
+  try {
+    const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
+    state.messageId = sent.id;
+    embedTestStates.set(sent.id, state);
+
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(
+        state,
+        `Wysłałem testowy embed do <#${targetChannel.id}>`,
+      ),
+      flags: [MessageFlags.Ephemeral],
+    });
+  } catch (err) {
+    console.error("handleEmbedTestCommand error:", err);
+    await interaction.reply({
+      content:
+        "> `❌` × Nie udało się wysłać testowego embeda. Sprawdź uprawnienia bota do kanału.",
+      flags: [MessageFlags.Ephemeral],
+    });
+  }
 }
 
 const TEST_PANEL_CATEGORY_OPTIONS = [
@@ -7357,6 +7724,118 @@ async function handleModalSubmit(interaction) {
   if (!guildId || !interaction.guild) return;
 
   const cid = interaction.customId || "";
+
+  const embedTestContentMatch = cid.match(/^embedtest_modal_content_(\d+)$/);
+  if (embedTestContentMatch) {
+    const [, messageId] = embedTestContentMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    state.title = interaction.fields.getTextInputValue("title").trim();
+    state.cashSectionTitle = interaction.fields
+      .getTextInputValue("cash_section_title")
+      .trim();
+    state.cashBody = interaction.fields.getTextInputValue("cash_body").trim();
+    state.itemsSectionTitle = interaction.fields
+      .getTextInputValue("items_section_title")
+      .trim();
+    state.itemsBody = interaction.fields.getTextInputValue("items_body").trim();
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(state, "Zaktualizowałem treść embeda"),
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const embedTestButtonsMatch = cid.match(/^embedtest_modal_buttons_(\d+)$/);
+  if (embedTestButtonsMatch) {
+    const [, messageId] = embedTestButtonsMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const buttonOneUrl = interaction.fields
+      .getTextInputValue("button_one_url")
+      .trim();
+    const buttonTwoUrl = interaction.fields
+      .getTextInputValue("button_two_url")
+      .trim();
+
+    if (!isHttpUrl(buttonOneUrl) || !isHttpUrl(buttonTwoUrl)) {
+      await interaction.reply({
+        content: "> `❌` × Oba przyciski muszą mieć poprawny link zaczynający się od `http` lub `https`.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    state.buttonOneLabel = interaction.fields
+      .getTextInputValue("button_one_label")
+      .trim();
+    state.buttonOneUrl = buttonOneUrl;
+    state.buttonTwoLabel = interaction.fields
+      .getTextInputValue("button_two_label")
+      .trim();
+    state.buttonTwoUrl = buttonTwoUrl;
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(state, "Zaktualizowałem przyciski embeda"),
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
   // quiz do przejęcia ticketu
   if (cid.startsWith("claim_quiz_")) {
