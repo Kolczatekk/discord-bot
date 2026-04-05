@@ -2204,9 +2204,12 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
-const ANARCHIA_LIFESTEAL_RATE = 6000;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 6500;
+const ANARCHIA_LIFESTEAL_RATE = 6500;
+const ANARCHIA_LIFESTEAL_BULK_RATE = 7000;
 const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 200;
+const ANARCHIA_BOXPVP_RATE = 750000;
+const PYK_MC_RATE = 6000;
+const DONUT_SMP_RATE = 3_500_000;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -2227,19 +2230,13 @@ function getAnarchiaLifestealRateForWaluta(waluta, methodRaw) {
 function getRateForPlnAmount(pln, serverRaw) {
   const server = (serverRaw || "").toString().trim().toUpperCase();
 
-  if (server === "ANARCHIA_BOXPVP") return 650000;
+  if (server === "ANARCHIA_BOXPVP") return ANARCHIA_BOXPVP_RATE;
   if (server === "ANARCHIA_LIFESTEAL") return getAnarchiaLifestealRateForPln(pln);
-  if (server === "PYK_MC") {
-    if (Number(pln) >= 100) return 4000;
-    return 3500;
-  }
-  if (server === "DONUT_SMP") {
-    return 3_000_000;
-  }
+  if (server === "PYK_MC") return PYK_MC_RATE;
+  if (server === "DONUT_SMP") return DONUT_SMP_RATE;
 
   // fallback (stary cennik)
-  if (Number(pln) >= 100) return 5000;
-  return 4500;
+  return ANARCHIA_LIFESTEAL_RATE;
 }
 
 // Helper: find a bot message in a channel matching a predicate on embed
@@ -3650,17 +3647,15 @@ async function handleKalkulatorSubmit(interaction, typ) {
       const server = (userData.tryb || "").toString().toUpperCase();
       let rate;
       if (server === "ANARCHIA_BOXPVP") {
-        rate = 650000;
+        rate = ANARCHIA_BOXPVP_RATE;
       } else if (server === "ANARCHIA_LIFESTEAL") {
         rate = getAnarchiaLifestealRateForWaluta(waluta, userData.metoda);
       } else if (server === "PYK_MC") {
-        const estimatedPln3500 = waluta / 3500;
-        rate = estimatedPln3500 >= 100 ? 4000 : 3500;
+        rate = PYK_MC_RATE;
       } else if (server === "DONUT_SMP") {
-        rate = 3_000_000;
+        rate = DONUT_SMP_RATE;
       } else {
-        const estimatedPln3500 = waluta / 3500;
-        rate = estimatedPln3500 >= 100 ? 4000 : 3500;
+        rate = ANARCHIA_LIFESTEAL_RATE;
       }
       const baseRaw = waluta / rate;
       const basePln = round2(baseRaw);
@@ -4041,7 +4036,7 @@ const nickInput = new TextInputBuilder()
   }
 
   const embedTestEditMatch = customId.match(
-    /^embedtest_edit_(header|content|buttons|emojis)_(\d+)$/,
+    /^embedtest_edit_(header|content|content_extra|buttons|emojis)_(\d+)$/,
   );
   if (embedTestEditMatch) {
     const [, mode, messageId] = embedTestEditMatch;
@@ -4070,6 +4065,11 @@ const nickInput = new TextInputBuilder()
 
     if (mode === "content") {
       await interaction.showModal(buildEmbedTestContentModal(state));
+      return;
+    }
+
+    if (mode === "content_extra") {
+      await interaction.showModal(buildEmbedTestExtraContentModal(state));
       return;
     }
 
@@ -6349,18 +6349,58 @@ function parseButtonEmojiInput(input, guildId) {
   return { name: normalizedValue };
 }
 
-function buildEmbedTestSectionContent(title, body, guildId) {
-  const lines = [];
+function buildEmbedTestSectionParts(title, body, guildId) {
+  const parts = [];
 
   if (title) {
-    lines.push(`**${replaceNamedGuildEmojis(title, guildId)}**`);
+    parts.push({
+      type: "text",
+      content: `**${replaceNamedGuildEmojis(title, guildId)}**`,
+    });
   }
 
-  if (body) {
-    lines.push(replaceNamedGuildEmojis(body, guildId));
+  const normalizedBody = replaceNamedGuildEmojis(body || "", guildId);
+  if (normalizedBody) {
+    parts.push(...splitEmbedBodyIntoSections(normalizedBody));
   }
 
-  return lines.join("\n");
+  return parts;
+}
+
+function appendEmbedTestSectionToContainer(
+  container,
+  sectionParts,
+  addLeadingSeparator = false,
+) {
+  if (!Array.isArray(sectionParts) || !sectionParts.length) {
+    return false;
+  }
+
+  if (addLeadingSeparator) {
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  }
+
+  let hasVisibleContent = false;
+
+  for (const part of sectionParts) {
+    if (!part) continue;
+
+    if (part.type === "separator") {
+      if (hasVisibleContent) {
+        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      }
+      continue;
+    }
+
+    if (part.type === "text" && part.content) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(part.content),
+      );
+      hasVisibleContent = true;
+    }
+  }
+
+  return hasVisibleContent;
 }
 
 function isEmbedTestPublishTarget(channel) {
@@ -6477,6 +6517,10 @@ function createDefaultEmbedTestState(
     itemsSectionTitle: "ITEMY:",
     itemsBody:
       "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
+    extraSectionTitle: "",
+    extraSectionBody: "",
+    extraSectionTwoTitle: "",
+    extraSectionTwoBody: "",
     buttonOneLabel: "Kup teraz",
     buttonOneEmoji: "🛒",
     buttonOneAction: "zakup",
@@ -6502,14 +6546,24 @@ function buildEmbedTestMessagePayload(state) {
     state.buttonTwoEmoji,
     state.guildId,
   );
-  const cashSectionContent = buildEmbedTestSectionContent(
+  const cashSectionParts = buildEmbedTestSectionParts(
     state.cashSectionTitle,
     state.cashBody,
     state.guildId,
   );
-  const itemsSectionContent = buildEmbedTestSectionContent(
+  const itemsSectionParts = buildEmbedTestSectionParts(
     state.itemsSectionTitle,
     state.itemsBody,
+    state.guildId,
+  );
+  const extraSectionParts = buildEmbedTestSectionParts(
+    state.extraSectionTitle,
+    state.extraSectionBody,
+    state.guildId,
+  );
+  const extraSectionTwoParts = buildEmbedTestSectionParts(
+    state.extraSectionTwoTitle,
+    state.extraSectionTwoBody,
     state.guildId,
   );
 
@@ -6564,28 +6618,41 @@ function buildEmbedTestMessagePayload(state) {
     );
   }
 
-  if (cashSectionContent) {
-    if (headerLines.length) {
-      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    }
+  const hasCashSection = appendEmbedTestSectionToContainer(
+    container,
+    cashSectionParts,
+    headerLines.length > 0,
+  );
 
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(cashSectionContent),
-    );
-  }
+  const hasItemsSection = appendEmbedTestSectionToContainer(
+    container,
+    itemsSectionParts,
+    headerLines.length > 0 || hasCashSection,
+  );
 
-  if (itemsSectionContent) {
-    if (headerLines.length || cashSectionContent) {
-      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    }
+  const hasExtraSection = appendEmbedTestSectionToContainer(
+    container,
+    extraSectionParts,
+    headerLines.length > 0 || hasCashSection || hasItemsSection,
+  );
 
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(itemsSectionContent),
-    );
-  }
+  const hasExtraSectionTwo = appendEmbedTestSectionToContainer(
+    container,
+    extraSectionTwoParts,
+    headerLines.length > 0 ||
+      hasCashSection ||
+      hasItemsSection ||
+      hasExtraSection,
+  );
 
   if (mediaUrls.length) {
-    if (headerLines.length || cashSectionContent || itemsSectionContent) {
+    if (
+      headerLines.length ||
+      hasCashSection ||
+      hasItemsSection ||
+      hasExtraSection ||
+      hasExtraSectionTwo
+    ) {
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     }
 
@@ -6653,6 +6720,12 @@ function buildEmbedTestControls(state) {
         .setCustomId(`embedtest_publish_start_${state.messageId}`)
         .setLabel("Zakończ")
         .setStyle(ButtonStyle.Success),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`embedtest_edit_content_extra_${state.messageId}`)
+        .setLabel("Treść 2")
+        .setStyle(ButtonStyle.Secondary),
     ),
     new ActionRowBuilder().addComponents(colorSelect),
   ];
@@ -6761,7 +6834,7 @@ function buildEmbedTestContentModal(state) {
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(false)
     .setMaxLength(1000)
-    .setPlaceholder("Możesz używać **pogrubień** i -# małego opisu");
+    .setPlaceholder("Możesz używać **pogrubień**, -# opisu i -- separatora");
 
   const itemsTitleInput = new TextInputBuilder()
     .setCustomId("items_section_title")
@@ -6777,7 +6850,7 @@ function buildEmbedTestContentModal(state) {
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(false)
     .setMaxLength(1000)
-    .setPlaceholder("Wpisz opis drugiej sekcji");
+    .setPlaceholder("Wpisz opis, pusty enter lub osobną linię -- na kreskę");
 
   setTextInputValueIfPresent(titleInput, state.title);
   setTextInputValueIfPresent(cashTitleInput, state.cashSectionTitle);
@@ -6791,6 +6864,58 @@ function buildEmbedTestContentModal(state) {
     new ActionRowBuilder().addComponents(cashBodyInput),
     new ActionRowBuilder().addComponents(itemsTitleInput),
     new ActionRowBuilder().addComponents(itemsBodyInput),
+  );
+
+  return modal;
+}
+
+function buildEmbedTestExtraContentModal(state) {
+  const modal = new ModalBuilder()
+    .setCustomId(`embedtest_modal_content_extra_${state.messageId}`)
+    .setTitle("Dodatkowe sekcje");
+
+  const extraTitleInput = new TextInputBuilder()
+    .setCustomId("extra_section_title")
+    .setLabel("Nagłówek sekcji 3")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("np. SKUPUJEMY TAKŻE");
+
+  const extraBodyInput = new TextInputBuilder()
+    .setCustomId("extra_section_body")
+    .setLabel("Treść sekcji 3")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setMaxLength(1000)
+    .setPlaceholder("Tu też działa pusty enter i osobna linia --");
+
+  const extraTwoTitleInput = new TextInputBuilder()
+    .setCustomId("extra_section_two_title")
+    .setLabel("Nagłówek sekcji 4")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("np. INFO");
+
+  const extraTwoBodyInput = new TextInputBuilder()
+    .setCustomId("extra_section_two_body")
+    .setLabel("Treść sekcji 4")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setMaxLength(1000)
+    .setPlaceholder("Możesz robić kolejne bloki i separatory");
+
+  setTextInputValueIfPresent(extraTitleInput, state.extraSectionTitle);
+  setTextInputValueIfPresent(extraBodyInput, state.extraSectionBody);
+  setTextInputValueIfPresent(extraTwoTitleInput, state.extraSectionTwoTitle);
+  setTextInputValueIfPresent(extraTwoBodyInput, state.extraSectionTwoBody);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(extraTitleInput),
+    new ActionRowBuilder().addComponents(extraBodyInput),
+    new ActionRowBuilder().addComponents(extraTwoTitleInput),
+    new ActionRowBuilder().addComponents(extraTwoBodyInput),
   );
 
   return modal;
@@ -7146,6 +7271,23 @@ const SHOP_PAYMENT_OPTION_DEFS = [
   },
 ];
 
+const AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS = [
+  {
+    label: "Zaproszenia",
+    testValue: "zaproszenia",
+    description: "Płatność zaproszeniami",
+    channelSlug: "zaproszenia",
+    emoji: "📩",
+  },
+  {
+    label: "Waluta Serwerowa 150k$",
+    testValue: "waluta_serwerowa_150k",
+    description: "Płatność walutą serwerową 150k$",
+    channelSlug: "waluta-serwerowa-150k",
+    emoji: { id: "1476700165082710178", name: "kasa_2" },
+  },
+];
+
 const PANEL_CATEGORY_OPTIONS = [
   {
     label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
@@ -7227,6 +7369,16 @@ const SIMPLE_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
   emoji: option.emoji,
 }));
 
+const AUTORYNEK_PAYMENT_OPTIONS = [
+  ...SIMPLE_PAYMENT_OPTIONS,
+  ...AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS.map((option) => ({
+    label: toPanelFont(option.label),
+    value: option.testValue,
+    description: option.description,
+    emoji: option.emoji,
+  })),
+];
+
 const PAYOUT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
   label: toPanelFont(option.label),
   value: option.testValue,
@@ -7263,12 +7415,24 @@ function getShopPaymentOptionDef(value) {
   );
 }
 
+function getAutorynekPaymentOptionDef(value) {
+  return (
+    AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS.find(
+      (option) => option.testValue === value,
+    ) || getShopPaymentOptionDef(value)
+  );
+}
+
 function getShopServerLabel(value) {
   return getShopServerOptionDef(value)?.label || value;
 }
 
 function getShopPaymentLabel(value) {
   return getShopPaymentOptionDef(value)?.label || value;
+}
+
+function getAutorynekPaymentLabel(value) {
+  return getAutorynekPaymentOptionDef(value)?.label || value;
 }
 
 function sanitizeTicketChannelNamePart(value) {
@@ -8201,7 +8365,7 @@ async function showAutoRynekZakupModal(interaction) {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(SIMPLE_PAYMENT_OPTIONS);
+    .addOptions(AUTORYNEK_PAYMENT_OPTIONS);
 
   const modal = new ModalBuilder()
     .setCustomId("modal_autorynek_zakup")
@@ -8914,6 +9078,63 @@ async function handleModalSubmit(interaction) {
 
     await interaction.reply({
       ...buildEmbedTestControlPayload(state, "Zaktualizowałem treść embeda"),
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const embedTestExtraContentMatch = cid.match(
+    /^embedtest_modal_content_extra_(\d+)$/,
+  );
+  if (embedTestExtraContentMatch) {
+    const [, messageId] = embedTestExtraContentMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    state.extraSectionTitle = interaction.fields
+      .getTextInputValue("extra_section_title")
+      .trim();
+    state.extraSectionBody = interaction.fields
+      .getTextInputValue("extra_section_body")
+      .trim();
+    state.extraSectionTwoTitle = interaction.fields
+      .getTextInputValue("extra_section_two_title")
+      .trim();
+    state.extraSectionTwoBody = interaction.fields
+      .getTextInputValue("extra_section_two_body")
+      .trim();
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(
+        state,
+        "Zaktualizowałem dodatkowe sekcje embeda",
+      ),
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -9822,7 +10043,7 @@ async function handleModalSubmit(interaction) {
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       forceOwnerOnlyVisibility = true;
 
-      const paymentMethod = getShopPaymentLabel(paymentMethodRaw);
+      const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
 
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
         `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\`\n` +
