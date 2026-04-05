@@ -1608,20 +1608,6 @@ const commands = [
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildText),
     )
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("embedtest")
-    .setDescription("Wyślij testowy embed w stylu cennika i edytuj go przyciskami")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .addChannelOption((o) =>
-      o
-        .setName("kanal")
-        .setDescription(
-          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
-        )
-        .setRequired(false)
-        .addChannelTypes(ChannelType.GuildText),
-    )
     .addStringOption((o) =>
       o
         .setName("data")
@@ -1641,6 +1627,20 @@ const commands = [
           { name: "zpingiem", value: "zpingiem" },
           { name: "bezpingu", value: "bezpingu" },
         ),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("embedtest")
+    .setDescription("Wyślij testowy embed w stylu cennika i edytuj go przyciskami")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addChannelOption((o) =>
+      o
+        .setName("kanal")
+        .setDescription(
+          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
+        )
+        .setRequired(false)
+        .addChannelTypes(ChannelType.GuildText),
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -5191,6 +5191,45 @@ function collectEmbedMediaFromMessage(message) {
   return { mediaUrls, fileUrls };
 }
 
+function splitEmbedBodyIntoSections(text = "") {
+  const lines = (text || "").split(/\r?\n/);
+  const parts = [];
+  let buffer = [];
+
+  const flushBuffer = () => {
+    const content = buffer.join("\n").trim();
+    if (content) {
+      parts.push({ type: "text", content });
+    }
+    buffer = [];
+  };
+
+  for (const line of lines) {
+    if (line.trim() === "--") {
+      flushBuffer();
+
+      if (parts.length && parts[parts.length - 1].type !== "separator") {
+        parts.push({ type: "separator" });
+      }
+      continue;
+    }
+
+    buffer.push(line);
+  }
+
+  flushBuffer();
+
+  while (parts[0]?.type === "separator") {
+    parts.shift();
+  }
+
+  while (parts[parts.length - 1]?.type === "separator") {
+    parts.pop();
+  }
+
+  return parts;
+}
+
 function buildSendMessageCardPayload({
   bodyText,
   mediaUrls,
@@ -5201,11 +5240,19 @@ function buildSendMessageCardPayload({
 }) {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   const trimmedBody = (bodyText || "").trim();
+  const bodyParts = splitEmbedBodyIntoSections(trimmedBody);
 
-  if (trimmedBody) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(trimmedBody),
-    );
+  if (bodyParts.length) {
+    for (const part of bodyParts) {
+      if (part.type === "separator") {
+        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+        continue;
+      }
+
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(part.content),
+      );
+    }
   }
 
   if (mediaUrls.length) {
@@ -5217,7 +5264,7 @@ function buildSendMessageCardPayload({
   }
 
   if (includeDate) {
-    if (trimmedBody || mediaUrls.length) {
+    if (bodyParts.length || mediaUrls.length) {
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     }
 
@@ -6231,8 +6278,8 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     cashSectionTitle: "WALUTA SERWEROWA:",
     cashBody:
       "-# zakupiona kasa wysyłana jest na /gift\n\n" +
-      ":strzałka: <:kasa_2:1476700165082710178> `7,5k$ ➜ 1 ZŁ`\n\n" +
-      ":strzałka: <:kasa_2:1476700165082710178> `8k$ ➜ 1 ZŁ` **(powyżej 200zł)**",
+      "### :arrowwhite: :kasa_2:  7,5k$ ➜ 1 ZŁ\n\n" +
+      "### :arrowwhite: :kasa_2:  8k$ ➜ 1 ZŁ (powyżej 200zł)",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
       "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
@@ -6240,7 +6287,7 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     buttonOneEmoji: "🛒",
     buttonOneUrl: buyUrl,
     buttonTwoLabel: "Płatności",
-    buttonTwoEmoji: ":arrowwhite:",
+    buttonTwoEmoji: "💳",
     buttonTwoUrl: paymentsUrl,
   };
 }
