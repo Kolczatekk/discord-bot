@@ -9404,6 +9404,10 @@ async function handleModalSubmit(interaction) {
     try {
       const kwotaStr = interaction.fields.getTextInputValue("kwota");
       const kwota = parseFloat(kwotaStr.replace(",", "."));
+      const selectedServer =
+        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
+      const selectedPayment =
+        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (isNaN(kwota) || kwota <= 0) {
         await interaction.reply({
@@ -9421,7 +9425,22 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      // Zapisz kwotę i pokaż menu z wyborem trybu i metody
+      if (selectedServer && selectedPayment) {
+        const result = buildKalkulatorResultMessage({
+          typ: "otrzymam",
+          kwota,
+          tryb: selectedServer,
+          metoda: selectedPayment,
+        });
+
+        await interaction.reply({
+          content: result.error || result.message,
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // Fallback dla starszych wiadomości kalkulatora
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
 
@@ -9466,6 +9485,10 @@ async function handleModalSubmit(interaction) {
     try {
       const walutaStr = interaction.fields.getTextInputValue("waluta");
       const waluta = parseShortNumber(walutaStr);
+      const selectedServer =
+        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
+      const selectedPayment =
+        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (!waluta || waluta <= 0 || waluta > 999_000_000) {
         await interaction.reply({
@@ -9475,7 +9498,22 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      // Zapisz walutę i pokaż menu z wyborem trybu i metody
+      if (selectedServer && selectedPayment) {
+        const result = buildKalkulatorResultMessage({
+          typ: "muszedac",
+          waluta,
+          tryb: selectedServer,
+          metoda: selectedPayment,
+        });
+
+        await interaction.reply({
+          content: result.error || result.message,
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // Fallback dla starszych wiadomości kalkulatora
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
 
