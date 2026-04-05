@@ -100,6 +100,7 @@ const contestLeaveBlocks = new Map(); // userId -> { messageId: { leaveCount: nu
 const REP_CHANNEL_ID = "1449840030947217529";
 const LEGIT_REP_PING_DELETE_DELAY_MS = 4_000;
 const LEGIT_REP_WARNING_DELETE_DELAY_MS = 15_000;
+const DEFAULT_SELECT_EMPTY_PLACEHOLDER = "❌ × Nie wybrałeś/aś żadnej opcji.";
 
 // cooldown (ms) per user between the bot posting the info embed
 const INFO_EMBED_COOLDOWN_MS = 5 * 1000; // default 5s — change to desired value
@@ -2988,12 +2989,12 @@ async function handleModalSubmit(interaction) {
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder("Wybierz serwer...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
@@ -3070,12 +3071,12 @@ async function handleModalSubmit(interaction) {
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder("Wybierz serwer...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_SERVER_OPTIONS);
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder("Wybierz metodę płatności...")
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
         .addOptions(KALKULATOR_PAYMENT_OPTIONS);
 
       const embed = new EmbedBuilder()
@@ -5081,7 +5082,7 @@ async function handlePanelKalkulatorCommand(interaction) {
 
   const typeSelect = new StringSelectMenuBuilder()
     .setCustomId("kalkulator_typ")
-    .setPlaceholder("Wybierz pytanie...")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(KALKULATOR_MODE_OPTIONS);
@@ -5104,14 +5105,13 @@ function buildKalkulatorModal(typ) {
 
   const valueInput = new TextInputBuilder()
     .setCustomId(isOtrzymam ? "kwota" : "waluta")
-    .setLabel(isOtrzymam ? "Kwota (PLN)" : "Ilość waluty")
     .setPlaceholder(isOtrzymam ? "np. 50" : "np. 125k")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
   const serverSelect = new StringSelectMenuBuilder()
     .setCustomId("kalkulator_server")
-    .setPlaceholder("Wybierz serwer...")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
@@ -5119,7 +5119,7 @@ function buildKalkulatorModal(typ) {
 
   const paymentSelect = new StringSelectMenuBuilder()
     .setCustomId("kalkulator_payment")
-    .setPlaceholder("Wybierz metodę płatności...")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
@@ -5127,13 +5127,13 @@ function buildKalkulatorModal(typ) {
 
   modal.addLabelComponents(
     new LabelBuilder()
-      .setLabel(isOtrzymam ? "Ile otrzymam?" : "Ile muszę dać?")
+      .setLabel(isOtrzymam ? "Kwota (PLN)" : "Ilość waluty")
       .setTextInputComponent(valueInput),
     new LabelBuilder()
-      .setLabel("Wybierz serwer...")
+      .setLabel("Wybierz serwer")
       .setStringSelectMenuComponent(serverSelect),
     new LabelBuilder()
-      .setLabel("Wybierz metodę płatności...")
+      .setLabel("Wybierz metodę płatności")
       .setStringSelectMenuComponent(paymentSelect),
   );
 
@@ -7587,7 +7587,7 @@ function buildTicketPanelPayload() {
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("ticket_category")
-    .setPlaceholder("Wybierz kategorię...")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .addOptions(PANEL_CATEGORY_OPTIONS);
 
   return {
@@ -7613,13 +7613,13 @@ async function showZakupModalV2(interaction) {
   const itemInput = new TextInputBuilder()
     .setCustomId("co_kupic")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Kasa na Anarchia.gg")
+    .setPlaceholder("Przykład: Kasa")
     .setRequired(true)
     .setMaxLength(120);
 
   const serverSelect = new StringSelectMenuBuilder()
     .setCustomId("zakup_server")
-    .setPlaceholder("Wybierz serwer")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
@@ -7627,7 +7627,7 @@ async function showZakupModalV2(interaction) {
 
   const paymentSelect = new StringSelectMenuBuilder()
     .setCustomId("zakup_payment")
-    .setPlaceholder("Wybierz płatność")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
@@ -8276,7 +8276,17 @@ async function handleSelectMenu(interaction) {
 
   if (interaction.customId === "kalkulator_typ") {
     const selectedType = interaction.values[0];
-    await interaction.showModal(buildKalkulatorModal(selectedType));
+    try {
+      await interaction.showModal(buildKalkulatorModal(selectedType));
+    } catch (error) {
+      console.error("kalkulator_typ showModal error:", error);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: "> `❌` × Nie udało się otworzyć formularza kalkulatora. Spróbuj ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+      }
+    }
     return;
   }
 
@@ -8414,7 +8424,7 @@ async function showModyZakupModal(interaction) {
 
   const paymentSelect = new StringSelectMenuBuilder()
     .setCustomId("mod_payment_method")
-    .setPlaceholder("Wybierz formę płatności")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
@@ -8448,7 +8458,7 @@ async function showModyZakupModal(interaction) {
 async function showAutoRynekZakupModal(interaction) {
   const paymentSelect = new StringSelectMenuBuilder()
     .setCustomId("autorynek_payment_method")
-    .setPlaceholder("Wybierz formę płatności")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
@@ -8956,7 +8966,7 @@ async function showSprzedazModal(interaction) {
 
   const serverSelect = new StringSelectMenuBuilder()
     .setCustomId("sprzedaz_server")
-    .setPlaceholder("Wybierz serwer")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
@@ -8964,7 +8974,7 @@ async function showSprzedazModal(interaction) {
 
   const payoutSelect = new StringSelectMenuBuilder()
     .setCustomId("sprzedaz_payout")
-    .setPlaceholder("Wybierz formę wypłaty")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
