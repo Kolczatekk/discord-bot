@@ -6272,14 +6272,14 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     messageId: null,
     accentColorKey: "blue",
     accentColor: COLOR_BLUE,
-    headerBadge: ":jump_dirt:",
+    headerBadge: "<:anarchia_gg:1469444521308852324>",
     headerNote: "",
-    title: "ANARCHIA LF - CENNIK <:anarchia_gg:1469444521308852324>",
+    title: "ANARCHIA LF - CENNIK :jump_dirt:",
     cashSectionTitle: "WALUTA SERWEROWA:",
     cashBody:
-      "-# zakupiona kasa wysyłana jest na /gift\n\n" +
-      "### :arrowwhite: :kasa_2:  7,5k$ ➜ 1 ZŁ\n\n" +
-      "### :arrowwhite: :kasa_2:  8k$ ➜ 1 ZŁ (powyżej 200zł)",
+      "-# zakupiona kasa wysyłana jest na /gift\n" +
+      "### :arrowwhite: :kasa_2:  `7,5k$ ➜ 1 ZŁ`\n\n" +
+      "### :arrowwhite: :kasa_2:  `8k$ ➜ 1 ZŁ` (powyżej 200zł)",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
       "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
