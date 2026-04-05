@@ -2724,7 +2724,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
       await handleSlashCommand(interaction);
-    } else if (interaction.isStringSelectMenu()) {
+    } else if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu()) {
       await handleSelectMenu(interaction);
     } else if (interaction.isModalSubmit()) {
       await handleModalSubmit(interaction);
@@ -3961,6 +3961,11 @@ const nickInput = new TextInputBuilder()
     }
 
     await interaction.reply(buildEmbedTestPublishPrompt(state));
+    return;
+  }
+
+  if (customId === "embedtest_buy_open") {
+    await showZakupModalV2(interaction);
     return;
   }
 
@@ -5887,11 +5892,31 @@ const EMBED_TEST_COLOR_OPTIONS = [
   },
 ];
 
+const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
+  gg: "<:anarchia_gg:1469444521308852324>",
+  kasa: "<:kasa_2:1476700165082710178>",
+  kasa_2: "<:kasa_2:1476700165082710178>",
+  strzalka: "<a:arrowwhite:1469100658606211233>",
+  "strzałka": "<a:arrowwhite:1469100658606211233>",
+  arrowwhite: "<a:arrowwhite:1469100658606211233>",
+};
+
 function getEmbedTestColorDef(value) {
   return (
     EMBED_TEST_COLOR_OPTIONS.find((option) => option.value === value) ||
     EMBED_TEST_COLOR_OPTIONS[0]
   );
+}
+
+function getEmbedTestSpecialEmojiMarkup(token) {
+  const normalized = (token || "")
+    .toString()
+    .trim()
+    .replace(/^:/, "")
+    .replace(/:$/, "")
+    .toLowerCase();
+
+  return EMBED_TEST_SPECIAL_EMOJI_MARKUP[normalized] || null;
 }
 
 function findGuildEmojiByName(guildId, emojiName) {
@@ -5923,7 +5948,10 @@ function replaceNamedGuildEmojis(text, guildId) {
     return token;
   });
 
-  const replaced = masked.replace(/:([a-zA-Z0-9_]+):/g, (match, name) => {
+  const replaced = masked.replace(/:([^:\s]+):/g, (match, name) => {
+    const specialEmojiMarkup = getEmbedTestSpecialEmojiMarkup(name);
+    if (specialEmojiMarkup) return specialEmojiMarkup;
+
     const emoji = findGuildEmojiByName(guildId, name);
     return emoji ? toGuildEmojiMarkup(emoji) : match;
   });
@@ -5946,7 +5974,14 @@ function parseButtonEmojiInput(input, guildId) {
   const value = (input || "").trim();
   if (!value) return null;
 
-  const customEmojiMatch = value.match(/^<(a?):([a-zA-Z0-9_]+):(\d+)>$/);
+  const specialEmojiMarkup = getEmbedTestSpecialEmojiMarkup(value);
+  if (specialEmojiMarkup) {
+    input = specialEmojiMarkup;
+  }
+
+  const normalizedValue = (input || "").trim();
+
+  const customEmojiMatch = normalizedValue.match(/^<(a?):([a-zA-Z0-9_]+):(\d+)>$/);
   if (customEmojiMatch) {
     const [, animatedFlag, name, id] = customEmojiMatch;
     return {
@@ -5956,7 +5991,7 @@ function parseButtonEmojiInput(input, guildId) {
     };
   }
 
-  const customEmojiByNameMatch = value.match(/^:([a-zA-Z0-9_]+):$/);
+  const customEmojiByNameMatch = normalizedValue.match(/^:([a-zA-Z0-9_]+):$/);
   if (customEmojiByNameMatch) {
     const emoji = findGuildEmojiByName(guildId, customEmojiByNameMatch[1]);
     return emoji
@@ -5964,14 +5999,14 @@ function parseButtonEmojiInput(input, guildId) {
       : null;
   }
 
-  if (/^[a-zA-Z0-9_]+$/.test(value)) {
-    const emoji = findGuildEmojiByName(guildId, value);
+  if (/^[a-zA-Z0-9_]+$/.test(normalizedValue)) {
+    const emoji = findGuildEmojiByName(guildId, normalizedValue);
     if (emoji) {
       return { id: emoji.id, name: emoji.name, animated: emoji.animated };
     }
   }
 
-  return { name: value };
+  return { name: normalizedValue };
 }
 
 function buildEmbedTestSectionContent(title, body, guildId) {
@@ -6003,12 +6038,12 @@ function createDefaultEmbedTestState(guild, targetChannel, ownerId) {
     messageId: null,
     accentColorKey: "yellow",
     accentColor: COLOR_YELLOW,
-    headerBadge: ":gg:",
+    headerBadge: "<:anarchia_gg:1469444521308852324>",
     headerNote: "",
     title: "ANARCHIA LF CENNIK",
     cashSectionTitle: "KASA:",
     cashBody:
-      "💸 `7,5k$ ➜ 1 ZŁ`",
+      "<:kasa_2:1476700165082710178> `7,5k$ ➜ 1 ZŁ`",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
       "-# Jeśli item posiada wartość 1MLN na rynku, jego koszt w sklepie wynosi 133zł",
@@ -6058,11 +6093,11 @@ function buildEmbedTestMessagePayload(state) {
     headerLines.push(replaceNamedGuildEmojis(state.headerNote, state.guildId));
   }
 
-  if (state.buttonOneLabel && isHttpUrl(state.buttonOneUrl)) {
+  if (state.buttonOneLabel) {
     const button = new ButtonBuilder()
       .setLabel(state.buttonOneLabel)
-      .setStyle(ButtonStyle.Link)
-      .setURL(state.buttonOneUrl);
+      .setStyle(ButtonStyle.Secondary)
+      .setCustomId("embedtest_buy_open");
 
     if (buttonOneEmoji) {
       button.setEmoji(buttonOneEmoji);
@@ -6333,14 +6368,6 @@ function buildEmbedTestButtonsModal(state) {
     .setMaxLength(80)
     .setPlaceholder("np. Kup teraz");
 
-  const buttonOneUrlInput = new TextInputBuilder()
-    .setCustomId("button_one_url")
-    .setLabel("Link przycisku 1")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(400)
-    .setPlaceholder("https://...");
-
   const buttonTwoLabelInput = new TextInputBuilder()
     .setCustomId("button_two_label")
     .setLabel("Nazwa przycisku 2")
@@ -6358,13 +6385,11 @@ function buildEmbedTestButtonsModal(state) {
     .setPlaceholder("https://...");
 
   setTextInputValueIfPresent(buttonOneLabelInput, state.buttonOneLabel);
-  setTextInputValueIfPresent(buttonOneUrlInput, state.buttonOneUrl);
   setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
   setTextInputValueIfPresent(buttonTwoUrlInput, state.buttonTwoUrl);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(buttonOneLabelInput),
-    new ActionRowBuilder().addComponents(buttonOneUrlInput),
     new ActionRowBuilder().addComponents(buttonTwoLabelInput),
     new ActionRowBuilder().addComponents(buttonTwoUrlInput),
   );
@@ -8408,9 +8433,6 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    const buttonOneUrl = interaction.fields
-      .getTextInputValue("button_one_url")
-      .trim();
     const buttonTwoUrl = interaction.fields
       .getTextInputValue("button_two_url")
       .trim();
@@ -8422,25 +8444,9 @@ async function handleModalSubmit(interaction) {
       .getTextInputValue("button_two_label")
       .trim();
 
-    if (buttonOneUrl && !isHttpUrl(buttonOneUrl)) {
-      await interaction.reply({
-        content: "> `❌` × Link przycisku 1 musi zaczynać się od `http` lub `https`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
     if (buttonTwoUrl && !isHttpUrl(buttonTwoUrl)) {
       await interaction.reply({
         content: "> `❌` × Link przycisku 2 musi zaczynać się od `http` lub `https`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (buttonOneUrl && !buttonOneLabel) {
-      await interaction.reply({
-        content: "> `❌` × Jeśli przycisk 1 ma link, podaj też jego nazwę.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -8455,7 +8461,6 @@ async function handleModalSubmit(interaction) {
     }
 
     state.buttonOneLabel = buttonOneLabel;
-    state.buttonOneUrl = buttonOneUrl;
     state.buttonTwoLabel = buttonTwoLabel;
     state.buttonTwoUrl = buttonTwoUrl;
     embedTestStates.set(messageId, state);
