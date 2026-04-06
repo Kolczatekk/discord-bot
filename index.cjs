@@ -191,6 +191,7 @@ const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FREE_KASA_CHANNEL_ID = "1470103962245005454";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
+const FREE_KASA_SYNC_INTERVAL_MS = 60_000;
 
 const dropCooldowns = new Map(); // userId -> timestamp (ms)
 const freeKasaCooldowns = new Map(); // userId -> timestamp (ms)
@@ -853,14 +854,17 @@ async function syncFreeKasaChannelAccess(member, options = {}) {
     const hasRequiredStatus = memberHasFreeKasaStatus(member);
 
     if (hasRequiredStatus) {
-      await channel.permissionOverwrites
-        .edit(member.id, { SendMessages: true })
-        .catch(() => null);
+      const shouldAllow = !overwrite || !overwrite.allow?.has(PermissionFlagsBits.SendMessages);
+      if (shouldAllow) {
+        await channel.permissionOverwrites
+          .edit(member.id, { SendMessages: true })
+          .catch(() => null);
+      }
       return;
     }
 
     if (forceBlock || isCurrentlyDenied) {
-      if (!isCurrentlyDenied || forceBlock) {
+      if (!isCurrentlyDenied || overwrite?.allow?.has(PermissionFlagsBits.SendMessages) || forceBlock) {
         await channel.permissionOverwrites
           .edit(member.id, { SendMessages: false })
           .catch(() => null);
@@ -3182,6 +3186,14 @@ client.once(Events.ClientReady, async (c) => {
       console.error("[free-kasa] Nie udało się zsynchronizować kanału:", error),
     );
   });
+
+  setInterval(() => {
+    client.guilds.cache.forEach(async (guild) => {
+      await syncTrackedFreeKasaMembers(guild).catch((error) =>
+        console.error("[free-kasa] Błąd okresowej synchronizacji:", error),
+      );
+    });
+  }, FREE_KASA_SYNC_INTERVAL_MS);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
