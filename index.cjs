@@ -9,32 +9,19 @@ const {
   PermissionFlagsBits,
   ChannelType,
   ActionRowBuilder,
-  ContainerBuilder,
-  MediaGalleryBuilder,
-  MediaGalleryItemBuilder,
   StringSelectMenuBuilder,
-  LabelBuilder,
   ModalBuilder,  
-  SeparatorBuilder,
   TextInputBuilder,
-  TextDisplayBuilder,
-  TextInputStyle, 
+  TextInputStyle,
   PermissionsBitField,
   ButtonBuilder,
-  ButtonStyle,  
+  ButtonStyle, 
   AttachmentBuilder,
   MessageFlags,
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
-
-// Load local .env when running on a PC (Render ma własne env vars)
-try {
-  require("dotenv").config({ path: path.resolve(__dirname, ".env") });
-} catch (err) {
-  console.warn("[ENV] Nie udało się załadować .env:", err?.message || err);
-}
 const db = require("./database.js");
 
 const client = new Client({
@@ -55,7 +42,6 @@ const opinieChannels = new Map();
 const ticketCounter = new Map();
 const fourMonthBlockList = new Map(); // guildId -> Set(userId)
 const ticketCategories = new Map();
-const legitRepCooldown = new Map(); // userId -> timestamp ostatniego poprawnego +rep
 const dropChannels = new Map(); // <-- mapa kanałów gdzie można używać /drop
 const sprawdzZaproszeniaCooldowns = new Map(); // userId -> lastTs
 const inviteTotalJoined = new Map(); // guild -> userId -> liczba wszystkich dołączeń
@@ -74,13 +60,7 @@ function getInviteWord(count) {
 const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
-const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
-const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
-const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
-const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
-const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
-const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
-const embedTestEmojiCacheReady = new Map(); // guildId -> timestamp ostatniego fetch emoji
+const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
@@ -98,9 +78,6 @@ const contestLeaveBlocks = new Map(); // userId -> { messageId: { leaveCount: nu
 // --- LEGITCHECK-REP info behavior --------------------------------------------------
 // channel ID where users post freeform reps and the bot should post the informational embed
 const REP_CHANNEL_ID = "1449840030947217529";
-const LEGIT_REP_PING_DELETE_DELAY_MS = 4_000;
-const LEGIT_REP_WARNING_DELETE_DELAY_MS = 15_000;
-const DEFAULT_SELECT_EMPTY_PLACEHOLDER = "❌ × Nie wybrałeś/aś żadnej opcji.";
 
 // cooldown (ms) per user between the bot posting the info embed
 const INFO_EMBED_COOLDOWN_MS = 5 * 1000; // default 5s — change to desired value
@@ -115,65 +92,6 @@ const REP_EMBED_BANNER_URL =
 // track last info message posted by the bot per channel so we can delete it before posting a new one
 const repLastInfoMessage = new Map(); // channelId -> messageId
 
-// /mody: list of proof videos shown after clicking the button
-const MODS_VIDEO_FILES = [
-  {
-    key: "no_entities",
-    label: "No_entities (1440x2560)",
-    modName: "NoEntities",
-    filename: "No_entities.mov",
-    filenameAliases: ["No_entities.mp4"],
-    localPath: path.join(__dirname, "attached_assets", "No_entities.mov"),
-    envVar: "MODS_VIDEO_URL_NO_ENTITIES",
-  },
-  {
-    key: "sprawdz_procenty",
-    label: "Sprawdz_procenty",
-    modName: "SprawdzProcenty",
-    filename: "Sprawdz_procenty.mov",
-    filenameAliases: ["Sprawdz_procenty.mp4"],
-    localPath: path.join(__dirname, "attached_assets", "Sprawdz_procenty.mov"),
-    envVar: "MODS_VIDEO_URL_SPRAWDZ_PROCENTY",
-  },
-  {
-    key: "auto_dzwignia",
-    label: "Auto_dźwignia",
-    modName: "AutoDzwignia",
-    filename: "Auto_dźwignia.mov",
-    filenameAliases: [
-      "Auto_dźwignia (1).mov",
-      "Auto_dzwignia.mov",
-      "Auto_dzwignia (1).mov",
-    ],
-    localPath: path.join(__dirname, "attached_assets", "Auto_dźwignia.mov"),
-    envVar: "MODS_VIDEO_URL_AUTO_DZWIGNIA",
-    defaultUrl:
-      "https://cdn.discordapp.com/attachments/1350603811512909914/1477659247511605340/Auto_dzwignia.mov?ex=69a590ea&is=69a43f6a&hm=045a8441610b16e22135e2a267ba139021cd498791c71861627d4dc486506284",
-  },
-  {
-    key: "auto_dripstone",
-    label: "Auto_Dripstone",
-    modName: "AutoDripstone",
-    filename: "Auto_Dripstone.mov",
-    filenameAliases: ["Auto_Dripstone.mp4"],
-    localPath: path.join(__dirname, "attached_assets", "Auto_Dripstone.mov"),
-    envVar: "MODS_VIDEO_URL_AUTO_DRIPSTONE",
-    defaultUrl:
-      "https://cdn.discordapp.com/attachments/1350603811512909914/1477659253664780402/Auto_Dripstone.mov?ex=69a590eb&is=69a43f6b&hm=51a15faf631c567393b82b6fcc017661cb20775ddd517b723100456f914b1fed",
-  },
-];
-const modsVideoUrlCache = new Map(); // key -> url
-const DISCORD_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-const MODS_VIDEO_SEND_ORDER = [
-  "auto_dripstone",
-  "no_entities",
-  "auto_dzwignia",
-  "sprawdz_procenty",
-];
-const modsVideoOrderRanks = new Map(
-  MODS_VIDEO_SEND_ORDER.map((key, idx) => [key, idx]),
-);
-
 // legit rep counter
 let legitRepCount = 15;
 let lastChannelRename = 0;
@@ -181,15 +99,10 @@ const CHANNEL_RENAME_COOLDOWN = 10 * 60 * 1000; // 10 minutes (Discord limit)
 let pendingRename = false;
 
 // NEW: cooldowns & limits
-const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
+const DROP_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 
-// FREE KASA cooldown (3h) and allowed channel
-const FREE_KASA_COOLDOWN_MS = 3 * 60 * 60 * 1000;
-const FREE_KASA_CHANNEL_ID = "1470103962245005454";
-
 const dropCooldowns = new Map(); // userId -> timestamp (ms)
-const freeKasaCooldowns = new Map(); // userId -> timestamp (ms)
 const opinionCooldowns = new Map(); // userId -> timestamp (ms)
 
 // Colors
@@ -203,11 +116,10 @@ const pendingTicketClose = new Map(); // channelId -> { userId, ts }
 
 // ------------------ Invite tracking & protections ------------------
 const guildInvites = new Map(); // guildId -> Map<code, uses>
-const guildVanityUses = new Map(); // guildId -> last known vanity invite uses
 const inviteCounts = new Map(); // guildId -> Map<inviterId, count>  (current cycle count)
 const inviterOfMember = new Map(); // `${guildId}:${memberId}` -> inviterId
 const INVITE_REWARD_THRESHOLD = 5;
-const INVITE_REWARD_TEXT = "70k$";
+const INVITE_REWARD_TEXT = "50k$"; // <-- zmienione z 40k$ na 50k$
 
 // Nowa struktura do śledzenia nagród za konkretne progi
 // guildId -> Map<userId, Set<rewardLevel>> gdzie rewardLevel to "5", "10", "15", etc.
@@ -218,47 +130,6 @@ const inviteRewards = new Map(); // guildId -> Map<inviterId, rewardsGiven>
 const inviterRateLimit = new Map(); // guildId -> Map<inviterId, [timestamps]> to limit invites per hour
 // track members who left so we can undo "leave" counters if they rejoin
 const leaveRecords = new Map(); // key = `${guildId}:${memberId}` -> inviterId
-const recentDeletedInvites = new Map(); // guildId -> [{ code, inviterId, deletedAt, uses }]
-
-function rememberDeletedInvite(invite) {
-  if (!invite?.guild?.id || !invite.code) return;
-
-  const guildId = invite.guild.id;
-  const now = Date.now();
-  const existing = recentDeletedInvites.get(guildId) || [];
-  const trimmed = existing.filter((entry) => now - entry.deletedAt < 30_000);
-
-  trimmed.push({
-    code: invite.code,
-    inviterId: invite.inviter?.id || null,
-    deletedAt: now,
-    uses: invite.uses || 0,
-  });
-
-  recentDeletedInvites.set(guildId, trimmed);
-}
-
-function consumeRecentDeletedInvite(guildId) {
-  const now = Date.now();
-  const existing = recentDeletedInvites.get(guildId) || [];
-  const trimmed = existing
-    .filter((entry) => now - entry.deletedAt < 30_000)
-    .sort((a, b) => b.deletedAt - a.deletedAt);
-
-  if (!trimmed.length) {
-    recentDeletedInvites.delete(guildId);
-    return null;
-  }
-
-  const [latest, ...rest] = trimmed;
-  if (rest.length) {
-    recentDeletedInvites.set(guildId, rest);
-  } else {
-    recentDeletedInvites.delete(guildId);
-  }
-
-  return latest;
-}
 
 // keep invite cache up-to-date (global listeners, NOT inside GuildMemberAdd)
 client.on("inviteCreate", (invite) => {
@@ -273,7 +144,6 @@ client.on("inviteCreate", (invite) => {
 });
 client.on("inviteDelete", (invite) => {
   try {
-    rememberDeletedInvite(invite);
     const map = guildInvites.get(invite.guild.id);
     if (map) {
       map.delete(invite.code);
@@ -578,7 +448,6 @@ function buildPersistentStateData() {
 
   const data = {
     legitRepCount,
-    legitRepCooldown: Object.fromEntries(legitRepCooldown),
     ticketCounter: Object.fromEntries(ticketCounter),
     ticketOwners: Object.fromEntries(ticketOwners),
     inviteCounts: mapOfMapsToPlainObject(inviteCounts),
@@ -614,7 +483,6 @@ function buildPersistentStateData() {
     opinionCooldowns: opinionCooldownsObj,
     pendingTicketClose: pendingTicketCloseObj,
     opinieChannels: opinieChannelsObj,
-    autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
   };
 
   return data;
@@ -643,155 +511,6 @@ async function saveStateToSupabase(data) {
   } catch (error) {
     console.error('[supabase] Błąd podczas zapisu:', error);
     return false;
-  }
-}
-
-// ----------------- /free-kasa command -----------------
-async function handleFreeKasaCommand(interaction) {
-  const user = interaction.user;
-  const guildId = interaction.guildId;
-
-  if (!guildId) {
-    await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // tylko właściciel serwera
-  if (interaction.user.id !== interaction.guild.ownerId) {
-    await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // wymagany kanał
-  if (interaction.channelId !== FREE_KASA_CHANNEL_ID) {
-    await interaction.reply({
-      content: `> \`❌\` × Użyj tej **komendy** na kanale <#${FREE_KASA_CHANNEL_ID}>`,
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const last = freeKasaCooldowns.get(user.id) || 0;
-  const now = Date.now();
-  if (now - last < FREE_KASA_COOLDOWN_MS) {
-    const remaining = FREE_KASA_COOLDOWN_MS - (now - last);
-    await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  freeKasaCooldowns.set(user.id, now);
-
-  // Szanse: brak wygranej (50%), 5k (30%), 10k (15%), 30k (5%)
-  const roll = Math.random() * 100;
-  let reward = 0;
-  if (roll < 5) reward = 30000;
-  else if (roll < 20) reward = 10000;
-  else if (roll < 50) reward = 5000;
-  else reward = 0;
-
-  if (reward <= 0) {
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_GRAY)
-      .setDescription(
-        "```\n" +
-        "💵 New Shop × DARMOWA KASA\n" +
-        "```\n" +
-        `\`👤\` × **Użytkownik:** ${user}\n` +
-        "\`😢\` × **Niestety, tym razem nie udało się! Spróbuj ponownie później...**",
-      )
-      .setTimestamp();
-
-    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-    return;
-  }
-
-  const rewardText = `${reward >= 1000 ? reward / 1000 + "k" : reward}`;
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_YELLOW)
-    .setDescription(
-      "```\n" +
-      "💵 New Shop × DARMOWA KASA\n" +
-      "```\n" +
-      `\`👤\` × **Użytkownik:** ${user}\n` +
-      `\`🎉\` × **Gratulacje! Wygrałeś ${rewardText} na anarchia LF**\n`,
-    )
-    .setTimestamp();
-
-  await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-}
-
-// Handler dla komendy /wezwij
-async function handleWezwijCommand(interaction) {
-  const channel = interaction.channel;
-
-  if (!channel || channel.type !== ChannelType.GuildText || !isTicketChannel(channel)) {
-    await interaction.reply({
-      content: "> `❌` × Użyj tej komendy na kanale ticketu.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // Sprawdź uprawnienia: tylko sprzedawca
-  const SELLER_ROLE_ID = "1350786945944391733";
-  if (!interaction.member?.roles?.cache?.has(SELLER_ROLE_ID)) {
-    await interaction.reply({
-      content: "> `❌` × Brak uprawnień do użycia tej komendy.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const ticketData = ticketOwners.get(channel.id);
-  const ownerId = ticketData?.userId;
-
-  if (!ownerId) {
-    await interaction.reply({
-      content: "> `❌` × Nie mogę znaleźć właściciela tego ticketu.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
-  // użyj formatu animowanego (a:...) jeśli emoji jest GIFem
-  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
-
-  try {
-    const user = await client.users.fetch(ownerId);
-
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-          "🚨 New Shop × JESTES WZYWANY\n" +
-        "```\n" +
-        `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
-        `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
-        `**KANAŁ:** ${channelLink}`
-      );
-
-    await user.send({ embeds: [embed] });
-
-    await interaction.reply({
-      content: `> ` + "`✅`" + ` × Wysłano wezwanie do właściciela ticketu.`,
-      flags: [MessageFlags.Ephemeral],
-    });
-  } catch (err) {
-    console.error("[wezwij] Błąd DM:", err);
-    await interaction.reply({
-      content: "> `❌` × Nie udało się wysłać wiadomości do właściciela (ma wyłączone DM lub nie znaleziono użytkownika).",
-      flags: [MessageFlags.Ephemeral],
-    });
   }
 }
 
@@ -880,14 +599,6 @@ async function loadPersistentState() {
       if (typeof botStateData.legitRepCount === "number") {
         legitRepCount = botStateData.legitRepCount;
       }
-
-    if (botStateData.legitRepCooldown && typeof botStateData.legitRepCooldown === "object") {
-      for (const [userId, ts] of Object.entries(botStateData.legitRepCooldown)) {
-        if (typeof ts === "number") {
-          legitRepCooldown.set(userId, ts);
-        }
-      }
-    }
 
     if (botStateData.ticketCounter && typeof botStateData.ticketCounter === "object") {
       for (const [guildId, value] of Object.entries(botStateData.ticketCounter)) {
@@ -1255,15 +966,6 @@ async function loadPersistentState() {
       }
     }
 
-    // Load autoPrzejmijSettings
-    if (botStateData.autoPrzejmijSettings && typeof botStateData.autoPrzejmijSettings === "object") {
-      for (const [guildId, cfg] of Object.entries(botStateData.autoPrzejmijSettings)) {
-        if (cfg && typeof cfg === "object" && cfg.enabled) {
-          autoPrzejmijSettings.set(guildId, cfg);
-        }
-      }
-    }
-
     try {
       let fakeGuilds = 0;
       let fakeEntries = 0;
@@ -1349,6 +1051,7 @@ const DEFAULT_NAMES = {
     "zakup-100-200": "zakup 100-200+",
     sprzedaz: "sprzedaz",
     "odbior-nagrody": "nagroda za zaproszenia",
+    "konkurs-nagrody": "nagroda za konkurs",
     inne: "inne",
   },
 };
@@ -1357,22 +1060,16 @@ const commands = [
   new SlashCommandBuilder()
     .setName("drop")
     .setDescription("Wylosuj zniżkę na zakupy w sklepie!")
-    .setDefaultMemberPermissions(null)
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("free-kasa")
-    .setDescription("Wylosuj darmową kasę (tylko właściciel, kanał free-kasa)")
-    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelkalkulator")
     .setDescription("Wyślij panel kalkulatora waluty na kanał")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("ticket-zakoncz")
@@ -1391,54 +1088,29 @@ const commands = [
     )
     .addStringOption((option) =>
       option
-        .setName("co")
-        .setDescription("Co zostało kupione / sprzedane / odebrane")
+        .setName("ile")
+        .setDescription("Kwota transakcji (np. 22,5k, 50k, 200k)")
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("serwer")
-        .setDescription("Wybierz serwer")
+        .setDescription("Nazwa serwera (np. anarchia lf)")
         .setRequired(true)
-        .addChoices(
-          { name: "Anarchia LF", value: "Anarchia LF" },
-          { name: "Anarchia BoxPvP", value: "Anarchia BoxPvP" },
-          { name: "Pyk MC", value: "Pyk MC" },
-          { name: "Donut SMP", value: "Donut SMP" }
-        )
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("zamknij-z-powodem")
     .setDescription("Zamknij ticket z powodem (tylko właściciel)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .addStringOption((option) =>
-      option
-        .setName("powod")
-        .setDescription("Powód zamknięcia")
-        .setRequired(true)
-        .addChoices(
-          { name: "Brak odpowiedzi", value: "Brak odpowiedzi" },
-          { name: "Fake ticket", value: "Fake ticket" },
-          { name: "Próba oszustwa", value: "Próba oszustwa" },
-          { name: "Brak kultury", value: "Brak kultury" },
-          { name: "Spam", value: "Spam" },
-          { name: "Zamówienie zrealizowane", value: "Zamówienie zrealizowane" },
-          { name: "Inny powód", value: "Inny powód" }
-        )
-    )
-    .addStringOption((option) =>
-      option
-        .setName("powod_custom")
-        .setDescription("Własny powód zamknięcia")
-        .setRequired(false)
-        .setMaxLength(200)
+      option.setName("powod").setDescription("Powód zamknięcia").setRequired(true)
     )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("legit-rep-ustaw")
     .setDescription("Ustaw licznik legit repów i zmień nazwę kanału")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .addIntegerOption((option) =>
       option
         .setName("ile")
@@ -1455,7 +1127,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zaproszeniastats")
     .setDescription("Edytuj statystyki zaproszeń")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .addStringOption((o) =>
       o
         .setName("kategoria")
@@ -1498,12 +1170,12 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zamknij")
     .setDescription("Zamknij ticket")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelweryfikacja")
     .setDescription("Wyślij panel weryfikacji na kanał")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("opinia")
@@ -1556,11 +1228,11 @@ const commands = [
     .toJSON(),
   // NEW: /wyczysckanal command
   new SlashCommandBuilder()
-    .setName("wyczysc")
+    .setName("wyczysckanal")
     .setDescription(
       "Wyczyść wiadomości na kanale (wszystko / ilosc-wiadomosci)",
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .addStringOption((option) =>
       option
         .setName("tryb")
@@ -1584,32 +1256,13 @@ const commands = [
   new SlashCommandBuilder()
     .setName("resetlc")
     .setDescription("Reset liczby legitchecków do zera")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
   new SlashCommandBuilder()
-    .setName("zco")
-    .setDescription("Zresetuj czas oczekiwania (/drop /opinia /sprawdz-zaproszenia /+rep)")
-    .addStringOption((option) =>
-      option
-        .setName("co")
-        .setDescription("Co zresetować")
-        .setRequired(true)
-        .addChoices(
-          { name: "/drop", value: "drop" },
-          { name: "/opinia", value: "opinia" },
-          { name: "/sprawdz-zaproszenia", value: "zaproszenia" },
-          { name: "+rep", value: "rep" },
-          { name: "wszystko", value: "all" }
-        ),
-    )
-    .addUserOption((option) =>
-      option
-        .setName("kto")
-        .setDescription("Użytkownik do resetu (domyślnie Ty)")
-        .setRequired(false)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setName("zresetujczasoczekiwania")
+    .setDescription("Resetuje czasy oczekiwania dla /drop i /opinia")
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   // NEW helper admin commands for claiming/unclaiming
   new SlashCommandBuilder()
@@ -1622,80 +1275,11 @@ const commands = [
     .setDescription("Zwolnij aktualny ticket (sprzedawca)")
     .setDefaultMemberPermissions(null)
     .toJSON(),
-  new SlashCommandBuilder()
-    .setName("autoprzejmij")
-    .setDescription("Automatyczne przejmowanie ticketow zakupowych (wlacz/wylacz)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption((option) =>
-      option
-        .setName("status")
-        .setDescription("Wlacz lub wylacz autoprzejmowanie")
-        .setRequired(true)
-        .addChoices(
-          { name: "WLACZ", value: "wlacz" },
-          { name: "WYLACZ", value: "wylacz" }
-        )
-    )
-    .toJSON(),
   // UPDATED: embed (interactive flow)
   new SlashCommandBuilder()
     .setName("embed")
     .setDescription("Wyślij wiadomość przez bota (tylko właściciel)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .addChannelOption((o) =>
-      o
-        .setName("kanal")
-        .setDescription(
-          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
-        )
-        .setRequired(false)
-        .addChannelTypes(ChannelType.GuildText),
-    )
-    .addStringOption((o) =>
-      o
-        .setName("data")
-        .setDescription("Czy dodać datę na dole karty")
-        .setRequired(false)
-        .addChoices(
-          { name: "zdata", value: "zdata" },
-          { name: "bezdaty", value: "bezdaty" },
-        ),
-    )
-    .addStringOption((o) =>
-      o
-        .setName("pingi")
-        .setDescription("Jak obsłużyć pingi w treści")
-        .setRequired(false)
-        .addChoices(
-          { name: "zpingiem", value: "zpingiem" },
-          { name: "bezpingu", value: "bezpingu" },
-        ),
-    )
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("embedtest")
-    .setDescription("Wyślij testowy embed w stylu cennika i edytuj go przyciskami")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .addChannelOption((o) =>
-      o
-        .setName("kanal")
-        .setDescription(
-          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
-        )
-        .setRequired(false)
-        .addChannelTypes(ChannelType.GuildText),
-    )
-    .addAttachmentOption((o) =>
-      o
-        .setName("filmik")
-        .setDescription("Opcjonalny filmik, gif albo obraz do osadzenia w karcie")
-        .setRequired(false),
-    )
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("mody")
-    .setDescription("Wyślij embed z przyciskiem do nagrań modów (tylko właściciel)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .addChannelOption((o) =>
       o
         .setName("kanal")
@@ -1731,7 +1315,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczeniazaplacil")
     .setDescription("Oznacz rozliczenie jako zapłacone (tylko właściciel)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
@@ -1742,22 +1326,17 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rozliczeniezakoncz")
     .setDescription("Wyślij podsumowanie rozliczeń (tylko właściciel)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("wezwij")
-    .setDescription("Wezwij osobe (sprzedawca)")
-    .setDefaultMemberPermissions(null)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("statusbota")
     .setDescription("Pokaż szczegółowy status bota")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczenieustaw")
     .setDescription("Ustaw tygodniową sumę rozliczenia dla użytkownika (tylko właściciel)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .addUserOption((option) =>
       option
         .setName("uzytkownik")
@@ -1785,16 +1364,16 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("utworz-konkurs")
+    .setName("stworzkonkurs")
     .setDescription(
       "Utwórz konkurs z przyciskiem do udziału i losowaniem zwycięzców",
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("end-giveaways")
     .setDescription("Zakończ wszystkie aktywne konkursy (tylko właściciel serwera)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(0)
     .toJSON(),
 ];
 
@@ -1809,349 +1388,6 @@ function humanizeMs(ms) {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
-}
-
-async function fetchGuildVanityDataSafe(guild) {
-  if (!guild || typeof guild.fetchVanityData !== "function") return null;
-  try {
-    const vanityData = await guild.fetchVanityData();
-    if (!vanityData) return null;
-    return {
-      code:
-        typeof vanityData.code === "string" && vanityData.code.trim()
-          ? vanityData.code.trim()
-          : null,
-      uses: typeof vanityData.uses === "number" ? vanityData.uses : null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function fetchGuildVanityUses(guild) {
-  const vanityData = await fetchGuildVanityDataSafe(guild);
-  return typeof vanityData?.uses === "number" ? vanityData.uses : null;
-}
-
-function isHttpUrl(value) {
-  try {
-    const u = new URL((value || "").trim());
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function normalizeDiscordCdnVideoUrl(rawUrl) {
-  const value = (rawUrl || "").toString().trim();
-  if (!isHttpUrl(value)) return value;
-  try {
-    const u = new URL(value);
-    const host = u.hostname.toLowerCase();
-    const isDiscordCdn =
-      host.endsWith("discordapp.com") || host.endsWith("discord.com");
-    const isAttachmentPath = u.pathname.includes("/attachments/");
-    if (isDiscordCdn && isAttachmentPath) {
-      return `${u.protocol}//${u.host}${u.pathname}`;
-    }
-    return value;
-  } catch {
-    return value;
-  }
-}
-
-function isDiscordAttachmentUrl(rawUrl) {
-  const value = (rawUrl || "").toString().trim();
-  if (!isHttpUrl(value)) return false;
-  try {
-    const u = new URL(value);
-    const host = u.hostname.toLowerCase();
-    const isDiscordHost =
-      host.endsWith("discordapp.com") || host.endsWith("discord.com");
-    return isDiscordHost && u.pathname.includes("/attachments/");
-  } catch {
-    return false;
-  }
-}
-
-function isVideoAttachment(att) {
-  if (!att) return false;
-  const ct = (att.contentType || "").toLowerCase();
-  if (ct.startsWith("video/")) return true;
-
-  const name = (att.name || "").toLowerCase();
-  return (
-    name.endsWith(".mp4") ||
-    name.endsWith(".mov") ||
-    name.endsWith(".webm") ||
-    name.endsWith(".m4v") ||
-    name.endsWith(".mkv") ||
-    name.endsWith(".avi")
-  );
-}
-
-function getModsVideoCandidateFilenames(videoCfg) {
-  if (!videoCfg || typeof videoCfg !== "object") return [];
-
-  const rawCandidates = [];
-  if (videoCfg.filename) rawCandidates.push(videoCfg.filename);
-  if (Array.isArray(videoCfg.filenameAliases)) {
-    rawCandidates.push(...videoCfg.filenameAliases);
-  }
-
-  const unique = [];
-  const seen = new Set();
-  for (const raw of rawCandidates) {
-    const name = (raw || "").toString().trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(name);
-  }
-  return unique;
-}
-
-function getNormalizedVideoStem(value) {
-  return (value || "")
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/\.[^.]+$/, "")
-    .replace(/\s*\(\d+\)$/, "");
-}
-
-function resolveLocalModsVideoPath(videoCfg) {
-  if (!videoCfg || typeof videoCfg !== "object") return null;
-
-  const candidates = [];
-  for (const filename of getModsVideoCandidateFilenames(videoCfg)) {
-    candidates.push(path.join(__dirname, "attached_assets", filename));
-  }
-  if (videoCfg.localPath) {
-    candidates.push(videoCfg.localPath);
-  }
-
-  const seen = new Set();
-  for (const candidate of candidates) {
-    const p = (candidate || "").toString().trim();
-    if (!p) continue;
-    const key = p.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (fs.existsSync(p)) return p;
-  }
-
-  return null;
-}
-
-function getModsVideoConfigByFilename(filename) {
-  const normalized = (filename || "").toString().trim().toLowerCase();
-  if (!normalized) return null;
-
-  const normalizedNoExt = getNormalizedVideoStem(normalized);
-
-  for (const cfg of MODS_VIDEO_FILES) {
-    const candidateNames = getModsVideoCandidateFilenames(cfg);
-    for (const candidateNameRaw of candidateNames) {
-      const candidateName = candidateNameRaw.toLowerCase();
-      const candidateStem = getNormalizedVideoStem(candidateName);
-      if (
-        normalized === candidateName ||
-        normalizedNoExt === candidateStem ||
-        normalizedNoExt.startsWith(candidateStem) ||
-        candidateStem.startsWith(normalizedNoExt)
-      ) {
-        return cfg;
-      }
-    }
-  }
-
-  return null;
-}
-
-function getModsVideoCaption(videoCfg, fallbackName = "Nagranie") {
-  const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
-  const safeName = (videoCfg?.modName || fallbackName)
-    .toString()
-    .replace(/[\r\n`*_~|<>]/g, "")
-    .trim();
-  const modName = safeName || "Nagranie";
-  return `## ${arrowEmoji} Mod: **__${modName}__**`;
-}
-
-function getModsVideoOrderRank(videoCfg) {
-  const key = videoCfg?.key;
-  if (!key) return Number.MAX_SAFE_INTEGER;
-  return modsVideoOrderRanks.has(key)
-    ? modsVideoOrderRanks.get(key)
-    : Number.MAX_SAFE_INTEGER;
-}
-
-function collectVideoLinksFromMessage(msg) {
-  const out = [];
-  if (!msg?.attachments?.size) return out;
-
-  for (const att of msg.attachments.values()) {
-    if (!isVideoAttachment(att)) continue;
-    const normalizedUrl = normalizeDiscordCdnVideoUrl(att.url);
-    if (!isHttpUrl(normalizedUrl)) continue;
-    const cfg = getModsVideoConfigByFilename(att.name || "");
-    out.push({
-      label: att.name || "nagranie",
-      key: cfg?.key || null,
-      modName: cfg?.modName || null,
-      url: normalizedUrl,
-    });
-  }
-  return out;
-}
-
-function getPublicBaseUrl() {
-  const candidates = [
-    process.env.PUBLIC_BASE_URL,
-    process.env.MONITOR_HTTP_URL,
-    process.env.RENDER_EXTERNAL_URL,
-    process.env.RENDER_URL,
-  ];
-
-  for (const raw of candidates) {
-    const value = (raw || "").trim();
-    if (!value) continue;
-    try {
-      const parsed = new URL(value);
-      return `${parsed.protocol}//${parsed.host}`;
-    } catch {
-      // ignore invalid URL candidate
-    }
-  }
-
-  const host = (process.env.RENDER_EXTERNAL_HOSTNAME || "").trim();
-  if (host) {
-    return `https://${host}`;
-  }
-
-  return null;
-}
-
-function getLocalModsVideoPublicUrl(videoCfg) {
-  if (!videoCfg?.key) return null;
-  const localPath = resolveLocalModsVideoPath(videoCfg);
-  if (!localPath) return null;
-
-  const baseUrl = getPublicBaseUrl();
-  if (!baseUrl) return null;
-
-  return `${baseUrl}/videos/${encodeURIComponent(videoCfg.key)}`;
-}
-
-async function findVideoAttachmentUrlByName(guild, filenames) {
-  const list = Array.isArray(filenames) ? filenames : [filenames];
-  const filenameLowerList = list
-    .map((f) => (f || "").toString().trim().toLowerCase())
-    .filter(Boolean);
-  if (!guild || filenameLowerList.length === 0) return null;
-
-  const filenameStemList = filenameLowerList.map((f) => getNormalizedVideoStem(f));
-  const meRef = guild.members?.me || client.user?.id || null;
-  const channels = guild.channels.cache.filter(
-    (ch) => ch.type === ChannelType.GuildText,
-  );
-
-  // Limit scan scope to keep this interaction responsive.
-  for (const channel of channels.values()) {
-    try {
-      const perms = meRef ? channel.permissionsFor(meRef) : null;
-      if (
-        !perms ||
-        !perms.has(PermissionFlagsBits.ViewChannel) ||
-        !perms.has(PermissionFlagsBits.ReadMessageHistory)
-      ) {
-        continue;
-      }
-
-      const fetched = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-      if (!fetched) continue;
-
-      for (const msg of fetched.values()) {
-        for (const att of msg.attachments.values()) {
-          const attName = (att.name || "").toLowerCase();
-          const attStem = getNormalizedVideoStem(attName);
-          const matchesName =
-            filenameLowerList.some(
-              (filenameLower) =>
-                attName === filenameLower ||
-                attName.startsWith(filenameLower.replace(/\.[^.]+$/, "")),
-            ) ||
-            filenameStemList.some(
-              (filenameStem) =>
-                attStem === filenameStem ||
-                attStem.startsWith(filenameStem) ||
-                filenameStem.startsWith(attStem),
-            );
-          if (!matchesName) continue;
-          if (isHttpUrl(att.url)) {
-            return att.url;
-          }
-        }
-      }
-    } catch {
-      // ignore per-channel fetch errors
-    }
-  }
-
-  return null;
-}
-
-async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
-  const allowSlowScan = options.allowSlowScan !== false;
-
-  if (!videoCfg) return null;
-
-  const fromEnv = normalizeDiscordCdnVideoUrl(
-    (process.env[videoCfg.envVar] || "").trim(),
-  );
-  if (isHttpUrl(fromEnv)) {
-    modsVideoUrlCache.set(videoCfg.key, fromEnv);
-    return fromEnv;
-  }
-
-  const cached = normalizeDiscordCdnVideoUrl(
-    (modsVideoUrlCache.get(videoCfg.key) || "").trim(),
-  );
-
-  // Przy wolnym skanie preferujemy linki Discord CDN (najlepiej działają w podglądzie).
-  if (allowSlowScan) {
-    if (isDiscordAttachmentUrl(cached)) return cached;
-
-    const found = await findVideoAttachmentUrlByName(
-      guild,
-      getModsVideoCandidateFilenames(videoCfg),
-    );
-    const normalizedFound = normalizeDiscordCdnVideoUrl(found);
-    if (isHttpUrl(normalizedFound)) {
-      modsVideoUrlCache.set(videoCfg.key, normalizedFound);
-      return normalizedFound;
-    }
-  }
-
-  const fromDefault = normalizeDiscordCdnVideoUrl(
-    (videoCfg.defaultUrl || "").trim(),
-  );
-  if (isHttpUrl(fromDefault)) {
-    modsVideoUrlCache.set(videoCfg.key, fromDefault);
-    return fromDefault;
-  }
-
-  if (isHttpUrl(cached)) return cached;
-
-  const localRouteUrl = getLocalModsVideoPublicUrl(videoCfg);
-  if (isHttpUrl(localRouteUrl)) {
-    modsVideoUrlCache.set(videoCfg.key, localRouteUrl);
-    return localRouteUrl;
-  }
-
-  return null;
 }
 
 // Helper: sprawdź czy użytkownik jest admin lub sprzedawca
@@ -2215,71 +1451,30 @@ function getPaymentFeePercent(methodRaw) {
 
   if (m.startsWith("blik")) return 0;
   if (m.startsWith("kod blik")) return 10;
-  if (m.includes("mypsc")) return 20;
   if (m === "psc bez paragonu" || m.startsWith("psc bez paragonu")) return 20;
   if (m === "psc" || m.startsWith("psc ")) return 10;
-  if (m.includes("paypal")) return 10;
-  if (m.includes("ltc")) return 10;
-
-  return 0;
-}
-
-function getMinPurchasePln(methodRaw) {
-  const m = (methodRaw || "").toString().trim().toLowerCase();
-  if (m.includes("mypsc")) return 11; // min zakupy dla MYPSC
-  if (m.startsWith("blik") || m.startsWith("kod blik")) return 5;
-  if (m.includes("psc")) return 5;
   if (m.includes("paypal")) return 5;
   if (m.includes("ltc")) return 5;
-  return 5;
-}
 
-function calculateFeePln(basePln, methodRaw) {
-  const percent = getPaymentFeePercent(methodRaw);
-  let fee = basePln * (percent / 100);
-  let feeLabel = `${percent}%`;
-
-  if ((methodRaw || "").toString().toLowerCase().includes("mypsc")) {
-    fee = Math.max(fee, 10); // min 10 zł
-    feeLabel = `${percent}% (min 10zł)`;
-  }
-
-  return { fee, feeLabel, percent };
-}
-
-const ANARCHIA_LIFESTEAL_RATE = 6500;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 7000;
-const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 200;
-const ANARCHIA_BOXPVP_RATE = 750000;
-const PYK_MC_RATE = 6000;
-const DONUT_SMP_RATE = 3_500_000;
-
-function getAnarchiaLifestealRateForPln(pln) {
-  return Number(pln) > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
-    ? ANARCHIA_LIFESTEAL_BULK_RATE
-    : ANARCHIA_LIFESTEAL_RATE;
-}
-
-function getAnarchiaLifestealRateForWaluta(waluta, methodRaw) {
-  const basePlnHighRate = Number(waluta) / ANARCHIA_LIFESTEAL_BULK_RATE;
-  const { fee: highRateFee } = calculateFeePln(basePlnHighRate, methodRaw);
-  const totalPlnHighRate = round2(basePlnHighRate + highRateFee);
-
-  return totalPlnHighRate > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
-    ? ANARCHIA_LIFESTEAL_BULK_RATE
-    : ANARCHIA_LIFESTEAL_RATE;
+  return 0;
 }
 
 function getRateForPlnAmount(pln, serverRaw) {
   const server = (serverRaw || "").toString().trim().toUpperCase();
 
-  if (server === "ANARCHIA_BOXPVP") return ANARCHIA_BOXPVP_RATE;
-  if (server === "ANARCHIA_LIFESTEAL") return getAnarchiaLifestealRateForPln(pln);
-  if (server === "PYK_MC") return PYK_MC_RATE;
-  if (server === "DONUT_SMP") return DONUT_SMP_RATE;
+  if (server === "ANARCHIA_BOXPVP") return 650000;
+  if (server === "ANARCHIA_LIFESTEAL") {
+    if (Number(pln) >= 100) return 5000;
+    return 4500;
+  }
+  if (server === "PYK_MC") {
+    if (Number(pln) >= 100) return 4000;
+    return 3500;
+  }
 
   // fallback (stary cennik)
-  return ANARCHIA_LIFESTEAL_RATE;
+  if (Number(pln) >= 100) return 5000;
+  return 4500;
 }
 
 // Helper: find a bot message in a channel matching a predicate on embed
@@ -2309,7 +1504,6 @@ async function findBotMessageWithEmbed(channel, matchFn) {
 // Helper: determine if a channel is considered a ticket channel (based on categories)
 function isTicketChannel(channel) {
   if (!channel || !channel.guild) return false;
-  if (ticketOwners.has(channel.id)) return true;
   if (channel.parentId && String(channel.parentId) === String(REWARDS_CATEGORY_ID))
     return true;
   const cats = ticketCategories.get(channel.guild.id);
@@ -2321,7 +1515,6 @@ function isTicketChannel(channel) {
   // fallback: name starts with ticket-
   if (channel.name && channel.name.toLowerCase().startsWith("ticket-"))
     return true;
-  if (isModernPurchaseTicketChannelName(channel.name)) return true;
   return false;
 }
 
@@ -2675,11 +1868,16 @@ client.once(Events.ClientReady, async (c) => {
               chd,
               (emb) =>
                 typeof emb.description === "string" &&
-                emb.description.includes("Użyj **komendy** </drop:1464015494876102748>"),
+                (emb.description.includes(
+                  "Użyj **komendy** </drop:1454974442370240585>",
+                ) ||
+                  emb.description.includes(
+                    "`🎁` Użyj **komendy** </drop:1464015494876102748>",
+                  ) ||
+                  emb.description.includes("Użyj **komendy** `/drop`")),
             );
             if (foundDrop) {
               lastDropInstruction.set(chd.id, foundDrop.id);
-              scheduleSavePersistentState();
               console.log(
                 `[ready] Znalazłem istniejącą instrukcję drop: ${foundDrop.id} w kanale ${chd.id}`,
               );
@@ -2756,21 +1954,10 @@ client.once(Events.ClientReady, async (c) => {
   client.guilds.cache.forEach(async (guild) => {
     try {
       const invites = await guild.invites.fetch().catch(() => null);
+      if (!invites) return;
       const map = new Map();
-      if (invites) {
-        invites.each((inv) => map.set(inv.code, inv.uses));
-      } else {
-        console.warn(
-          `[invites] Nie udało się pobrać invite'ów dla guild ${guild.id} przy starcie.`,
-        );
-      }
+      invites.each((inv) => map.set(inv.code, inv.uses));
       guildInvites.set(guild.id, map);
-
-      const vanityUses = await fetchGuildVanityUses(guild);
-      if (typeof vanityUses === "number") {
-        guildVanityUses.set(guild.id, vanityUses);
-      }
-
       // ensure inviteCounts map exists
       if (!inviteCounts.has(guild.id)) inviteCounts.set(guild.id, new Map());
       if (!inviteRewards.has(guild.id)) inviteRewards.set(guild.id, new Map());
@@ -2793,7 +1980,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
       await handleSlashCommand(interaction);
-    } else if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu()) {
+    } else if (interaction.isStringSelectMenu()) {
       await handleSelectMenu(interaction);
     } else if (interaction.isModalSubmit()) {
       await handleModalSubmit(interaction);
@@ -2804,7 +1991,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.error("Błąd obsługi interakcji:", error);
   }
 });
-
 async function handleModalSubmit(interaction) {
   // Sprawdź czy interakcja już została odpowiedziana
   if (interaction.replied || interaction.deferred) return;
@@ -2822,20 +2008,6 @@ async function handleModalSubmit(interaction) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
         content: "> `❌` × Podaj **poprawną** kwotę w PLN.",
-      });
-    }
-
-    if (kwota < 5) {
-      return interaction.reply({
-        flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**).",
-      });
-    }
-
-    if (kwota > 10_000) {
-      return interaction.reply({
-        flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Maksymalna kwota to **10 000zł**.",
       });
     }
 
@@ -2868,20 +2040,6 @@ async function handleModalSubmit(interaction) {
       return interaction.reply({
         flags: [MessageFlags.Ephemeral],
         content: "> `❌` × Podaj **poprawną** ilość waluty (np. 125k / 1m).",
-      });
-    }
-
-    if (amount < 22_500) {
-      return interaction.reply({
-        flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Minimalna ilość to **22,5k** waluty.",
-      });
-    }
-
-    if (amount > 999_000_000) {
-      return interaction.reply({
-        flags: [MessageFlags.Ephemeral],
-        content: "> `❌` × Maksymalna ilość to **999 000 000** waluty.",
       });
     }
 
@@ -2979,10 +2137,6 @@ async function handleModalSubmit(interaction) {
     try {
       const kwotaStr = interaction.fields.getTextInputValue("kwota");
       const kwota = parseFloat(kwotaStr.replace(",", "."));
-      const selectedServer =
-        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
-      const selectedPayment =
-        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (isNaN(kwota) || kwota <= 0) {
         await interaction.reply({
@@ -2992,52 +2146,30 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      // globalne minimum: 5zł (MYPSC 11zł dalej w metodach)
-      if (kwota < 5) {
-        await interaction.reply({
-          content: "> `❌` × Minimalna kwota to **5zł** (MYPSC **11zł**). Podaj większą kwotę.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      // maksymalnie 10 000 zł
-      if (kwota > 10_000) {
-        await interaction.reply({
-          content: "> `❌` × Maksymalna kwota to **10 000zł**. Podaj mniejszą kwotę.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (selectedServer && selectedPayment) {
-        const result = buildKalkulatorResultMessage({
-          typ: "otrzymam",
-          kwota,
-          tryb: selectedServer,
-          metoda: selectedPayment,
-        });
-
-        await interaction.reply({
-          content: result.error || result.message,
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      // Fallback dla starszych wiadomości kalkulatora
+      // Zapisz kwotę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_SERVER_OPTIONS);
+        .setPlaceholder("Wybierz serwer...")
+        .addOptions(
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+        );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
+        .setPlaceholder("Wybierz metodę płatności...")
+        .addOptions(
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+        );
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -3070,10 +2202,6 @@ async function handleModalSubmit(interaction) {
     try {
       const walutaStr = interaction.fields.getTextInputValue("waluta");
       const waluta = parseShortNumber(walutaStr);
-      const selectedServer =
-        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
-      const selectedPayment =
-        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (!waluta || waluta <= 0 || waluta > 999_000_000) {
         await interaction.reply({
@@ -3083,43 +2211,30 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      // minimalne zakupy dla "ile muszę dać" = 22.5k
-      if (waluta < 22_500) {
-        await interaction.reply({
-          content: "> `❌` × Minimalna ilość to **22,5k** waluty. Podaj większą wartość.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (selectedServer && selectedPayment) {
-        const result = buildKalkulatorResultMessage({
-          typ: "muszedac",
-          waluta,
-          tryb: selectedServer,
-          metoda: selectedPayment,
-        });
-
-        await interaction.reply({
-          content: result.error || result.message,
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      // Fallback dla starszych wiadomości kalkulatora
+      // Zapisz walutę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_SERVER_OPTIONS);
+        .setPlaceholder("Wybierz serwer...")
+        .addOptions(
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+        );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
+        .setPlaceholder("Wybierz metodę płatności...")
+        .addOptions(
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+        );
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -3170,13 +2285,13 @@ async function handleModalSubmit(interaction) {
     }
 
     // Sprawdź typ kodu
-      if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
-        await interaction.reply({
-          content:
-            "❌ Kod na 70k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
+    if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
+      await interaction.reply({
+        content:
+          "❌ Kod na 50k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
     }
 
     if (codeData.used) {
@@ -3464,7 +2579,16 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "odbior-nagrody";
       ticketTypeLabel = "NAGRODA ZA ZAPROSZENIA";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.reward || "Brak"}\``;
+      formInfo = `> ➖ × **Kod:** \`${enteredCode}\`\n> ➖ × **Nagroda:** \`${codeData.reward || "Brak"}\``;
+      break;
+    }
+    case "modal_konkurs_odbior": {
+      const info = interaction.fields.getTextInputValue("konkurs_info");
+
+      categoryId = REWARDS_CATEGORY_ID;
+      ticketType = "konkurs-nagrody";
+      ticketTypeLabel = "NAGRODA ZA KONKURS";
+      formInfo = `> ➖ × **Informacje:** \`${info}\``;
       break;
     }
     case "modal_inne": {
@@ -3472,8 +2596,8 @@ async function handleModalSubmit(interaction) {
 
       categoryId = categories["inne"];
       ticketType = "inne";
-      ticketTypeLabel = "PYTANIE";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
+      ticketTypeLabel = "INNE";
+      formInfo = `> ➖ × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -3489,9 +2613,7 @@ async function handleModalSubmit(interaction) {
     for (const [channelId, ticketData] of ticketOwners.entries()) {
       if (ticketData.userId === user.id) {
         await interaction.reply({
-          content:
-            `> \`❌\` × **Masz już otwarty** ticket: <#${channelId}>\n` +
-            "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
+          content: `❌ Masz już otwarty ticket: <#${channelId}>`,
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -3562,16 +2684,17 @@ async function handleModalSubmit(interaction) {
       }
     }
 
-    const channel = await interaction.guild.channels.create(createOptions);
+    const channel = await guild.channels.create(createOptions);
 
     const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
+      .setColor(COLOR_BLUE)
+      .setTitle(`🛒 NEW SHOP × ${ticketTypeLabel}`)
       .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+        `## 🛒 NEW SHOP × ${ticketTypeLabel}\n\n` +
         `### ・ 👤 × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
+        `> ➖ **× Ping:** <@${user.id}>\n` +
+        `> ➖ **× Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> ➖ **× ID:** \`${user.id}\`\n` +
         `### ・ 📋 × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -3614,9 +2737,6 @@ async function handleModalSubmit(interaction) {
       userId: user.id,
       ticketMessageId: sentMsg.id,
       locked: false,
-      ticketTypeLabel,
-      formInfo,
-      openedAt: Date.now(),
     });
     scheduleSavePersistentState();
 
@@ -3696,19 +2816,54 @@ async function handleKalkulatorSubmit(interaction, typ) {
       return;
     }
 
-    const result = buildKalkulatorResultMessage({
-      typ,
-      kwota: userData.kwota,
-      waluta: userData.waluta,
-      tryb: userData.tryb,
-      metoda: userData.metoda,
-    });
+    const feePercent = getPaymentFeePercent(userData.metoda);
 
-    await interaction.editReply({
-      content: result.error || result.message,
-      embeds: [],
-      components: []
-    });
+    if (typ === "otrzymam") {
+      const kwota = userData.kwota;
+      const effectivePln = kwota * (1 - feePercent / 100);
+      const rate = getRateForPlnAmount(kwota, userData.tryb);
+      const waluta = Math.floor(effectivePln * rate);
+      const kwotaZl = Math.trunc(Number(kwota) || 0);
+      const walutaShort = formatShortWaluta(waluta);
+
+      const msg = `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${userData.metoda} prowizja: ${feePercent}%) otrzymasz:** \`${walutaShort}\` **(${waluta} $)**`;
+
+      await interaction.editReply({
+        content: msg,
+        embeds: [],
+        components: []
+      });
+    } else {
+      const waluta = userData.waluta;
+      const server = (userData.tryb || "").toString().toUpperCase();
+      let rate;
+      if (server === "ANARCHIA_BOXPVP") {
+        rate = 650000;
+      } else if (server === "ANARCHIA_LIFESTEAL") {
+        const estimatedPln4500 = waluta / 4500;
+        rate = estimatedPln4500 >= 100 ? 5000 : 4500;
+      } else {
+        // PYK MC
+        const estimatedPln3500 = waluta / 3500;
+        rate = estimatedPln3500 >= 100 ? 4000 : 3500;
+      }
+      const baseRaw = waluta / rate;
+      const basePln = round2(baseRaw);
+      const feePln = round2(basePln * feePercent / 100);
+      const totalPln = round2(basePln + feePln);
+
+      const totalZl = Math.trunc(Number(totalPln) || 0);
+      const walutaInt = Math.floor(Number(waluta) || 0);
+      const walutaShort = formatShortWaluta(walutaInt);
+
+      const msg = `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${userData.metoda} prowizja: ${feePercent}%)**`;
+
+      await interaction.editReply({
+        content: msg,
+        embeds: [],
+        components: []
+      });
+    }
 
     // Wyczyść dane użytkownika
     kalkulatorData.delete(userId);
@@ -3786,329 +2941,6 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
-  if (customId.startsWith("mody_videos_")) {
-    try {
-      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-    } catch (err) {
-      // Interaction token already expired or already acknowledged.
-      console.warn("[mody] Nie udało się potwierdzić interakcji przycisku:", err?.code || err);
-      return;
-    }
-
-    const resolvedVideos = [];
-    const seenKeys = new Set();
-    const seenUrls = new Set();
-
-    const addResolvedVideo = (videoCfg, url, labelFallback = "Nagranie") => {
-      if (!isHttpUrl(url)) return;
-      const key = videoCfg?.key ? `key:${videoCfg.key}` : `url:${url}`;
-      if (seenKeys.has(key) || seenUrls.has(url)) return;
-      seenKeys.add(key);
-      seenUrls.add(url);
-      resolvedVideos.push({
-        videoCfg: videoCfg || null,
-        url,
-        labelFallback,
-      });
-    };
-
-    // 1) Najpierw bierzemy video z wiadomości panelu (to najszybsza ścieżka).
-    const fromCurrentMessage = collectVideoLinksFromMessage(interaction.message);
-    for (const item of fromCurrentMessage) {
-      const cfgFromAttachment =
-        (item?.key && MODS_VIDEO_FILES.find((v) => v.key === item.key)) ||
-        getModsVideoConfigByFilename(item?.label || "");
-      addResolvedVideo(
-        cfgFromAttachment,
-        item?.url || "",
-        item?.modName || item?.label || "Nagranie",
-      );
-    }
-
-    // 2) Dołóż źródła z resolvera z preferencją Discord CDN (slow-scan + fallbacki).
-    for (const videoCfg of MODS_VIDEO_FILES) {
-      const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
-        allowSlowScan: true,
-      });
-      addResolvedVideo(
-        videoCfg,
-        url,
-        videoCfg.modName || videoCfg.label || "Nagranie",
-      );
-    }
-
-    if (resolvedVideos.length > 0) {
-      const MAX_VIDEO_MESSAGES = 10;
-      resolvedVideos.sort((a, b) => {
-        const rankA = getModsVideoOrderRank(a.videoCfg);
-        const rankB = getModsVideoOrderRank(b.videoCfg);
-        if (rankA !== rankB) return rankA - rankB;
-        const keyA = a.videoCfg?.key || a.labelFallback || "";
-        const keyB = b.videoCfg?.key || b.labelFallback || "";
-        return keyA.localeCompare(keyB, "pl");
-      });
-      const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
-      let sentAtLeastOneVideo = false;
-      let firstResponseSent = false;
-
-      const sendVideoMessage = async ({ content, files }) => {
-        if (!firstResponseSent) {
-          await interaction.editReply({
-            content,
-            files,
-            embeds: [],
-            components: [],
-          });
-          firstResponseSent = true;
-          return;
-        }
-        await interaction.followUp({
-          content,
-          files,
-          flags: [MessageFlags.Ephemeral],
-        });
-      };
-
-      for (let i = 0; i < videosToSend.length; i += 1) {
-        const video = videosToSend[i];
-        const videoCfg = video.videoCfg || null;
-        const caption = getModsVideoCaption(videoCfg, video.labelFallback || "Nagranie");
-        const localPath = resolveLocalModsVideoPath(videoCfg);
-        let sentThisVideo = false;
-
-        if (localPath) {
-          let size = 0;
-          try {
-            size = fs.statSync(localPath).size || 0;
-          } catch {
-            size = 0;
-          }
-
-          if (size > 0 && size <= DISCORD_MAX_UPLOAD_BYTES) {
-            const ext = path.extname(localPath) || ".mp4";
-            const baseName =
-              (videoCfg?.key || `video_${i + 1}`)
-                .toString()
-                .replace(/[^a-z0-9_-]/gi, "_") || `video_${i + 1}`;
-            const attachment = new AttachmentBuilder(localPath, {
-              name: `${baseName}${ext.toLowerCase()}`,
-            });
-
-            try {
-              await sendVideoMessage({
-                content: caption,
-                files: [attachment],
-              });
-              sentAtLeastOneVideo = true;
-              sentThisVideo = true;
-              continue;
-            } catch (err) {
-              console.warn(
-                `[mody] Nie udało się wysłać pliku ${path.basename(localPath)}; próbuję link fallback.`,
-                err?.code || err?.message || err,
-              );
-            }
-          }
-        }
-
-        // Fallback: jeśli lokalny plik jest niedostępny/za duży, wyślij caption + link.
-        if (!sentThisVideo && isHttpUrl(video.url)) {
-          try {
-            await sendVideoMessage({
-              content: `${caption}\n${video.url}`,
-            });
-            sentAtLeastOneVideo = true;
-            sentThisVideo = true;
-          } catch (err) {
-            console.warn(
-              "[mody] Nie udało się wysłać fallback linku:",
-              err?.code || err?.message || err,
-            );
-          }
-        }
-
-        if (!sentThisVideo) {
-          console.warn(
-            `[mody] Pominięto video ${videoCfg?.key || video.labelFallback || i + 1} (brak pliku <= limit i brak działającego URL).`,
-          );
-        }
-      }
-
-      if (!sentAtLeastOneVideo) {
-        const failMsg =
-          "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.";
-        if (!firstResponseSent) {
-          await interaction.editReply({ content: failMsg, embeds: [], components: [] });
-        } else {
-          await interaction.followUp({
-            content: failMsg,
-            flags: [MessageFlags.Ephemeral],
-          });
-        }
-      }
-      return;
-    }
-
-    const localVideo =
-      MODS_VIDEO_FILES
-        .map((cfg) => ({
-          cfg,
-          localPath: resolveLocalModsVideoPath(cfg),
-        }))
-        .find((item) => !!item.localPath) || null;
-
-    if (localVideo) {
-      let videoSize = 0;
-      try {
-        videoSize = fs.statSync(localVideo.localPath).size || 0;
-      } catch {
-        videoSize = 0;
-      }
-
-      const sizeMb = (videoSize / 1024 / 1024).toFixed(1);
-      const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
-      await interaction.editReply({
-        content:
-          `> \`❌\` × Nie mam publicznego linku do **${path.basename(localVideo.localPath)}**.\n` +
-          `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
-          `> \`✅\` × Ustaw URL w env \`${localVideo.cfg.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
-      });
-      return;
-    }
-
-    await interaction.editReply({
-      content:
-        "> `❌` × Nie znaleziono żadnych nagrań modów ani linków do nich.",
-    });
-    return;
-  }
-
-  if (customId.startsWith("mody_buy_")) {
-    await showModyZakupModal(interaction);
-    return;
-  }
-
-  const embedTestPublishStartMatch = customId.match(
-    /^embedtest_publish_start_(\d+)$/,
-  );
-  if (embedTestPublishStartMatch) {
-    const [, messageId] = embedTestPublishStartMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    pendingEmbedTestPublish.set(
-      getPendingEmbedTestPublishKey(interaction.guildId, interaction.user.id),
-      {
-        messageId,
-        sourceChannelId: interaction.channelId,
-        expiresAt: Date.now() + 2 * 60 * 1000,
-      },
-    );
-
-    await interaction.reply(buildEmbedTestPublishPrompt(state));
-    return;
-  }
-
-  const embedTestBuyOpenMatch = customId.match(
-    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel))?$/,
-  );
-  if (embedTestBuyOpenMatch) {
-    const action = embedTestBuyOpenMatch[1] || "zakup";
-
-    switch (action) {
-      case "zakup":
-        await showZakupModal(interaction);
-        break;
-      case "zakup_autorynku":
-        await showAutoRynekZakupModal(interaction);
-        break;
-      case "zakup_moda":
-        await showModyZakupModal(interaction);
-        break;
-      case "sprzedaz":
-        await showSprzedazModal(interaction);
-        break;
-      case "odbior":
-        await showOdbiorModal(interaction);
-        break;
-      case "inne":
-        await showInneModal(interaction);
-        break;
-      case "panel":
-        await interaction.reply({
-          ...buildTicketPanelPayload(),
-          flags: [MessageFlags.Ephemeral],
-        });
-        break;
-      default:
-        await showZakupModal(interaction);
-        break;
-    }
-    return;
-  }
-
-  const embedTestEditMatch = customId.match(
-    /^embedtest_edit_(header|content|content_extra|buttons|emojis)_(\d+)$/,
-  );
-  if (embedTestEditMatch) {
-    const [, mode, messageId] = embedTestEditMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (mode === "header") {
-      await interaction.showModal(buildEmbedTestHeaderModal(state));
-      return;
-    }
-
-    if (mode === "content") {
-      await interaction.showModal(buildEmbedTestContentModal(state));
-      return;
-    }
-
-    if (mode === "content_extra") {
-      await interaction.showModal(buildEmbedTestExtraContentModal(state));
-      return;
-    }
-
-    if (mode === "emojis") {
-      await interaction.showModal(buildEmbedTestEmojisModal(state));
-      return;
-    }
-
-    await interaction.showModal(buildEmbedTestButtonsModal(state));
-    return;
-  }
-
   // NEW: verification panel button
   if (customId.startsWith("verify_panel_")) {
     // very simple puzzles for preschool level: addition and multiplication with small numbers
@@ -4163,14 +2995,42 @@ const nickInput = new TextInputBuilder()
 
   // KALKULATOR: ile otrzymam?
   if (customId === "kalkulator_ile_otrzymam") {
-    await interaction.showModal(buildKalkulatorModal("otrzymam"));
-    return;
+    const modal = new ModalBuilder()
+      .setCustomId("modal_ile_otrzymam")
+      .setTitle("New Shop × Obliczanie");
+
+    const kwotaInput = new TextInputBuilder()
+      .setCustomId("kwota")
+      .setLabel("Kwota (PLN)")
+      .setPlaceholder("np. 50")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(kwotaInput)
+    );
+
+    await interaction.showModal(modal);
   }
 
   // KALKULATOR: ile muszę dać?
   if (customId === "kalkulator_ile_musze_dac") {
-    await interaction.showModal(buildKalkulatorModal("muszedac"));
-    return;
+    const modal = new ModalBuilder()
+      .setCustomId("modal_ile_musze_dac")
+      .setTitle("New Shop × Obliczanie");
+
+    const walutaInput = new TextInputBuilder()
+      .setCustomId("waluta")
+      .setLabel("Ilość waluty (np. 125k / 1m)")
+      .setPlaceholder("np. 125k")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(walutaInput)
+    );
+
+    await interaction.showModal(modal);
   }
 
   // Ticket close - double confirmation logic BUT restricted to admins/sellers
@@ -4212,7 +3072,7 @@ const nickInput = new TextInputBuilder()
         embeds: [
           new EmbedBuilder()
             .setColor(COLOR_BLUE)
-            .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+            .setDescription("> \`ℹ️\` **Ticket zostanie zamknięty w ciągu 5 sekund...**")
         ]
       });
 
@@ -4222,7 +3082,6 @@ const nickInput = new TextInputBuilder()
           channel,
           interaction.user.id,
           ticketMeta,
-          { closeMethod: "Przycisk zamknięcia" },
         ).catch((e) => console.error("archiveTicketOnClose error:", e));
       } catch (e) {
         console.error("Błąd archiwizacji ticketu (button):", e);
@@ -4240,7 +3099,8 @@ const nickInput = new TextInputBuilder()
       // set pending note
       pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
       await interaction.reply({
-        embeds: [buildTicketCloseConfirmEmbed("Kliknij przycisk jeszcze raz")],
+        content:
+          "> \`⚠️\` **Kliknij ponownie przycisk zamknięcia w ciągu `30` sekund aby potwierdzić __zamknięcie ticketu!__**",
         flags: [MessageFlags.Ephemeral],
       });
       // schedule expiry
@@ -4309,7 +3169,7 @@ const nickInput = new TextInputBuilder()
     // select menu with placeholder like the screenshot
     const select = new StringSelectMenuBuilder()
       .setCustomId(`ticket_settings_select_${channel.id}`)
-      .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
+      .setPlaceholder("❌ × Nie wybrano żadnej z akcji...")
       .addOptions([
         {
           label: "Dodaj osobę",
@@ -4349,7 +3209,7 @@ const nickInput = new TextInputBuilder()
     const parts = customId.split("_");
     const channelId = parts[2];
     const expectedClaimer = parts[3] || null;
-    await ticketUnclaimCommon(interaction, channelId, expectedClaimer, { reason: null });
+    await ticketUnclaimCommon(interaction, channelId, expectedClaimer);
     return;
   }
 }
@@ -4358,28 +3218,8 @@ async function handleSlashCommand(interaction) {
   const { commandName } = interaction;
 
   switch (commandName) {
-    default: {
-      // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-      const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
-      // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
-      const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
-      const SELLER_ROLE_ID = "1350786945944391733";
-      const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
-      const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
-      if (!isAdmin && !isSeller && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
-        await interaction.reply({
-          content: "> `❌` × Nie masz uprawnień do tej komendy.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-      break;
-    }
     case "drop":
       await handleDropCommand(interaction);
-      break;
-    case "free-kasa":
-      await handleFreeKasaCommand(interaction);
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
@@ -4414,13 +3254,13 @@ async function handleSlashCommand(interaction) {
     case "opinia":
       await handleOpinionCommand(interaction);
       break;
-    case "wyczysc":
+    case "wyczysckanal":
       await handleWyczyscKanalCommand(interaction);
       break;
     case "resetlc":
       await handleResetLCCommand(interaction);
       break;
-    case "zco":
+    case "zresetujczasoczekiwania":
       await handleZresetujCzasCommand(interaction);
       break;
     case "przejmij":
@@ -4429,26 +3269,14 @@ async function handleSlashCommand(interaction) {
     case "odprzejmij":
       await handleAdminOdprzejmij(interaction);
       break;
-    case "autoprzejmij":
-      await handleAutoPrzejmijCommand(interaction);
-      break;
     case "embed":
       await handleSendMessageCommand(interaction);
-      break;
-    case "embedtest":
-      await handleEmbedTestCommand(interaction);
-      break;
-    case "mody":
-      await handleModyCommand(interaction);
       break;
     case "sprawdz-zaproszenia":
       await handleSprawdzZaproszeniaCommand(interaction);
       break;
     case "sprawdz-kogo-zaprosil":
       await handleSprawdzKogoZaprosilCommand(interaction);
-      break;
-    case "utworz-konkurs":
-      await handleDodajKonkursCommand(interaction);
       break;
     case "rozliczenie":
       await handleRozliczenieCommand(interaction);
@@ -4464,9 +3292,6 @@ async function handleSlashCommand(interaction) {
       break;
     case "rozliczenieustaw":
       await handleRozliczenieUstawCommand(interaction);
-      break;
-    case "wezwij":
-      await handleWezwijCommand(interaction);
       break;
     case "zaproszeniastats":
       await handleZaprosieniaStatsCommand(interaction);
@@ -4832,269 +3657,8 @@ async function handleAdminPrzejmij(interaction) {
     });
     return;
   }
-  await ticketClaimCommon(interaction, channel.id); // quiz odpali się w środku
+  await ticketClaimCommon(interaction, channel.id);
 }
-
-function getPurchaseTicketCategoryIdsForGuild(guild) {
-  const guildCats = ticketCategories.get(guild.id) || {};
-  const purchaseCategoryIds = new Set();
-
-  for (const [key, value] of Object.entries(guildCats)) {
-    if (key.startsWith("zakup-") && value) {
-      purchaseCategoryIds.add(String(value));
-    }
-  }
-
-  if (purchaseCategoryIds.size === 0) {
-    for (const ch of guild.channels.cache.values()) {
-      if (
-        ch.type === ChannelType.GuildCategory &&
-        ch.name &&
-        ch.name.toLowerCase().includes("zakup")
-      ) {
-        purchaseCategoryIds.add(String(ch.id));
-      }
-    }
-  }
-
-  return purchaseCategoryIds;
-}
-
-async function runAutoPrzejmijSweep(guild, ownerId, ownerName, targetChannelId = null) {
-  const purchaseCategoryIds = getPurchaseTicketCategoryIdsForGuild(guild);
-  const CLAIMED_CATEGORY_ID = "1457446529395593338";
-  const ARCHIVED_CATEGORY_ID = "1469059216303198261";
-  const ownerMember = await guild.members.fetch(ownerId).catch(() => null);
-
-  const stats = {
-    claimedCount: 0,
-    skippedNonPurchase: 0,
-    skippedClaimed: 0,
-    skippedLocked: 0,
-    skippedArchived: 0,
-    staleRemoved: 0,
-    errorCount: 0,
-    claimedChannels: [],
-    missingPurchaseCategories: purchaseCategoryIds.size === 0,
-  };
-
-  if (stats.missingPurchaseCategories) return stats;
-
-  const nick = (ownerName || ownerMember?.displayName || "Wlasciciel")
-    .toString()
-    .replace(/`/g, "")
-    .trim();
-
-  const fakeInteraction = {
-    user: { id: ownerId, username: nick || "Wlasciciel" },
-    member: ownerMember,
-    guild,
-    replied: true,
-    deferred: true,
-    isButton: () => false,
-    reply: async () => null,
-    followUp: async () => null,
-    editReply: async () => null,
-    deleteReply: async () => null,
-    deferReply: async () => null,
-    deferUpdate: async () => null,
-    showModal: async () => null,
-  };
-
-  for (const [channelId] of ticketOwners.entries()) {
-    if (targetChannelId && channelId !== targetChannelId) continue;
-
-    let channel = guild.channels.cache.get(channelId) || null;
-    if (!channel) channel = await client.channels.fetch(channelId).catch(() => null);
-
-    if (!channel) {
-      ticketOwners.delete(channelId);
-      stats.staleRemoved += 1;
-      continue;
-    }
-
-    if (
-      !channel.guild ||
-      channel.guild.id !== guild.id ||
-      channel.type !== ChannelType.GuildText
-    ) {
-      continue;
-    }
-
-    const parentId = channel.parentId ? String(channel.parentId) : "";
-    if (parentId === ARCHIVED_CATEGORY_ID) {
-      stats.skippedArchived += 1;
-      continue;
-    }
-    if (parentId === CLAIMED_CATEGORY_ID) {
-      stats.skippedClaimed += 1;
-      continue;
-    }
-    if (!purchaseCategoryIds.has(parentId)) {
-      stats.skippedNonPurchase += 1;
-      continue;
-    }
-
-    const result = await ticketClaimCommon(fakeInteraction, channel.id, {
-      skipQuiz: true,
-      bypassPermissionCheck: true,
-      publicClaimerLabel: `<@${ownerId}>`,
-    });
-
-    if (result && result.ok) {
-      stats.claimedCount += 1;
-      stats.claimedChannels.push(`<#${channel.id}>`);
-      continue;
-    }
-
-    const reason = result?.reason || "error";
-    if (reason === "already-claimed") {
-      stats.skippedClaimed += 1;
-    } else if (reason === "locked") {
-      stats.skippedLocked += 1;
-    } else if (reason === "channel-not-found") {
-      stats.staleRemoved += 1;
-    } else {
-      stats.errorCount += 1;
-    }
-  }
-
-  if (stats.staleRemoved > 0) scheduleSavePersistentState();
-  return stats;
-}
-
-function formatAutoPrzejmijSummary(stats, statusLine) {
-  const lines = [];
-  if (statusLine) lines.push(statusLine);
-
-  if (stats.missingPurchaseCategories) {
-    lines.push("> `❌` × Nie znalazlem kategorii ticketow zakupowych.");
-    return lines.join("\n");
-  }
-
-  lines.push(`> \`✅\` × Przejete tickety zakupowe: **${stats.claimedCount}**.`);
-  lines.push(`> \`⏭️\` × Pominiete nie-zakupowe: **${stats.skippedNonPurchase}**.`);
-  lines.push(`> \`⏭️\` × Pominiete (juz przejete): **${stats.skippedClaimed}**.`);
-  lines.push(`> \`⏭️\` × Pominiete (zablokowane): **${stats.skippedLocked}**.`);
-  lines.push(`> \`⏭️\` × Pominiete (zrealizowane): **${stats.skippedArchived}**.`);
-
-  if (stats.staleRemoved > 0) {
-    lines.push(`> \`🧹\` × Usuniete nieaktualne wpisy: **${stats.staleRemoved}**.`);
-  }
-  if (stats.errorCount > 0) {
-    lines.push(`> \`⚠️\` × Bledy podczas przejmowania: **${stats.errorCount}**.`);
-  }
-  if (stats.claimedChannels.length > 0) {
-    const preview = stats.claimedChannels.slice(0, 10).join(", ");
-    const more =
-      stats.claimedChannels.length > 10
-        ? ` (+${stats.claimedChannels.length - 10} wiecej)`
-        : "";
-    lines.push(`> \`📌\` × Przejete kanaly: ${preview}${more}`);
-  }
-  return lines.join("\n");
-}
-
-async function maybeAutoPrzejmijNewTicket(guild, channelId) {
-  const cfg = autoPrzejmijSettings.get(guild.id);
-  if (!cfg || !cfg.enabled) return;
-
-  if (cfg.ownerId !== guild.ownerId) {
-    autoPrzejmijSettings.delete(guild.id);
-    scheduleSavePersistentState();
-    return;
-  }
-
-  const ownerMember = await guild.members.fetch(cfg.ownerId).catch(() => null);
-  const ownerName = ownerMember?.displayName || cfg.ownerName || "Wlasciciel";
-
-  if (cfg.ownerName !== ownerName) {
-    cfg.ownerName = ownerName;
-    autoPrzejmijSettings.set(guild.id, cfg);
-    scheduleSavePersistentState();
-  }
-
-  await runAutoPrzejmijSweep(guild, cfg.ownerId, ownerName, channelId).catch(
-    (err) => console.error("[autoprzejmij] Auto-claim nowego ticketa nieudany:", err),
-  );
-}
-
-async function handleAutoPrzejmijCommand(interaction) {
-  const guild = interaction.guild;
-  if (!guild) {
-    await interaction.reply({
-      content: "> `❌` × Ta komenda dziala tylko na serwerze.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  if (interaction.user.id !== guild.ownerId) {
-    await interaction.reply({
-      content: "> `❌` × Tej komendy moze uzyc tylko wlasciciel serwera.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const modeSel = interaction.options.getString("status", true);
-  const guildId = guild.id;
-
-  if (modeSel === "wylacz") {
-    autoPrzejmijSettings.delete(guildId);
-    scheduleSavePersistentState();
-    await interaction.reply({
-      content: "> `✅` × Autoprzejmowanie zostalo **wylaczone**.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const quizQuestions = [
-    { q: "Ile to 5 * 3?", a: "15" },
-    { q: "Ile to 3 * 3?", a: "9" },
-    { q: "Ile to 4 * 6?", a: "24" },
-    { q: "Ile to 7 + 8?", a: "15" },
-    { q: "Ile to 12 - 5?", a: "7" },
-    { q: "Ile to 9 + 6?", a: "15" },
-    { q: "Ile to 14 - 8?", a: "6" },
-    { q: "Ile to 6 * 4?", a: "24" },
-    { q: "Ile to 5 + 9?", a: "14" },
-  ];
-  const pick = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
-  const modalId = `autoprzejmij_quiz_${guildId}_${interaction.user.id}_${Date.now()}`;
-
-  pendingAutoPrzejmijQuiz.set(modalId, {
-    guildId,
-    userId: interaction.user.id,
-    ownerId: interaction.user.id,
-    ownerName:
-      interaction.member?.displayName ||
-      interaction.user.globalName ||
-      interaction.user.username,
-    answer: pick.a,
-  });
-
-  const modal = new ModalBuilder()
-    .setCustomId(modalId)
-    .setTitle("Weryfikacja autoprzejmowania");
-  const input = new TextInputBuilder()
-    .setCustomId("autoprzejmij_answer")
-    .setLabel(pick.q)
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(4);
-  modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-  await interaction.showModal(modal).catch(async () => {
-    pendingAutoPrzejmijQuiz.delete(modalId);
-    await interaction.reply({
-      content: "> `❌` × Nie udalo sie otworzyc captcha. Sprobuj ponownie.",
-      flags: [MessageFlags.Ephemeral],
-    }).catch(() => null);
-  });
-}
-
 async function handlePanelKalkulatorCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
@@ -5119,17 +3683,23 @@ async function handlePanelKalkulatorCommand(interaction) {
       "```\n" +
       "🧮 New Shop × Kalkulator\n" +
       "```\n" +
-      "> <a:arrowwhite:1469100658606211233> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
+      "> \`ℹ️\` × **Aby w szybki i prosty sposób obliczyć ile otrzymasz waluty za określoną ilość PLN lub ile musisz dać, aby otrzymać określoną ilość waluty, kliknij jeden z przycisków poniżej.**",
     );
 
-  const typeSelect = new StringSelectMenuBuilder()
-    .setCustomId("kalkulator_typ")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(KALKULATOR_MODE_OPTIONS);
+  const btnIleOtrzymam = new ButtonBuilder()
+    .setCustomId("kalkulator_ile_otrzymam")
+    .setLabel("Ile otrzymam?")
+    .setStyle(ButtonStyle.Secondary);
 
-  const row = new ActionRowBuilder().addComponents(typeSelect);
+  const btnIleMuszeDac = new ButtonBuilder()
+    .setCustomId("kalkulator_ile_musze_dac")
+    .setLabel("Ile muszę dać?")
+    .setStyle(ButtonStyle.Secondary);
+
+  const row = new ActionRowBuilder().addComponents(
+    btnIleOtrzymam,
+    btnIleMuszeDac,
+  );
 
   await interaction.reply({
     content: "> `✅` × **Panel** kalkulatora został wysłany na ten **kanał**.",
@@ -5137,111 +3707,6 @@ async function handlePanelKalkulatorCommand(interaction) {
   });
 
   await interaction.channel.send({ embeds: [embed], components: [row] });
-}
-
-function buildKalkulatorModal(typ) {
-  const isOtrzymam = typ === "otrzymam";
-  const modal = new ModalBuilder()
-    .setCustomId(isOtrzymam ? "modal_ile_otrzymam" : "modal_ile_musze_dac")
-    .setTitle("New Shop × Obliczanie");
-
-  const valueInput = new TextInputBuilder()
-    .setCustomId(isOtrzymam ? "kwota" : "waluta")
-    .setPlaceholder(isOtrzymam ? "np. 50" : "np. 125k")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const serverSelect = new StringSelectMenuBuilder()
-    .setCustomId("kalkulator_server")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(KALKULATOR_SERVER_OPTIONS);
-
-  const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("kalkulator_payment")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(KALKULATOR_PAYMENT_OPTIONS);
-
-  modal.addLabelComponents(
-    new LabelBuilder()
-      .setLabel(isOtrzymam ? "Kwota (PLN)" : "Ilość waluty")
-      .setTextInputComponent(valueInput),
-    new LabelBuilder()
-      .setLabel("Wybierz serwer")
-      .setStringSelectMenuComponent(serverSelect),
-    new LabelBuilder()
-      .setLabel("Wybierz metodę płatności")
-      .setStringSelectMenuComponent(paymentSelect),
-  );
-
-  return modal;
-}
-
-function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
-  if (!tryb || !metoda) {
-    return {
-      error: "> `❌` × **Proszę** wybrać zarówno serwer jak i metodę **płatności**.",
-    };
-  }
-
-  const minPurchase = getMinPurchasePln(metoda);
-
-  if (typ === "otrzymam") {
-    if (kwota < minPurchase) {
-      return {
-        error: `> \`❌\` × **Minimalne zakupy** dla ${metoda} to **${minPurchase}zł**.`,
-      };
-    }
-
-    const { fee, feeLabel } = calculateFeePln(kwota, metoda);
-    const effectivePln = kwota - fee;
-    const rate = getRateForPlnAmount(kwota, tryb);
-    const calculatedWaluta = Math.floor(effectivePln * rate);
-    const kwotaZl = Math.trunc(Number(kwota) || 0);
-    const walutaShort = formatShortWaluta(calculatedWaluta);
-
-    return {
-      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta} $)**`,
-    };
-  }
-
-  const server = (tryb || "").toString().toUpperCase();
-  let rate;
-  if (server === "ANARCHIA_BOXPVP") {
-    rate = ANARCHIA_BOXPVP_RATE;
-  } else if (server === "ANARCHIA_LIFESTEAL") {
-    rate = getAnarchiaLifestealRateForWaluta(waluta, metoda);
-  } else if (server === "PYK_MC") {
-    rate = PYK_MC_RATE;
-  } else if (server === "DONUT_SMP") {
-    rate = DONUT_SMP_RATE;
-  } else {
-    rate = ANARCHIA_LIFESTEAL_RATE;
-  }
-
-  const baseRaw = waluta / rate;
-  const basePln = round2(baseRaw);
-  const { fee, feeLabel } = calculateFeePln(basePln, metoda);
-  const totalPln = round2(basePln + fee);
-  const totalZl = Math.trunc(Number(totalPln) || 0);
-
-  if (totalZl < minPurchase) {
-    return {
-      error: `> \`❌\` × **Minimalne zakupy** dla ${metoda} to **${minPurchase}zł**.`,
-    };
-  }
-
-  const walutaInt = Math.floor(Number(waluta) || 0);
-  const walutaShort = formatShortWaluta(walutaInt);
-
-  return {
-    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**`,
-  };
 }
 
 async function handleAdminOdprzejmij(interaction) {
@@ -5262,168 +3727,19 @@ async function handleAdminOdprzejmij(interaction) {
     });
     return;
   }
-  await ticketUnclaimCommon(interaction, channel.id, null, { reason: null });
+  await ticketUnclaimCommon(interaction, channel.id, null);
 }
 
-function replaceEmbedAliasTokens(text = "") {
-  const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
-  const alertEmoji = "<a:alert:1474431227972026469>";
-  const alertEmoji2 = "<a:alertownik2:1477688955221835807>";
-  const minecraftEmoji2 = "<a:minecraft2:1480590181944791122>";
-  const ironLoveEmoji = "<a:iron_love:1480590229697069210>";
-  const starEmoji = "<:star:1474431260133691567>";
-
-  return (text || "")
-    .replace(/:strzałka:/gi, arrowEmoji)
-    .replace(/:alertownik:/gi, alertEmoji)
-    .replace(/:alertownik2:/gi, alertEmoji2)
-    .replace(/:minecraft2:/gi, minecraftEmoji2)
-    .replace(/:iron_love:/gi, ironLoveEmoji)
-    .replace(/:startownik:/gi, starEmoji);
-}
-
-function extractEmbedPingTokens(text = "") {
-  const pingRegex = /<@!?\d+>|<@&\d+>|@everyone|@here/g;
-  const matches = text.match(pingRegex) || [];
-  const unique = [];
-
-  for (const match of matches) {
-    if (!unique.includes(match)) {
-      unique.push(match);
-    }
-  }
-
-  const cleaned = text
-    .replace(pingRegex, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return {
-    pingContent: unique.join(" "),
-    cleanedContent: cleaned,
-  };
-}
-
-function collectEmbedMediaFromMessage(message) {
-  const mediaUrls = [];
-  const fileUrls = [];
-
-  for (const attachment of message.attachments.values()) {
-    const contentType = (attachment.contentType || "").toLowerCase();
-    const name = (attachment.name || "").toLowerCase();
-    const isMedia =
-      contentType.startsWith("image/") ||
-      contentType.startsWith("video/") ||
-      /\.(png|jpe?g|gif|webp|bmp|mp4|mov|webm|m4v)$/i.test(name);
-
-    if (isMedia) {
-      mediaUrls.push(attachment.url);
-    } else {
-      fileUrls.push(attachment.url);
-    }
-  }
-
-  return { mediaUrls, fileUrls };
-}
-
-function splitEmbedBodyIntoSections(text = "") {
-  const lines = (text || "").split(/\r?\n/);
-  const parts = [];
-  let buffer = [];
-
-  const flushBuffer = () => {
-    const content = buffer.join("\n").trim();
-    if (content) {
-      parts.push({ type: "text", content });
-    }
-    buffer = [];
-  };
-
-  for (const line of lines) {
-    if (line.trim() === "--") {
-      flushBuffer();
-
-      if (parts.length && parts[parts.length - 1].type !== "separator") {
-        parts.push({ type: "separator" });
-      }
-      continue;
-    }
-
-    buffer.push(line);
-  }
-
-  flushBuffer();
-
-  while (parts[0]?.type === "separator") {
-    parts.shift();
-  }
-
-  while (parts[parts.length - 1]?.type === "separator") {
-    parts.pop();
-  }
-
-  return parts;
-}
-
-function buildSendMessageCardPayload({
-  bodyText,
-  mediaUrls,
-  includeDate,
-  fileUrls,
-}) {
-  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-  const trimmedBody = (bodyText || "").trim();
-  const bodyParts = splitEmbedBodyIntoSections(trimmedBody);
-
-  if (bodyParts.length) {
-    for (const part of bodyParts) {
-      if (part.type === "separator") {
-        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-        continue;
-      }
-
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(part.content),
-      );
-    }
-  }
-
-  if (mediaUrls.length) {
-    container.addMediaGalleryComponents(
-      new MediaGalleryBuilder().addItems(
-        mediaUrls.map((url) => new MediaGalleryItemBuilder().setURL(url)),
-      ),
-    );
-  }
-
-  if (includeDate) {
-    if (bodyParts.length || mediaUrls.length) {
-      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    }
-
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# Wysłano <t:${Math.floor(Date.now() / 1000)}:f>`,
-      ),
-    );
-  }
-
-  if (!container.components.length) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# (brak treści)"),
-    );
-  }
-
-  return {
-    components: [container],
-    files: fileUrls.length ? fileUrls : undefined,
-    flags: MessageFlags.IsComponentsV2,
-  };
-}
-
+/*
+  UPDATED: Interactive /sendmessage handler
+  Flow:
+  - Admin uses /sendmessage [kanal optional]
+  - Bot replies ephemeral asking the admin to send the message content in the same channel within 2 minutes.
+  - Admin posts the message (can include animated emoji like <a:name:id>, images/GIFs as attachments).
+  - Bot forwards the submitted content + attachments + embeds to the target channel as a single EMBED with blue color.
+*/
 async function handleSendMessageCommand(interaction) {
+  // Sprawdź czy właściciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
       content: "> `❗` × Brak wymaganych uprawnień.",
@@ -5432,11 +3748,9 @@ async function handleSendMessageCommand(interaction) {
     return;
   }
 
+  // Target channel (optional)
   const targetChannel =
     interaction.options.getChannel("kanal") || interaction.channel;
-  const dateMode = interaction.options.getString("data") || "bezdaty";
-  const pingMode = interaction.options.getString("pingi") || "bezpingu";
-  const includeDate = dateMode === "zdata";
 
   if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
     await interaction.reply({
@@ -5446,14 +3760,13 @@ async function handleSendMessageCommand(interaction) {
     return;
   }
 
+  // Ask user to send the message they want forwarded
   try {
     await interaction.reply({
       content:
-        "✉️ Napisz w tym kanale w ciągu 2 minut wiadomość, którą mam wysłać.\n" +
-        `Docelowy kanał: <#${targetChannel.id}>\n` +
-        `Tryb daty: \`${dateMode}\`\n` +
-        `Tryb pingów: \`${pingMode}\`\n\n` +
-        "Możesz używać markdownu Discorda jak `###`, `**tekst**`, `-# tekst`, wysłać GIF/filmik/obraz i wpisać `anuluj`, aby przerwać.",
+        "✉️ Napisz w tym kanale (w ciągu 2 minut) wiadomość, którą mam wysłać w docelowym kanale.\n" +
+        `Docelowy kanał: <#${targetChannel.id}>\n\n` +
+        "Możesz wysłać tekst (w tym animowane emoji w formacie `<a:nazwa:id>`), załączyć GIF/obraz, lub wkleić emoji. Wpisz `anuluj`, aby przerwać.",
       flags: [MessageFlags.Ephemeral],
     });
   } catch (e) {
@@ -5479,151 +3792,7 @@ async function handleSendMessageCommand(interaction) {
   });
 
   collector.on("collect", async (msg) => {
-    const contentRaw = (msg.content || "").trim();
-    await ensureEmbedTestEmojiCache(interaction.guild.id);
-    const contentWithAliases = replaceNamedGuildEmojis(
-      replaceEmbedAliasTokens(contentRaw),
-      interaction.guild.id,
-    );
-
-    if (contentWithAliases.toLowerCase() === "anuluj") {
-      try {
-        await interaction.followUp({
-          content: "> `❌` × **Anulowano** wysyłanie wiadomości.",
-          flags: [MessageFlags.Ephemeral],
-        });
-      } catch (e) {}
-      collector.stop("cancelled");
-      return;
-    }
-
-    const { pingContent, cleanedContent } = extractEmbedPingTokens(
-      contentWithAliases,
-    );
-    const { mediaUrls, fileUrls } = collectEmbedMediaFromMessage(msg);
-    const finalBodyText =
-      pingMode === "zpingiem" ? cleanedContent : contentWithAliases;
-
-    try {
-      const sendOptions = buildSendMessageCardPayload({
-        bodyText: finalBodyText,
-        mediaUrls,
-        includeDate,
-        fileUrls,
-      });
-
-      if (pingMode === "zpingiem" && pingContent) {
-        await targetChannel.send({
-          content: pingContent,
-          allowedMentions: { parse: ["users", "roles", "everyone"] },
-        });
-      }
-
-      await targetChannel.send(sendOptions);
-
-      await interaction.followUp({
-        content: `✅ Wiadomość została wysłana do <#${targetChannel.id}>.`,
-        flags: [MessageFlags.Ephemeral],
-      });
-    } catch (err) {
-      console.error("handleSendMessageCommand: send failed", err);
-      try {
-        await interaction.followUp({
-          content:
-            "❌ Nie udało się wysłać wiadomości. Sprawdź kanał, załączniki i format treści.",
-          flags: [MessageFlags.Ephemeral],
-        });
-      } catch (e) {}
-    }
-  });
-
-  collector.on("end", async (collected, reason) => {
-    if (reason === "time" && collected.size === 0) {
-      try {
-        await interaction.followUp({
-          content:
-            "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /embed aby spróbować jeszcze raz.",
-          flags: [MessageFlags.Ephemeral],
-        });
-      } catch (e) {}
-    }
-  });
-}
-
-async function handleModyCommand(interaction) {
-  if (!interaction.guild) {
-    await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // Owner-only
-  if (interaction.user.id !== interaction.guild.ownerId) {
-    await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const targetChannel =
-    interaction.options.getChannel("kanal") || interaction.channel;
-
-  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
-    await interaction.reply({
-      content: "> `❌` × **Wybierz** poprawny kanał tekstowy **docelowy**.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  try {
-    await interaction.reply({
-      content:
-        "✉️ Napisz w tym kanale (w ciągu 2 minut) wiadomość, którą mam wysłać z przyciskiem **Nagrania modów**.\n" +
-        `Docelowy kanał: <#${targetChannel.id}>\n\n` +
-        "Możesz wysłać tekst, obraz/GIF i animowane emoji. Wpisz `anuluj`, aby przerwać.",
-      flags: [MessageFlags.Ephemeral],
-    });
-  } catch (e) {
-    console.error("handleModyCommand: reply failed", e);
-    return;
-  }
-
-  const collectChannel = interaction.channel;
-  if (!collectChannel || !collectChannel.createMessageCollector) {
-    await interaction.followUp({
-      content: "❌ Nie mogę uruchomić kolektora w tym kanale. Spróbuj ponownie.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const filter = (m) => m.author.id === interaction.user.id && !m.author.bot;
-  const collector = collectChannel.createMessageCollector({
-    filter,
-    time: 120_000,
-    max: 1,
-  });
-
-  collector.on("collect", async (msg) => {
-    const contentRaw = (msg.content || "").trim();
-    const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
-    const alertEmoji = "<a:alert:1474431227972026469>";
-    const alertEmoji2 = "<a:alertownik2:1477688955221835807>";
-    const minecraftEmoji2 = "<a:minecraft2:1480590181944791122>";
-    const ironLoveEmoji = "<a:iron_love:1480590229697069210>";
-    const starEmoji = "<:star:1474431260133691567>";
-    const content = contentRaw
-      .replace(/:strzałka:/gi, arrowEmoji)
-      .replace(/:alertownik:/gi, alertEmoji)
-      .replace(/:alertownik2:/gi, alertEmoji2)
-      .replace(/:minecraft2:/gi, minecraftEmoji2)
-      .replace(/:iron_love:/gi, ironLoveEmoji)
-      .replace(/:startownik:/gi, starEmoji);
-
+    const content = (msg.content || "").trim();
     if (content.toLowerCase() === "anuluj") {
       try {
         await interaction.followUp({
@@ -5635,59 +3804,63 @@ async function handleModyCommand(interaction) {
       return;
     }
 
+    // Prepare files from attachments:
     const files = [];
     let imageAttachment = null;
     for (const att of msg.attachments.values()) {
-      if (att.contentType && att.contentType.startsWith("image/")) {
+      if (att.contentType && att.contentType.startsWith('image/')) {
         imageAttachment = att.url;
       } else {
         files.push(att.url);
       }
     }
 
+    // Build embed with blue color to send as the message (user requested)
     const sendEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(
-        (content || "`(brak treści)`").replace(/<@!?\d+>|@everyone|@here/g, ""),
-      )
+      .setDescription((content || "`(brak treści)`").replace(/<@!?\d+>|@everyone|@here/g, ''))
       .setTimestamp();
-
+    
+    // Add image to embed if present
     if (imageAttachment) {
       sendEmbed.setImage(imageAttachment);
     }
 
-    const videosButton = new ButtonBuilder()
-      .setCustomId(`mody_videos_${Date.now()}`)
-      .setLabel("Nagrania modów")
-      .setEmoji("📸")
-      .setStyle(ButtonStyle.Secondary);
-    const buyModButton = new ButtonBuilder()
-      .setCustomId(`mody_buy_${Date.now()}`)
-      .setLabel("Zakup moda")
-      .setEmoji({ id: "1477662159029796865", name: "java" })
-      .setStyle(ButtonStyle.Secondary);
-    const row = new ActionRowBuilder().addComponents(videosButton, buyModButton);
+    // Forward embeds if the user pasted/embeded some
+    const userEmbeds = msg.embeds?.length
+      ? msg.embeds.map((e) => e.toJSON())
+      : [];
 
     try {
+      // Send to the target channel as embed + attachments (attachments included directly)
       const sendOptions = {
         embeds: [sendEmbed],
-        components: [row],
         files: files.length ? files : undefined,
       };
-
+      
+      // Extract pings from content and send as separate message
       const pings = content.match(/<@!?\d+>|@everyone|@here/g);
       if (pings && pings.length > 0) {
-        await targetChannel.send({ content: pings.join(" ") });
+        await targetChannel.send({ content: pings.join(' ') });
       }
-
+      
       await targetChannel.send(sendOptions);
 
+      // If the user also had embeds, append them as a follow-up (optional)
+      if (userEmbeds.length) {
+        try {
+          await targetChannel.send({ embeds: userEmbeds });
+        } catch (e) {
+          // ignore
+        }
+      }
+
       await interaction.followUp({
-        content: `✅ Wiadomość z przyciskiem modów została wysłana do <#${targetChannel.id}>.`,
+        content: `✅ Wiadomość została wysłana do <#${targetChannel.id}>.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
-      console.error("handleModyCommand: send failed", err);
+      console.error("handleSendMessageCommand: send failed", err);
       try {
         await interaction.followUp({
           content:
@@ -5695,6 +3868,9 @@ async function handleModyCommand(interaction) {
           flags: [MessageFlags.Ephemeral],
         });
       } catch (e) { }
+    } finally {
+      // Optionally delete the user's message to keep the channel clean. Uncomment if desired.
+      // try { await msg.delete().catch(()=>null); } catch(e){}
     }
   });
 
@@ -5703,7 +3879,7 @@ async function handleModyCommand(interaction) {
       try {
         await interaction.followUp({
           content:
-            "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /mody, aby spróbować jeszcze raz.",
+            "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /sendmessage aby spróbować jeszcze raz.",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (e) { }
@@ -5962,8 +4138,8 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       "```\n" +
       "🛒 New Shop × WERYFIKACJA\n" +
       "```\n" +
-      `<a:arrowwhite:1469100658606211233> **Kliknij w przycisk** na dole, **aby przejdź prostą** zagadkę\n` +
-      `<a:arrowwhite:1469100658606211233> **matematyczną** i **otrzymać** rolę **klient.**`,
+      `> Przejdź prostą zagadkę matematyczną\n` +
+      `> aby otrzymać rolę **klient.**`,
     )
     // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
@@ -5974,7 +4150,7 @@ async function handlePanelWeryfikacjaCommand(interaction) {
 
   const button = new ButtonBuilder()
     .setCustomId(`verify_panel_${interaction.channelId}_${Date.now()}`)
-    .setStyle(ButtonStyle.Secondary) // niebieski
+    .setStyle(ButtonStyle.Primary) // niebieski
     .setEmoji("📝");
 
   const row = new ActionRowBuilder().addComponents(button);
@@ -6033,44 +4209,29 @@ async function handleTicketCommand(interaction) {
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("ticket_category")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
+    .setPlaceholder("Wybierz kategorię...")
     .addOptions([
       {
-        label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
+        label: "💰 Zakup",
         value: "zakup",
-        description: "Kliknij, aby kupić itemy!",
-        emoji: "🛒",
+        description: "Chcę kupić przedmioty",
       },
       {
-        label: "ꜱᴘʀᴢᴇᴅᴀż",
+        label: "💵 Sprzedaż",
         value: "sprzedaz",
-        description: "Kliknij, aby sprzedać przedmioty!",
-        emoji: { id: "1476700165082710178", name: "kasa_2" },
+        description: "Chcę sprzedać przedmioty",
       },
       {
-        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏʀsᴋɪᴇɢᴏ ᴍᴏᴅᴀ",
-        value: "zakup_moda",
-        description: "Kliknij, aby kupić autorskiego moda!",
-        emoji: { id: "1480590181944791122", name: "autorynek" },
-      },
-      {
-        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
-        value: "zakup_autorynku",
-        description: "Kliknij, aby kupić najlepszy AutoRynek!",
-        emoji: { id: "1480590181944791122", name: "autorynek" },
-      },
-      {
-        label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
+        label: "🎁 Nagroda za zaproszenia",
         value: "odbior",
-        description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
-        emoji: { id: "1480590229697069210", name: "nagroda" },
+        description: "Odbiór nagrody za zaproszenia (kod)",
       },
       {
-        label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
-        value: "inne",
-        description: "Kliknij, aby zadać pytanie lub otrzymać pomoc!",
-        emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
+        label: "🏆 Nagroda za konkurs",
+        value: "konkurs_odbior",
+        description: "Odbiór nagrody za konkurs",
       },
+      { label: "❓ INNE", value: "inne", description: "Kliknij, aby zadać inne pytanie!" },
     ]);
 
   const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -6082,1636 +4243,6 @@ async function handleTicketCommand(interaction) {
   });
 }
 
-function getDiscordMessageUrl(guildId, channelId, messageId = null) {
-  if (!guildId || !channelId) return "https://discord.com/channels/@me";
-  if (messageId) return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
-  return `https://discord.com/channels/${guildId}/${channelId}`;
-}
-
-function findEmbedTestPaymentsChannel(guild) {
-  if (!guild) return null;
-
-  const normalize = (s = "") =>
-    s
-      .toString()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9 ]/gi, "")
-      .trim()
-      .toLowerCase();
-
-  return (
-    guild.channels.cache.find(
-      (channel) =>
-        channel.type === ChannelType.GuildText &&
-        (normalize(channel.name).includes("platnosci") ||
-          normalize(channel.name).includes("platnosc")),
-    ) || null
-  );
-}
-
-const EMBED_TEST_COLOR_OPTIONS = [
-  {
-    value: "blue",
-    label: "Niebieski",
-    description: "Domyślny styl New Shop",
-    emoji: "🔵",
-    color: COLOR_BLUE,
-  },
-  {
-    value: "cyan",
-    label: "Cyan",
-    description: "Jasny chłodny akcent",
-    emoji: "🩵",
-    color: 0x3cc8ff,
-  },
-  {
-    value: "green",
-    label: "Zielony",
-    description: "Miękki zielony akcent",
-    emoji: "🟢",
-    color: 0x57f287,
-  },
-  {
-    value: "yellow",
-    label: "Żółty",
-    description: "Mocniejszy jasny styl",
-    emoji: "🟡",
-    color: 0xfee75c,
-  },
-  {
-    value: "orange",
-    label: "Pomarańczowy",
-    description: "Ciepły pomarańczowy akcent",
-    emoji: "🟠",
-    color: 0xffa543,
-  },
-  {
-    value: "red",
-    label: "Czerwony",
-    description: "Mocny kontrastowy styl",
-    emoji: "🔴",
-    color: 0xed4245,
-  },
-  {
-    value: "pink",
-    label: "Różowy",
-    description: "Jaśniejszy neonowy wariant",
-    emoji: "🩷",
-    color: 0xeb459e,
-  },
-  {
-    value: "purple",
-    label: "Fioletowy",
-    description: "Delikatny ciemniejszy akcent",
-    emoji: "🟣",
-    color: 0x9b59b6,
-  },
-  {
-    value: "gray",
-    label: "Szary",
-    description: "Bardziej stonowany wygląd",
-    emoji: "⚫",
-    color: 0x4f545c,
-  },
-];
-
-const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
-  {
-    value: "zakup",
-    label: "Zakup itemów",
-    description: "Otwiera formularz zakupu itemów",
-    emoji: "🛒",
-  },
-  {
-    value: "zakup_autorynku",
-    label: "Zakup autorynku",
-    description: "Otwiera formularz zakupu autorynku",
-    emoji: "🏪",
-  },
-  {
-    value: "zakup_moda",
-    label: "Zakup autorskiego moda",
-    description: "Otwiera formularz zakupu moda",
-    emoji: "🧩",
-  },
-  {
-    value: "sprzedaz",
-    label: "Sprzedaż",
-    description: "Otwiera formularz sprzedaży",
-    emoji: "💸",
-  },
-  {
-    value: "odbior",
-    label: "Nagroda za zaproszenia",
-    description: "Otwiera formularz odbioru nagrody",
-    emoji: "🎁",
-  },
-  {
-    value: "inne",
-    label: "Pytanie / pomoc",
-    description: "Otwiera formularz pomocy",
-    emoji: "❓",
-  },
-  {
-    value: "panel",
-    label: "Panel kategorii",
-    description: "Pokazuje cały panel ticketów",
-    emoji: "📩",
-  },
-];
-
-const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
-  gg: "<:anarchia_gg:1469444521308852324>",
-  kasa: "<:kasa_2:1476700165082710178>",
-  kasa_2: "<:kasa_2:1476700165082710178>",
-  strzalka: "<a:arrowwhite:1469100658606211233>",
-  "strzałka": "<a:arrowwhite:1469100658606211233>",
-  arrowwhite: "<a:arrowwhite:1469100658606211233>",
-};
-
-function getEmbedTestColorDef(value) {
-  return (
-    EMBED_TEST_COLOR_OPTIONS.find((option) => option.value === value) ||
-    EMBED_TEST_COLOR_OPTIONS[0]
-  );
-}
-
-function getEmbedTestPrimaryButtonActionDef(value) {
-  return (
-    EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS.find(
-      (option) => option.value === value,
-    ) || EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS[0]
-  );
-}
-
-function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
-  const normalized = (input || "")
-    .toString()
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  if (!normalized) {
-    return getEmbedTestPrimaryButtonActionDef(fallback);
-  }
-
-  const directMatch = EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS.find(
-    (option) => option.value === normalized,
-  );
-  if (directMatch) return directMatch;
-
-  if (
-    normalized === "zakup itemow" ||
-    normalized === "zakup itemy" ||
-    normalized === "itemy" ||
-    normalized === "item" ||
-    normalized === "zakup"
-  ) {
-    return getEmbedTestPrimaryButtonActionDef("zakup");
-  }
-
-  if (
-    normalized === "zakup autorynku" ||
-    normalized === "autorynek" ||
-    normalized === "auto rynek"
-  ) {
-    return getEmbedTestPrimaryButtonActionDef("zakup_autorynku");
-  }
-
-  if (
-    normalized === "zakup autorskiego moda" ||
-    normalized === "zakup moda" ||
-    normalized === "mod" ||
-    normalized === "mody" ||
-    normalized === "moda"
-  ) {
-    return getEmbedTestPrimaryButtonActionDef("zakup_moda");
-  }
-
-  if (normalized === "sprzedaz" || normalized === "sprzedaz itemow") {
-    return getEmbedTestPrimaryButtonActionDef("sprzedaz");
-  }
-
-  if (
-    normalized === "nagroda" ||
-    normalized === "nagroda za zaproszenia" ||
-    normalized === "odbior"
-  ) {
-    return getEmbedTestPrimaryButtonActionDef("odbior");
-  }
-
-  if (
-    normalized === "pomoc" ||
-    normalized === "pytanie" ||
-    normalized === "pytanie / pomoc" ||
-    normalized === "inne"
-  ) {
-    return getEmbedTestPrimaryButtonActionDef("inne");
-  }
-
-  if (
-    normalized === "panel" ||
-    normalized === "panel kategorii" ||
-    normalized === "kategorie"
-  ) {
-    return getEmbedTestPrimaryButtonActionDef("panel");
-  }
-
-  return null;
-}
-
-function getEmbedTestSpecialEmojiMarkup(token) {
-  const normalized = (token || "")
-    .toString()
-    .trim()
-    .replace(/^:/, "")
-    .replace(/:$/, "")
-    .toLowerCase();
-
-  return EMBED_TEST_SPECIAL_EMOJI_MARKUP[normalized] || null;
-}
-
-async function ensureEmbedTestEmojiCache(guildId) {
-  if (!guildId) return;
-
-  const lastFetch = embedTestEmojiCacheReady.get(guildId) || 0;
-  if (Date.now() - lastFetch < 60_000) {
-    return;
-  }
-
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) return;
-
-  try {
-    await guild.emojis.fetch();
-    embedTestEmojiCacheReady.set(guildId, Date.now());
-  } catch (error) {
-    console.error("embedtest emoji fetch failed:", error);
-  }
-}
-
-function findGuildEmojiByName(guildId, emojiName) {
-  if (!guildId || !emojiName) return null;
-
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) return null;
-
-  const normalized = emojiName.toLowerCase();
-  return (
-    guild.emojis.cache.find((emoji) => emoji.name?.toLowerCase() === normalized) ||
-    client.emojis?.cache?.find(
-      (emoji) => emoji.name?.toLowerCase() === normalized,
-    ) ||
-    null
-  );
-}
-
-function toGuildEmojiMarkup(emoji) {
-  if (!emoji) return "";
-  return `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`;
-}
-
-function replaceNamedGuildEmojis(text, guildId) {
-  const source = (text || "").toString();
-  if (!source) return "";
-
-  const preserved = [];
-  const masked = source.replace(/<a?:[a-zA-Z0-9_]+:\d+>/g, (match) => {
-    const token = `__EMBEDTEST_EMOJI_${preserved.length}__`;
-    preserved.push({ token, markup: match });
-    return token;
-  });
-
-  const replaced = masked.replace(/:([^:\s]+):/g, (match, name) => {
-    const specialEmojiMarkup = getEmbedTestSpecialEmojiMarkup(name);
-    if (specialEmojiMarkup) return specialEmojiMarkup;
-
-    const emoji = findGuildEmojiByName(guildId, name);
-    return emoji ? toGuildEmojiMarkup(emoji) : match;
-  });
-
-  return preserved.reduce(
-    (content, item) => content.replace(item.token, item.markup),
-    replaced,
-  );
-}
-
-function setTextInputValueIfPresent(input, value) {
-  if (typeof value === "string" && value.length > 0) {
-    input.setValue(value);
-  }
-
-  return input;
-}
-
-function parseButtonEmojiInput(input, guildId) {
-  const value = (input || "").trim();
-  if (!value) return null;
-
-  const specialEmojiMarkup = getEmbedTestSpecialEmojiMarkup(value);
-  if (specialEmojiMarkup) {
-    input = specialEmojiMarkup;
-  }
-
-  const normalizedValue = (input || "").trim();
-
-  const customEmojiMatch = normalizedValue.match(/^<(a?):([a-zA-Z0-9_]+):(\d+)>$/);
-  if (customEmojiMatch) {
-    const [, animatedFlag, name, id] = customEmojiMatch;
-    return {
-      id,
-      name,
-      animated: animatedFlag === "a",
-    };
-  }
-
-  const customEmojiByNameMatch = normalizedValue.match(/^:([a-zA-Z0-9_]+):$/);
-  if (customEmojiByNameMatch) {
-    const emoji = findGuildEmojiByName(guildId, customEmojiByNameMatch[1]);
-    return emoji
-      ? { id: emoji.id, name: emoji.name, animated: emoji.animated }
-      : null;
-  }
-
-  if (/^[a-zA-Z0-9_]+$/.test(normalizedValue)) {
-    const emoji = findGuildEmojiByName(guildId, normalizedValue);
-    if (emoji) {
-      return { id: emoji.id, name: emoji.name, animated: emoji.animated };
-    }
-  }
-
-  return { name: normalizedValue };
-}
-
-function buildEmbedTestSectionParts(title, body, guildId) {
-  const parts = [];
-
-  if (title) {
-    parts.push({
-      type: "text",
-      content: `**${replaceNamedGuildEmojis(title, guildId)}**`,
-    });
-  }
-
-  const normalizedBody = replaceNamedGuildEmojis(body || "", guildId);
-  if (normalizedBody) {
-    parts.push(...splitEmbedBodyIntoSections(normalizedBody));
-  }
-
-  return parts;
-}
-
-function appendEmbedTestSectionToContainer(
-  container,
-  sectionParts,
-  addLeadingSeparator = false,
-) {
-  if (!Array.isArray(sectionParts) || !sectionParts.length) {
-    return false;
-  }
-
-  if (addLeadingSeparator) {
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  }
-
-  let hasVisibleContent = false;
-
-  for (const part of sectionParts) {
-    if (!part) continue;
-
-    if (part.type === "separator") {
-      if (hasVisibleContent) {
-        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-      }
-      continue;
-    }
-
-    if (part.type === "text" && part.content) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(part.content),
-      );
-      hasVisibleContent = true;
-    }
-  }
-
-  return hasVisibleContent;
-}
-
-function isEmbedTestPublishTarget(channel) {
-  return (
-    !!channel &&
-    typeof channel.isSendable === "function" &&
-    channel.isSendable() &&
-    !(typeof channel.isDMBased === "function" && channel.isDMBased())
-  );
-}
-
-function parseEmbedTestChannelInput(input) {
-  const value = (input || "").trim();
-  if (!value) return null;
-
-  const mentionMatch = value.match(/^<#(\d+)>$/);
-  if (mentionMatch) return mentionMatch[1];
-
-  const idMatch = value.match(/^(\d{5,})$/);
-  if (idMatch) return idMatch[1];
-
-  return null;
-}
-
-function getPendingEmbedTestPublishKey(guildId, userId) {
-  return `${guildId}:${userId}`;
-}
-
-function normalizeEmbedTestChannelLookup(value) {
-  return (value || "")
-    .toString()
-    .trim()
-    .replace(/^#/, "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function resolveEmbedTestPublishTargetFromMessage(message) {
-  if (!message.guild) return null;
-
-  const mentionedChannel = message.mentions?.channels?.first() || null;
-  if (isEmbedTestPublishTarget(mentionedChannel)) {
-    return mentionedChannel;
-  }
-
-  const channelId = parseEmbedTestChannelInput(message.content);
-  if (channelId) {
-    const byId = message.guild.channels.cache.get(channelId) || null;
-    if (isEmbedTestPublishTarget(byId)) {
-      return byId;
-    }
-  }
-
-  const lookup = normalizeEmbedTestChannelLookup(message.content);
-  if (!lookup) return null;
-
-  return (
-    message.guild.channels.cache.find((channel) => {
-      if (!isEmbedTestPublishTarget(channel)) return false;
-      return normalizeEmbedTestChannelLookup(channel.name) === lookup;
-    }) || null
-  );
-}
-
-function normalizeEmbedTestAttachment(attachment) {
-  if (!attachment?.url) return null;
-
-  const contentType = (attachment.contentType || "").toLowerCase();
-  const name = (attachment.name || "").toLowerCase();
-  const isMedia =
-    contentType.startsWith("image/") ||
-    contentType.startsWith("video/") ||
-    /\.(png|jpe?g|gif|webp|bmp|mp4|mov|webm|m4v)$/i.test(name);
-
-  if (!isMedia) return null;
-
-  return {
-    url: attachment.url,
-    name: attachment.name || null,
-    contentType: attachment.contentType || null,
-  };
-}
-
-function createDefaultEmbedTestState(
-  guild,
-  targetChannel,
-  ownerId,
-  mediaAttachment = null,
-) {
-  const paymentsChannel = findEmbedTestPaymentsChannel(guild);
-  const buyUrl = getDiscordMessageUrl(guild.id, targetChannel.id);
-  const paymentsUrl = getDiscordMessageUrl(
-    guild.id,
-    paymentsChannel?.id || targetChannel.id,
-  );
-  const normalizedMediaAttachment = normalizeEmbedTestAttachment(mediaAttachment);
-
-  return {
-    ownerId,
-    guildId: guild.id,
-    channelId: targetChannel.id,
-    messageId: null,
-    accentColorKey: "blue",
-    accentColor: COLOR_BLUE,
-    headerBadge: "<:anarchia_gg:1469444521308852324>",
-    headerNote: "",
-    title: "ANARCHIA LF - CENNIK :jump_dirt:",
-    cashSectionTitle: "WALUTA SERWEROWA:",
-    cashBody:
-      "-# zakupiona kasa wysyłana jest na /gift\n" +
-      "### :arrowwhite: :kasa_2:  `7,5k$ ➜ 1 ZŁ`\n\n" +
-      "### :arrowwhite: :kasa_2:  `8k$ ➜ 1 ZŁ` (powyżej 200zł)",
-    itemsSectionTitle: "ITEMY:",
-    itemsBody:
-      "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
-    extraSectionTitle: "",
-    extraSectionBody: "",
-    extraSectionTwoTitle: "",
-    extraSectionTwoBody: "",
-    buttonOneLabel: "Kup teraz",
-    buttonOneEmoji: "🛒",
-    buttonOneAction: "zakup",
-    buttonOneUrl: buyUrl,
-    buttonTwoLabel: "Płatności",
-    buttonTwoEmoji: "💳",
-    buttonTwoUrl: paymentsUrl,
-    mediaUrls: normalizedMediaAttachment ? [normalizedMediaAttachment.url] : [],
-  };
-}
-
-function buildEmbedTestMessagePayload(state) {
-  const buttons = [];
-  const headerLines = [];
-  const mediaUrls = Array.isArray(state.mediaUrls)
-    ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
-    : [];
-  const buttonOneEmoji = parseButtonEmojiInput(
-    state.buttonOneEmoji,
-    state.guildId,
-  );
-  const buttonTwoEmoji = parseButtonEmojiInput(
-    state.buttonTwoEmoji,
-    state.guildId,
-  );
-  const cashSectionParts = buildEmbedTestSectionParts(
-    state.cashSectionTitle,
-    state.cashBody,
-    state.guildId,
-  );
-  const itemsSectionParts = buildEmbedTestSectionParts(
-    state.itemsSectionTitle,
-    state.itemsBody,
-    state.guildId,
-  );
-  const extraSectionParts = buildEmbedTestSectionParts(
-    state.extraSectionTitle,
-    state.extraSectionBody,
-    state.guildId,
-  );
-  const extraSectionTwoParts = buildEmbedTestSectionParts(
-    state.extraSectionTwoTitle,
-    state.extraSectionTwoBody,
-    state.guildId,
-  );
-
-  const headingParts = [];
-  if (state.headerBadge) {
-    headingParts.push(replaceNamedGuildEmojis(state.headerBadge, state.guildId));
-  }
-  if (state.title) {
-    headingParts.push(replaceNamedGuildEmojis(state.title, state.guildId));
-  }
-  if (headingParts.length) {
-    headerLines.push(`## ${headingParts.join(" ")}`);
-  }
-
-  if (state.headerNote) {
-    headerLines.push(replaceNamedGuildEmojis(state.headerNote, state.guildId));
-  }
-
-  if (state.buttonOneLabel) {
-    const button = new ButtonBuilder()
-      .setLabel(state.buttonOneLabel)
-      .setStyle(ButtonStyle.Secondary)
-      .setCustomId(`embedtest_buy_open_${state.buttonOneAction || "zakup"}`);
-
-    if (buttonOneEmoji) {
-      button.setEmoji(buttonOneEmoji);
-    }
-
-    buttons.push(button);
-  }
-
-  if (state.buttonTwoLabel && isHttpUrl(state.buttonTwoUrl)) {
-    const button = new ButtonBuilder()
-      .setLabel(state.buttonTwoLabel)
-      .setStyle(ButtonStyle.Link)
-      .setURL(state.buttonTwoUrl);
-
-    if (buttonTwoEmoji) {
-      button.setEmoji(buttonTwoEmoji);
-    }
-
-    buttons.push(button);
-  }
-
-  const container = new ContainerBuilder().setAccentColor(
-    state.accentColor || COLOR_BLUE,
-  );
-
-  if (headerLines.length) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(headerLines.join("\n")),
-    );
-  }
-
-  const hasCashSection = appendEmbedTestSectionToContainer(
-    container,
-    cashSectionParts,
-    headerLines.length > 0,
-  );
-
-  const hasItemsSection = appendEmbedTestSectionToContainer(
-    container,
-    itemsSectionParts,
-    headerLines.length > 0 || hasCashSection,
-  );
-
-  const hasExtraSection = appendEmbedTestSectionToContainer(
-    container,
-    extraSectionParts,
-    headerLines.length > 0 || hasCashSection || hasItemsSection,
-  );
-
-  const hasExtraSectionTwo = appendEmbedTestSectionToContainer(
-    container,
-    extraSectionTwoParts,
-    headerLines.length > 0 ||
-      hasCashSection ||
-      hasItemsSection ||
-      hasExtraSection,
-  );
-
-  if (mediaUrls.length) {
-    if (
-      headerLines.length ||
-      hasCashSection ||
-      hasItemsSection ||
-      hasExtraSection ||
-      hasExtraSectionTwo
-    ) {
-      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    }
-
-    container.addMediaGalleryComponents(
-      new MediaGalleryBuilder().addItems(
-        mediaUrls.map((url) => new MediaGalleryItemBuilder().setURL(url)),
-      ),
-    );
-  }
-
-  if (buttons.length) {
-    container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(...buttons),
-    );
-  }
-
-  if (!container.components.length) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# Pusty embed testowy"),
-    );
-  }
-
-  return {
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
-  };
-}
-
-function buildEmbedTestControls(state) {
-  const currentColor = getEmbedTestColorDef(state.accentColorKey);
-  const colorSelect = new StringSelectMenuBuilder()
-    .setCustomId(`embedtest_color_${state.messageId}`)
-    .setPlaceholder(`Kolor embeda: ${currentColor.label}`)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(
-      EMBED_TEST_COLOR_OPTIONS.map((option) => ({
-        label: option.label,
-        value: option.value,
-        description: option.description,
-        emoji: option.emoji,
-        default: option.value === state.accentColorKey,
-      })),
-    );
-
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`embedtest_edit_header_${state.messageId}`)
-        .setLabel("Edytuj górę")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`embedtest_edit_content_${state.messageId}`)
-        .setLabel("Edytuj treść")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`embedtest_edit_buttons_${state.messageId}`)
-        .setLabel("Edytuj przyciski")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`embedtest_edit_emojis_${state.messageId}`)
-        .setLabel("Emoji")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`embedtest_publish_start_${state.messageId}`)
-        .setLabel("Zakończ")
-        .setStyle(ButtonStyle.Success),
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`embedtest_edit_content_extra_${state.messageId}`)
-        .setLabel("Treść 2")
-        .setStyle(ButtonStyle.Secondary),
-    ),
-    new ActionRowBuilder().addComponents(colorSelect),
-  ];
-}
-
-function buildEmbedTestControlPayload(state, statusLine) {
-  const jumpUrl = getDiscordMessageUrl(
-    state.guildId,
-    state.channelId,
-    state.messageId,
-  );
-
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-        "🧪 New Shop × EMBED TEST\n" +
-        "```\n" +
-        `> \`✅\` × ${statusLine}\n` +
-        `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
-        "> `🛠️` × Edytuj go przyciskami poniżej\n" +
-        "> `🎨` × Kolor zmienisz z menu pod spodem",
-    );
-
-  return {
-    embeds: [embed],
-    components: buildEmbedTestControls(state),
-  };
-}
-
-function buildEmbedTestPublishPrompt(state) {
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-        "📤 New Shop × PUBLIKACJA\n" +
-        "```\n" +
-        "> `📍` × Wyślij teraz na czacie kanał docelowy\n" +
-        "> `✍️` × Przykład: `#‼️×〢anarchia-lf` albo ID kanału\n" +
-        "> `⏳` × Masz `2 min` na wysłanie kanału",
-    );
-
-  return {
-    embeds: [embed],
-    components: [],
-    flags: [MessageFlags.Ephemeral],
-  };
-}
-
-function buildEmbedTestHeaderModal(state) {
-  const modal = new ModalBuilder()
-    .setCustomId(`embedtest_modal_header_${state.messageId}`)
-    .setTitle("Edytuj górę embeda");
-
-  const badgeInput = new TextInputBuilder()
-    .setCustomId("header_badge")
-    .setLabel("Nagłówek górny")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(150)
-    .setPlaceholder("np. <:anarchialf:123456789> NEW SHOP × CENNIK");
-
-  const noteInput = new TextInputBuilder()
-    .setCustomId("header_note")
-    .setLabel("Mały opis pod nagłówkiem")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(180)
-    .setPlaceholder("-# Krótki dopisek pod tytułem");
-
-  setTextInputValueIfPresent(badgeInput, state.headerBadge);
-  setTextInputValueIfPresent(noteInput, state.headerNote || "");
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(badgeInput),
-    new ActionRowBuilder().addComponents(noteInput),
-  );
-
-  return modal;
-}
-
-function buildEmbedTestContentModal(state) {
-  const modal = new ModalBuilder()
-    .setCustomId(`embedtest_modal_content_${state.messageId}`)
-    .setTitle("Edytuj embed testowy");
-
-  const titleInput = new TextInputBuilder()
-    .setCustomId("title")
-    .setLabel("Tytuł")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(120)
-    .setPlaceholder("np. ANARCHIA LF");
-
-  const cashTitleInput = new TextInputBuilder()
-    .setCustomId("cash_section_title")
-    .setLabel("Nagłówek sekcji 1")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. KASA");
-
-  const cashBodyInput = new TextInputBuilder()
-    .setCustomId("cash_body")
-    .setLabel("Treść sekcji 1")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false)
-    .setMaxLength(1000)
-    .setPlaceholder("Możesz używać **pogrubień**, -# opisu i -- separatora");
-
-  const itemsTitleInput = new TextInputBuilder()
-    .setCustomId("items_section_title")
-    .setLabel("Nagłówek sekcji 2")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. ITEMY");
-
-  const itemsBodyInput = new TextInputBuilder()
-    .setCustomId("items_body")
-    .setLabel("Treść sekcji 2")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false)
-    .setMaxLength(1000)
-    .setPlaceholder("Wpisz opis, pusty enter lub osobną linię -- na kreskę");
-
-  setTextInputValueIfPresent(titleInput, state.title);
-  setTextInputValueIfPresent(cashTitleInput, state.cashSectionTitle);
-  setTextInputValueIfPresent(cashBodyInput, state.cashBody);
-  setTextInputValueIfPresent(itemsTitleInput, state.itemsSectionTitle);
-  setTextInputValueIfPresent(itemsBodyInput, state.itemsBody);
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(titleInput),
-    new ActionRowBuilder().addComponents(cashTitleInput),
-    new ActionRowBuilder().addComponents(cashBodyInput),
-    new ActionRowBuilder().addComponents(itemsTitleInput),
-    new ActionRowBuilder().addComponents(itemsBodyInput),
-  );
-
-  return modal;
-}
-
-function buildEmbedTestExtraContentModal(state) {
-  const modal = new ModalBuilder()
-    .setCustomId(`embedtest_modal_content_extra_${state.messageId}`)
-    .setTitle("Dodatkowe sekcje");
-
-  const extraTitleInput = new TextInputBuilder()
-    .setCustomId("extra_section_title")
-    .setLabel("Nagłówek sekcji 3")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. SKUPUJEMY TAKŻE");
-
-  const extraBodyInput = new TextInputBuilder()
-    .setCustomId("extra_section_body")
-    .setLabel("Treść sekcji 3")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false)
-    .setMaxLength(1000)
-    .setPlaceholder("Tu też działa pusty enter i osobna linia --");
-
-  const extraTwoTitleInput = new TextInputBuilder()
-    .setCustomId("extra_section_two_title")
-    .setLabel("Nagłówek sekcji 4")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. INFO");
-
-  const extraTwoBodyInput = new TextInputBuilder()
-    .setCustomId("extra_section_two_body")
-    .setLabel("Treść sekcji 4")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false)
-    .setMaxLength(1000)
-    .setPlaceholder("Możesz robić kolejne bloki i separatory");
-
-  setTextInputValueIfPresent(extraTitleInput, state.extraSectionTitle);
-  setTextInputValueIfPresent(extraBodyInput, state.extraSectionBody);
-  setTextInputValueIfPresent(extraTwoTitleInput, state.extraSectionTwoTitle);
-  setTextInputValueIfPresent(extraTwoBodyInput, state.extraSectionTwoBody);
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(extraTitleInput),
-    new ActionRowBuilder().addComponents(extraBodyInput),
-    new ActionRowBuilder().addComponents(extraTwoTitleInput),
-    new ActionRowBuilder().addComponents(extraTwoBodyInput),
-  );
-
-  return modal;
-}
-
-function buildEmbedTestButtonsModal(state) {
-  const modal = new ModalBuilder()
-    .setCustomId(`embedtest_modal_buttons_${state.messageId}`)
-    .setTitle("Edytuj przyciski");
-  const currentPrimaryButtonAction = getEmbedTestPrimaryButtonActionDef(
-    state.buttonOneAction,
-  );
-
-  const buttonOneLabelInput = new TextInputBuilder()
-    .setCustomId("button_one_label")
-    .setLabel("Nazwa przycisku 1")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. Kup teraz");
-
-  const buttonTwoLabelInput = new TextInputBuilder()
-    .setCustomId("button_two_label")
-    .setLabel("Nazwa przycisku 2")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. Płatności");
-
-  const buttonTwoUrlInput = new TextInputBuilder()
-    .setCustomId("button_two_url")
-    .setLabel("Link przycisku 2")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(400)
-    .setPlaceholder("https://...");
-
-  const buttonOneActionInput = new TextInputBuilder()
-    .setCustomId("button_one_action")
-    .setLabel("Co otwiera przycisk 1")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder(
-      "zakup / autorynek / mod / sprzedaz / odbior / pomoc / panel",
-    );
-
-  setTextInputValueIfPresent(buttonOneLabelInput, state.buttonOneLabel);
-  setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
-  setTextInputValueIfPresent(buttonTwoUrlInput, state.buttonTwoUrl);
-  setTextInputValueIfPresent(
-    buttonOneActionInput,
-    currentPrimaryButtonAction.value,
-  );
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(buttonOneLabelInput),
-    new ActionRowBuilder().addComponents(buttonOneActionInput),
-    new ActionRowBuilder().addComponents(buttonTwoLabelInput),
-    new ActionRowBuilder().addComponents(buttonTwoUrlInput),
-  );
-
-  return modal;
-}
-
-function buildEmbedTestEmojisModal(state) {
-  const modal = new ModalBuilder()
-    .setCustomId(`embedtest_modal_emojis_${state.messageId}`)
-    .setTitle("Edytuj emoji");
-
-  const buttonOneEmojiInput = new TextInputBuilder()
-    .setCustomId("button_one_emoji")
-    .setLabel("Emoji przycisku 1")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. 💸 lub <:anarchialf:123456789>");
-
-  const buttonTwoEmojiInput = new TextInputBuilder()
-    .setCustomId("button_two_emoji")
-    .setLabel("Emoji przycisku 2")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. 💳 lub <:donutsmp:123456789>");
-
-  setTextInputValueIfPresent(buttonOneEmojiInput, state.buttonOneEmoji || "");
-  setTextInputValueIfPresent(buttonTwoEmojiInput, state.buttonTwoEmoji || "");
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(buttonOneEmojiInput),
-    new ActionRowBuilder().addComponents(buttonTwoEmojiInput),
-  );
-
-  return modal;
-}
-
-async function updateEmbedTestMessage(state) {
-  await ensureEmbedTestEmojiCache(state.guildId);
-
-  const guild = client.guilds.cache.get(state.guildId) || null;
-  if (!guild) return false;
-
-  const channel = await guild.channels.fetch(state.channelId).catch(() => null);
-  if (!channel || !channel.isTextBased()) return false;
-
-  const message = await channel.messages.fetch(state.messageId).catch(() => null);
-  if (!message) return false;
-
-  await message.edit(buildEmbedTestMessagePayload(state));
-  return true;
-}
-
-async function sendEmbedTestToTargetChannel(state, targetChannel) {
-  await ensureEmbedTestEmojiCache(state.guildId);
-
-  if (!isEmbedTestPublishTarget(targetChannel)) {
-    return null;
-  }
-
-  const sentMessage = await targetChannel.send(buildEmbedTestMessagePayload(state));
-  embedTestStates.delete(state.messageId);
-  pendingEmbedTestPublish.delete(
-    getPendingEmbedTestPublishKey(state.guildId, state.ownerId),
-  );
-  return sentMessage;
-}
-
-async function publishEmbedTestToChannel(interaction, state, targetChannel) {
-  if (!isEmbedTestPublishTarget(targetChannel)) {
-    await interaction.reply({
-      content: "> `❌` × Wybierz poprawny kanał, na który bot może wysłać wiadomość.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return false;
-  }
-
-  try {
-    const sentMessage = await sendEmbedTestToTargetChannel(state, targetChannel);
-    if (!sentMessage) {
-      await interaction.reply({
-        content: "> `❌` × Wybierz poprawny kanał, na który bot może wysłać wiadomość.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return false;
-    }
-
-    const payload = {
-      embeds: [
-        new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
-          "```\n" +
-            "✅ New Shop × GOTOWE\n" +
-            "```\n" +
-            `> \`📤\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
-            `> \`🔗\` × [Otwórz wiadomość](${getDiscordMessageUrl(
-              interaction.guildId,
-              targetChannel.id,
-              sentMessage.id,
-            )})`,
-        ),
-      ],
-      components: [],
-    };
-
-    if (typeof interaction.update === "function" && interaction.isMessageComponent()) {
-      await interaction.update(payload);
-    } else {
-      await interaction.reply({
-        ...payload,
-        flags: [MessageFlags.Ephemeral],
-      });
-    }
-
-    return true;
-  } catch (error) {
-    console.error("embedtest publish failed:", error);
-    await interaction.reply({
-      content:
-        "> `❌` × Nie udało się wysłać gotowej wersji do wybranego kanału. Sprawdź uprawnienia bota.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return false;
-  }
-}
-
-async function handleEmbedTestCommand(interaction) {
-  if (!interaction.guild) {
-    await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  if (interaction.user.id !== interaction.guild.ownerId) {
-    await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const targetChannel =
-    interaction.options.getChannel("kanal") || interaction.channel;
-  const mediaAttachment = interaction.options.getAttachment("filmik");
-
-  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
-    await interaction.reply({
-      content: "> `❌` × **Wybierz** poprawny kanał tekstowy.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  if (mediaAttachment && !normalizeEmbedTestAttachment(mediaAttachment)) {
-    await interaction.reply({
-      content:
-        "> `❌` × Załącznik w `/embedtest` musi być filmikiem, gifem albo obrazem.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const state = createDefaultEmbedTestState(
-    interaction.guild,
-    targetChannel,
-    interaction.user.id,
-    mediaAttachment,
-  );
-
-  try {
-    await ensureEmbedTestEmojiCache(interaction.guild.id);
-    const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
-    state.messageId = sent.id;
-    embedTestStates.set(sent.id, state);
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(
-        state,
-        `Wysłałem testowy embed do <#${targetChannel.id}>`,
-      ),
-      flags: [MessageFlags.Ephemeral],
-    });
-  } catch (err) {
-    console.error("handleEmbedTestCommand error:", err);
-    await interaction.reply({
-      content:
-        "> `❌` × Nie udało się wysłać testowego embeda. Sprawdź uprawnienia bota do kanału.",
-      flags: [MessageFlags.Ephemeral],
-    });
-  }
-}
-
-const TEST_PANEL_CATEGORY_OPTIONS = [
-  {
-    label: "Kupno itemów",
-    value: "zakup",
-    description: "Testowy formularz zakupu itemów",
-  },
-];
-
-const SHOP_SERVER_OPTION_DEFS = [
-  {
-    label: "Anarchia LF",
-    testValue: "anarchia_lf",
-    calcValue: "ANARCHIA_LIFESTEAL",
-    description: "Tryb Anarchia LifeSteal na Anarchii",
-    channelSlug: "anarchia-lf",
-    emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" },
-  },
-  {
-    label: "Anarchia BoxPvP",
-    testValue: "anarchia_boxpvp",
-    calcValue: "ANARCHIA_BOXPVP",
-    description: "Tryb BoxPvP na Anarchii",
-    channelSlug: "anarchia-boxpvp",
-    emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" },
-  },
-  {
-    label: "Pyk MC",
-    testValue: "pyk_mc",
-    calcValue: "PYK_MC",
-    description: "Tryb Entropia na PykMc",
-    channelSlug: "pyk-mc",
-    emoji: { id: "1457113144412475635", name: "PYK_MC" },
-  },
-  {
-    label: "Donut SMP",
-    testValue: "donut_smp",
-    calcValue: "DONUT_SMP",
-    description: "Tryb SMP na Donut",
-    channelSlug: "donut-smp",
-    emoji: { id: "1489578418432381059", name: "donutsmp" },
-  },
-];
-
-const SHOP_PAYMENT_OPTION_DEFS = [
-  {
-    label: "BLIK",
-    testValue: "blik",
-    calcValue: "BLIK",
-    description: "Szybki przelew BLIK (0% prowizji)",
-    channelSlug: "blik",
-    emoji: { id: "1469107179234525184", name: "BLIK" },
-  },
-  {
-    label: "Kod BLIK",
-    testValue: "kod_blik",
-    calcValue: "Kod BLIK",
-    description: "Kod BLIK (10% prowizji)",
-    channelSlug: "kod-blik",
-    emoji: { id: "1469107179234525184", name: "BLIK" },
-  },
-  {
-    label: "PSC",
-    testValue: "psc",
-    calcValue: "PSC",
-    description: "Paysafecard (10% prowizji)",
-    channelSlug: "psc",
-    emoji: { id: "1469107238676467940", name: "PSC" },
-  },
-  {
-    label: "PSC bez paragonu",
-    testValue: "psc_bez_paragonu",
-    calcValue: "PSC bez paragonu",
-    description: "Paysafecard (20% prowizji)",
-    channelSlug: "psc-bez-paragonu",
-    emoji: { id: "1469107238676467940", name: "PSC" },
-  },
-  {
-    label: "MYPSC",
-    testValue: "mypsc",
-    calcValue: "MYPSC",
-    description: "MYPSC (20% lub min 10zł)",
-    channelSlug: "mypsc",
-    emoji: { id: "1469107199350669473", name: "MYPSC" },
-  },
-  {
-    label: "PayPal",
-    testValue: "paypal",
-    calcValue: "PayPal",
-    description: "PayPal (10% prowizji)",
-    channelSlug: "paypal",
-    emoji: { id: "1449354427755659444", name: "PAYPAL" },
-  },
-  {
-    label: "LTC",
-    testValue: "ltc",
-    calcValue: "LTC",
-    description: "Litecoin (10% prowizji)",
-    channelSlug: "ltc",
-    emoji: { id: "1449186363101548677", name: "LTC" },
-  },
-];
-
-const AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS = [
-  {
-    label: "Zaproszenia",
-    testValue: "zaproszenia",
-    description: "Płatność zaproszeniami",
-    channelSlug: "zaproszenia",
-    emoji: "📩",
-  },
-  {
-    label: "Waluta Serwerowa 150k$",
-    testValue: "waluta_serwerowa_150k",
-    description: "Płatność walutą serwerową 150k$",
-    channelSlug: "waluta-serwerowa-150k",
-    emoji: { id: "1476700165082710178", name: "kasa_2" },
-  },
-];
-
-const KALKULATOR_MODE_OPTIONS = [
-  {
-    label: "Ile otrzymam?",
-    value: "otrzymam",
-    description: "Podasz kwotę w PLN i zobaczysz ile waluty dostaniesz",
-    emoji: { id: "1476700165082710178", name: "kasa_2" },
-  },
-  {
-    label: "Ile muszę dać?",
-    value: "muszedac",
-    description: "Podasz ilość waluty i zobaczysz, ile musisz za nią zapłacić",
-    emoji: { id: "1476700165082710178", name: "kasa_2" },
-  },
-];
-
-const PANEL_CATEGORY_OPTIONS = [
-  {
-    label: "ᴢᴀᴋᴜᴘ ɪᴛᴇᴍóᴡ",
-    value: "zakup",
-    description: "Kliknij, aby kupić itemy!",
-    emoji: "🛒",
-  },
-  {
-    label: "ꜱᴘʀᴢᴇᴅᴀż",
-    value: "sprzedaz",
-    description: "Kliknij, aby sprzedać przedmioty!",
-    emoji: { id: "1476700165082710178", name: "kasa_2" },
-  },
-  {
-    label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏʀsᴋɪᴇɢᴏ ᴍᴏᴅᴀ",
-    value: "zakup_moda",
-    description: "Kliknij, aby kupić autorskiego moda!",
-    emoji: { id: "1480590181944791122", name: "autorynek" },
-  },
-  {
-    label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
-    value: "zakup_autorynku",
-    description: "Kliknij, aby kupić najlepszy AutoRynek!",
-    emoji: { id: "1480590181944791122", name: "autorynek" },
-  },
-  {
-    label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
-    value: "odbior",
-    description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
-    emoji: { id: "1480590229697069210", name: "nagroda" },
-  },
-  {
-    label: "ᴘʏᴛᴀɴɪᴇ / ᴘᴏᴍᴏᴄ",
-    value: "inne",
-    description: "Kliknij, aby zadać pytanie lub otrzymać pomoc!",
-    emoji: { id: "1477688955221835807", name: "pytanie", animated: true },
-  },
-];
-
-const PANEL_FONT_MAP = {
-};
-
-function toPanelFont(text = "") {
-  return String(text);
-}
-
-const TEST_PANEL_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: option.description,
-  emoji: option.emoji,
-}));
-
-const TEST_PANEL_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: option.description,
-  emoji: option.emoji,
-}));
-
-const KALKULATOR_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.calcValue,
-  description: option.description,
-  emoji: option.emoji,
-}));
-
-const KALKULATOR_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.calcValue,
-  description: option.description,
-  emoji: option.emoji,
-}));
-
-const SIMPLE_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: `Płatność ${option.label}`,
-  emoji: option.emoji,
-}));
-
-const AUTORYNEK_PAYMENT_OPTIONS = [
-  ...SIMPLE_PAYMENT_OPTIONS,
-  ...AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS.map((option) => ({
-    label: toPanelFont(option.label),
-    value: option.testValue,
-    description: option.description,
-    emoji: option.emoji,
-  })),
-];
-
-const PAYOUT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: `Wypłata ${option.label}`,
-  emoji: option.emoji,
-}));
-
-const MOD_COUNT_OPTIONS = [
-  { label: "1 mod", value: "1", description: "Kupisz 1 mod" },
-  { label: "2 mody", value: "2", description: "Kupisz 2 mody" },
-  { label: "3 mody", value: "3", description: "Kupisz 3 mody" },
-  { label: "4 mody", value: "4", description: "Kupisz 4 mody" },
-];
-
-const MAX_PURCHASE_PLN = 10_000;
-
-function getTestPanelOptionLabel(options, value) {
-  return options.find((option) => option.value === value)?.label || null;
-}
-
-function getShopServerOptionDef(value) {
-  return (
-    SHOP_SERVER_OPTION_DEFS.find(
-      (option) => option.testValue === value || option.calcValue === value,
-    ) || null
-  );
-}
-
-function getShopPaymentOptionDef(value) {
-  return (
-    SHOP_PAYMENT_OPTION_DEFS.find(
-      (option) => option.testValue === value || option.calcValue === value,
-    ) || null
-  );
-}
-
-function getAutorynekPaymentOptionDef(value) {
-  return (
-    AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS.find(
-      (option) => option.testValue === value,
-    ) || getShopPaymentOptionDef(value)
-  );
-}
-
-function getShopServerLabel(value) {
-  return getShopServerOptionDef(value)?.label || value;
-}
-
-function getShopPaymentLabel(value) {
-  return getShopPaymentOptionDef(value)?.label || value;
-}
-
-function getAutorynekPaymentLabel(value) {
-  return getAutorynekPaymentOptionDef(value)?.label || value;
-}
-
-function sanitizeTicketChannelNamePart(value) {
-  return (
-    (value || "")
-      .toString()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 80) || "ticket"
-  );
-}
-
-function formatTicketAmountPart(amount) {
-  const parsed = Number(amount);
-  if (!Number.isFinite(parsed) || parsed <= 0) return "0zl";
-
-  const normalized = Number.isInteger(parsed)
-    ? String(parsed)
-    : parsed.toFixed(2).replace(/\.?0+$/, "").replace(".", "-");
-
-  return `${normalized}zl`;
-}
-
-function buildPurchaseTicketChannelName(serverValue, paymentValue) {
-  const serverDef = getShopServerOptionDef(serverValue);
-  const serverSlug = serverDef?.channelSlug || sanitizeTicketChannelNamePart(serverValue);
-  const paymentDef = getShopPaymentOptionDef(paymentValue);
-  const paymentSlug =
-    paymentDef?.channelSlug || sanitizeTicketChannelNamePart(paymentValue);
-
-  return `${serverSlug}-${paymentSlug}`.slice(0, 100);
-}
-
-function isModernPurchaseTicketChannelName(name) {
-  const normalized = (name || "").toString().toLowerCase();
-  if (!normalized) return false;
-
-  const isPaymentName = SHOP_SERVER_OPTION_DEFS.some((serverOption) =>
-    SHOP_PAYMENT_OPTION_DEFS.some(
-      (paymentOption) =>
-        normalized === `${serverOption.channelSlug}-${paymentOption.channelSlug}`,
-    ),
-  );
-
-  if (isPaymentName) return true;
-
-  return SHOP_SERVER_OPTION_DEFS.some((serverOption) => {
-    if (!normalized.startsWith(`${serverOption.channelSlug}-`)) return false;
-
-    const suffix = normalized.slice(serverOption.channelSlug.length + 1);
-    return /^\d+(?:-\d+)?zl$/.test(suffix);
-  });
-}
-
-function getModalTextInputValueSafe(interaction, customId) {
-  try {
-    return interaction.fields.getTextInputValue(customId);
-  } catch {
-    return null;
-  }
-}
-
-function getModalStringSelectValueSafe(interaction, customId) {
-  try {
-    return interaction.fields.getStringSelectValues(customId)?.[0] || null;
-  } catch {
-    return null;
-  }
-}
-
-function buildTicketPanelPayload() {
-  const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
-    "```\n" +
-      "🛒 New Shop × TICKET\n" +
-      "```\n" +
-      "`📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!",
-  );
-
-  const selectMenu = new StringSelectMenuBuilder()
-    .setCustomId("ticket_category")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .addOptions(PANEL_CATEGORY_OPTIONS);
-
-  return {
-    embeds: [embed],
-    components: [new ActionRowBuilder().addComponents(selectMenu)],
-  };
-}
-
-async function sendTicketPanel(interaction) {
-  await interaction.reply({
-    content: "> `✅` × **Panel** ticketów wysłany!",
-    flags: [MessageFlags.Ephemeral],
-  });
-
-  await interaction.channel.send(buildTicketPanelPayload());
-}
-
-async function showTestPanelZakupModal(interaction) {
-  await showZakupModalV2(interaction);
-}
-
-async function showZakupModalV2(interaction) {
-  const itemInput = new TextInputBuilder()
-    .setCustomId("co_kupic")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Kasa")
-    .setRequired(true)
-    .setMaxLength(120);
-
-  const serverSelect = new StringSelectMenuBuilder()
-    .setCustomId("zakup_server")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(TEST_PANEL_SERVER_OPTIONS);
-
-  const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("zakup_payment")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(TEST_PANEL_PAYMENT_OPTIONS);
-
-  const amountInput = new TextInputBuilder()
-    .setCustomId("kwota")
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: 20zł")
-    .setRequired(true);
-
-  const modal = new ModalBuilder()
-    .setCustomId("modal_zakup")
-    .setTitle("Formularz zakupu")
-    .addLabelComponents(
-      new LabelBuilder()
-        .setLabel("Co chcesz kupić?")
-        .setTextInputComponent(itemInput),
-      new LabelBuilder()
-        .setLabel("Na jakim serwerze?")
-        .setStringSelectMenuComponent(serverSelect),
-      new LabelBuilder()
-        .setLabel("Forma płatności")
-        .setStringSelectMenuComponent(paymentSelect),
-      new LabelBuilder()
-        .setLabel("Kwota (PLN)")
-        .setTextInputComponent(amountInput),
-    );
-
-  await interaction.showModal(modal);
-}
-
-async function handleTestPanelCommand(interaction) {
-  if (interaction.user.id !== interaction.guild.ownerId) {
-    await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  await sendTicketPanel(interaction);
-}
-
 async function handleTicketPanelCommand(interaction) {
   // Sprawdź czy właściciel
   if (interaction.user.id !== interaction.guild.ownerId) {
@@ -7721,19 +4252,53 @@ async function handleTicketPanelCommand(interaction) {
     });
     return;
   }
-  await sendTicketPanel(interaction);
-}
 
-function buildTicketCloseConfirmEmbed(actionLabel) {
-  return new EmbedBuilder()
+  const botName = client.user?.username || "NEWSHOP";
+
+  const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-        "🎫 New Shop × ZAMYKANIE\n" +
-        "```\n" +
-        `> \`⚠️\` × ${actionLabel}\n` +
-        "> \`⏳\` × Potwierdź w `30s`",
+      "🛒 New Shop × TICKET\n" +
+      "```\n" +
+      "`📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!",
     );
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId("ticket_category")
+    .setPlaceholder("Wybierz kategorię...")
+    .addOptions([
+      {
+        label: "💰 Zakup",
+        value: "zakup",
+        description: "Kliknij, aby dokonać zakupu!",
+      },
+      {
+        label: "💵 Sprzedaż",
+        value: "sprzedaz",
+        description: "Kliknij, aby dokonać sprzedaży!",
+      },
+      {
+        label: "🎁 Nagroda za zaproszenia",
+        value: "odbior",
+        description: "Kliknij, aby odebrać nagrode za zaproszenia (kod)",
+      },
+      {
+        label: "🏆 Nagroda za konkurs",
+        value: "konkurs_odbior",
+        description: "Kliknij, aby odebrać nagrode za konkurs",
+      },
+      { label: "❓ INNE", value: "inne", description: "Kliknij, aby zadać inne pytanie!" },
+    ]);
+
+  const row = new ActionRowBuilder().addComponents(selectMenu);
+
+  await interaction.reply({
+    content: "> `✅` × **Panel** ticketów wysłany!",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  await interaction.channel.send({ embeds: [embed], components: [row] });
 }
 
 async function handleCloseTicketCommand(interaction) {
@@ -7775,7 +4340,7 @@ async function handleCloseTicketCommand(interaction) {
       embeds: [
         new EmbedBuilder()
           .setColor(COLOR_BLUE)
-          .setDescription("> \`ℹ️\` × **Ticket zostanie zamknięty w ciągu 5 sekund...**")
+          .setDescription("> \`ℹ️\` **Ticket zostanie zamknięty w ciągu 5 sekund...**")
       ]
     });
 
@@ -7784,7 +4349,6 @@ async function handleCloseTicketCommand(interaction) {
         channel,
         interaction.user.id,
         ticketMeta,
-        { closeMethod: "Komenda /zamknij" },
       ).catch((e) => console.error("archiveTicketOnClose error:", e));
     } catch (e) {
       console.error("Błąd archiwizacji ticketu (command):", e);
@@ -7800,7 +4364,8 @@ async function handleCloseTicketCommand(interaction) {
   } else {
     pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
     await interaction.reply({
-      embeds: [buildTicketCloseConfirmEmbed("Użyj `/zamknij` jeszcze raz")],
+      content:
+        "> \`⚠️\` Kliknij /zamknij ponownie w ciągu 30 sekund, aby potwierdzić zamknięcie ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
     setTimeout(() => pendingTicketClose.delete(chId), 30_000);
@@ -7835,9 +4400,7 @@ async function handleTicketZakonczCommand(interaction) {
 
   // Pobierz parametry
   const typ = interaction.options.getString("typ");
-  const co =
-    interaction.options.getString("co") ||
-    interaction.options.getString("ile");
+  const ile = interaction.options.getString("ile");
   const serwer = interaction.options.getString("serwer");
 
   // Pobierz właściciela ticketu
@@ -7852,71 +4415,93 @@ async function handleTicketZakonczCommand(interaction) {
     return;
   }
 
+  // Stwórz embed instrukcji w zależności od typu
+  let embed;
   const legitRepChannelId = "1449840030947217529";
-  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
-  let thankLine = "Dziękujemy za zakup w naszym sklepie";
-  let repVerb = "sprzedał";
-  const typLower = typ.toLowerCase();
-  if (typLower === "sprzedaż") {
-    thankLine = "Dziękujemy za sprzedaż w naszym sklepie";
-    repVerb = "kupił";
-  } else if (typLower === "wręczył nagrodę") {
-    thankLine = "Nagroda została nadana";
-    repVerb = "wręczył nagrodę";
+  
+  // Przygotuj wiadomość +rep
+  let repMessage;
+  switch (typ.toLowerCase()) {
+    case "zakup":
+      repMessage = `+rep @${interaction.user.username} sprzedał ${ile} ${serwer}`;
+      break;
+    case "sprzedaż":
+      repMessage = `+rep @${interaction.user.username} kupił ${ile} ${serwer}`;
+      break;
+    case "wręczył nagrodę":
+      repMessage = `+rep @${interaction.user.username} wręczył nagrodę ${ile} ${serwer}`;
+      break;
   }
 
-  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${co} ${serwer}`;
+  switch (typ.toLowerCase()) {
+    case "zakup":
+      embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE) // 🔵 niebieski
+        .setTitle("😎 DZIĘKUJEMY ZA ZAKUP W NASZYM SKLEPIE! ❤️")
+        .setDescription(
+          `Aby zakończyć ticket, wyślij poniższą wiadomość na kanał\n<#${legitRepChannelId}>\n\n` +
+          `\`\`\`\n${repMessage}\n\`\`\``
+        )
+        .setImage("attachment://standard_5.gif");
+      break;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
-      "```\n" +
-      `${arrowEmoji} **${thankLine}**\n\n` +
-      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
-      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``,
-    )
-    .setImage("attachment://standard_5.gif");
+    case "sprzedaż":
+      embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE) // 🔵 niebieski
+        .setTitle("💪 DZIĘKUJEMY ZA SPRZEDAŻ W NASZYM SKLEPIE! ❤️")
+        .setDescription(
+          `Aby zamknąć ten ticket wyślij wiadomość +rep na kanał \n<#${legitRepChannelId}>\n\n` +
+          `\`\`\`\n${repMessage}\n\`\`\``
+        )
+        .setImage("attachment://standard_5.gif");
+      break;
 
+    case "wręczył nagrodę":
+      embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE) // 🔵 niebieski
+        .setTitle("💰 NAGRODA ZOSTAŁA NADANA ❤️")
+        .setDescription(
+          `Aby zakończyć ticket, wyślij poniższą wiadomość na kanał\n<#${legitRepChannelId}>\n\n` +
+          `\`\`\`\n${repMessage}\n\`\`\``
+        )
+        .setImage("attachment://standard_5.gif");
+      
+      // Dodaj informację o brakujących zaproszeniach dla typu "wręczył nagrodę"
+      try {
+        const guildId = interaction.guildId;
+        const gMap = inviteCounts.get(guildId) || new Map();
+        const userInvites = gMap.get(ticketOwnerId) || 0;
+        const requiredInvites = 10; // zakładam 10 zaproszeń na nagrodę
+        const missing = Math.max(0, requiredInvites - userInvites);
+        
+        if (missing > 0) {
+          embed.addFields({
+            name: "ℹ️ Informacja o zaproszeniach",
+            value: `Brakuje ci **${missing}** zaproszeń, aby otrzymać kolejną nagrodę 50k$.`
+          });
+        }
+      } catch (e) {
+        console.error("Błąd sprawdzania zaproszeń:", e);
+      }
+      break;
+
+    default:
+      await interaction.followUp({
+        content: "> `❌` × **Nieprawidłowy** typ. Wybierz: **zakup**, **sprzedaż** lub **wręczył nagrodę**.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+  }
+
+  // Wyślij jedną wiadomość z pingiem, embedem i +rep w obu miejscach
   const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
   const gifAttachment = new AttachmentBuilder(gifPath, { name: "standard_5.gif" });
-
-  // Ephemeral potwierdzenie dla sprzedawcy
+  
   await interaction.reply({
-    content: "`✅` × Poprawnie użyto komendy ticket zakończ.",
-    flags: [MessageFlags.Ephemeral],
-  });
-
-  // Wyślij embed + wzór na ticket
-  await interaction.channel.send({
+    content: `<@${ticketOwnerId}>\n\n\`\`\`\n${repMessage}\n\`\`\``,
     embeds: [embed],
     files: [gifAttachment]
   });
-
-  await interaction.channel.send({
-    content: repMessage,
-  });
-
-  // Oznacz właściciela ticketu na kanale legit-rep i usuń ping po chwili
-  try {
-    const legitRepChannel = await interaction.guild.channels
-      .fetch(legitRepChannelId)
-      .catch(() => null);
-
-    if (legitRepChannel && legitRepChannel.isTextBased()) {
-      const pingMessage = await legitRepChannel.send({
-        content: `<@${ticketOwnerId}>`,
-        allowedMentions: { users: [ticketOwnerId] },
-      });
-
-      setTimeout(() => {
-        pingMessage.delete().catch(() => null);
-      }, LEGIT_REP_PING_DELETE_DELAY_MS);
-    }
-  } catch (err) {
-    console.error("Nie udało się wysłać pingu na legit-rep:", err);
-  }
 
   // Zapisz informację o oczekiwaniu na +rep dla tego ticketu
   pendingTicketClose.set(channel.id, {
@@ -7924,39 +4509,8 @@ async function handleTicketZakonczCommand(interaction) {
     commandUserId: interaction.user.id, // osoba która użyła komendy
     commandUsername: interaction.user.username, // nick osoby która użyła komendy
     awaitingRep: true,
-    legitRepChannelId,
     ts: Date.now()
   });
-
-  // Przenieś ticket do kategorii zrealizowanej
-  const ARCHIVED_CATEGORY_ID = "1469059216303198261";
-  try {
-    if (channel.parentId !== ARCHIVED_CATEGORY_ID) {
-      await channel.setParent(ARCHIVED_CATEGORY_ID, { lockPermissions: false });
-    }
-  } catch (err) {
-    console.error("Nie udało się przenieść ticketu do kategorii zrealizowanej:", err);
-  }
-
-  await sendTicketLogEntry(interaction.guild, {
-    title: "Ticket oczekuje na +rep",
-    icon: "🟠",
-    color: COLOR_YELLOW,
-    summary: "Ticket został oznaczony jako zrealizowany i czeka na legit rep od klienta.",
-    ticketChannel: channel,
-    ownerId: ticketOwnerId,
-    actorId: interaction.user.id,
-    claimedById: ticketData?.claimedBy || null,
-    ticketMeta: ticketData,
-    statusLabel: "OCZEKUJE NA +REP",
-    detailLines: [
-      `Typ transakcji: ${typ}`,
-      `Co: ${co}`,
-      `Serwer: ${serwer}`,
-      `Kanał legit-rep: <#${legitRepChannelId}>`,
-      `Wzór: ${repMessage}`,
-    ],
-  }).catch((err) => console.error("ticket-zakoncz log error:", err));
 
   console.log(`Ticket ${channel.id} oczekuje na +rep od użytkownika ${ticketOwnerId} (komenda użyta przez ${interaction.user.username})`);
 }
@@ -7984,9 +4538,7 @@ async function handleZamknijZPowodemCommand(interaction) {
   }
 
   // Pobierz powód
-  const powodPreset = interaction.options.getString("powod");
-  const powodCustom = (interaction.options.getString("powod_custom") || "").trim();
-  const powod = powodCustom || powodPreset;
+  const powod = interaction.options.getString("powod");
 
   // Pobierz właściciela ticketu
   const ticketData = ticketOwners.get(channel.id);
@@ -8001,45 +4553,27 @@ async function handleZamknijZPowodemCommand(interaction) {
   }
 
   try {
-    const ticketMeta = ticketOwners.get(channel.id) || null;
-
     // Wyślij embed do właściciela ticketu
-    const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-        "🎫 New Shop × TICKETY\n" +
-        "```\n" +
-        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> **\`${powod}\`**`
-      )
+      .setTitle("**TICKET ZOSTAŁ ZAMKNIĘTY**")
+      .setDescription(`\`powód:\` **${powod}**`)
       .setTimestamp();
 
     // Wyślij DM do właściciela ticketu
     const ticketOwner = await client.users.fetch(ticketOwnerId).catch(() => null);
     if (ticketOwner) {
-      await ticketOwner.send({ embeds: [embed] }).catch(() => null);
+      await ticketOwner.send({ embeds: [embed] });
     }
 
-    // Wyślij potwierdzenie na kanał (publicznie)
+    // Wyślij potwierdzenie na kanał
     await interaction.reply({
-      content: `> \`✅\` × Ticket zamknięty z powodem: **${powod}**`,
-      flags: [MessageFlags.Ephemeral],
+      content: "✅ **Ticket został zamknięty!** Właściciel otrzymał powód w wiadomości prywatnej."
     });
 
     // Zamknij ticket po 2 sekundach
     setTimeout(async () => {
       try {
-        await archiveTicketOnClose(
-          channel,
-          interaction.user.id,
-          ticketMeta,
-          {
-            closeMethod: "Komenda /zamknij-z-powodem",
-            reason: powod,
-          },
-        ).catch((e) => console.error("archiveTicketOnClose error (reason):", e));
-
         await channel.delete(`Ticket zamknięty przez właściciela z powodem: ${powod}`);
         ticketOwners.delete(channel.id);
         pendingTicketClose.delete(channel.id);
@@ -8061,71 +4595,60 @@ async function handleZamknijZPowodemCommand(interaction) {
 
 // ----------------- /legit-rep-ustaw handler -----------------
 async function handleLegitRepUstawCommand(interaction) {
-  try {
-    console.log("[/legit-rep-ustaw] start", {
-      user: interaction.user?.id,
-      guild: interaction.guild?.id,
+  // Sprawdź czy właściciel
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
     });
+    return;
+  }
 
-    // ensure we acknowledge the interaction to avoid "application did not respond"
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ ephemeral: true });
-    }
+  const ile = interaction.options.getInteger("ile");
+  
+  if (ile < 0 || ile > 9999) {
+    await interaction.reply({
+      content: "> `❌` × **Podaj** liczbę od 0 do 9999.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
-    // Sprawdź czy właściciel
-    if (interaction.user.id !== interaction.guild.ownerId) {
-      const payload = { content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] };
-      if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-      else await interaction.reply(payload);
-      return;
-    }
-
-    const ile = interaction.options.getInteger("ile");
-    
-    if (ile < 0 || ile > 9999) {
-      const payload = { content: "> `❌` × **Podaj** liczbę od 0 do 9999.", flags: [MessageFlags.Ephemeral] };
-      if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-      else await interaction.reply(payload);
-      return;
-    }
-
+  try {
     // Zaktualizuj licznik
     legitRepCount = ile;
     
     // Zmień nazwę kanału
     const channelId = "1449840030947217529";
-    const channel = await client.channels.fetch(channelId).catch((err) => {
-      console.error("legit-rep-ustaw fetch channel error", err);
-      return null;
-    });
+    const channel = await client.channels.fetch(channelId).catch(() => null);
     
     if (!channel) {
-      const payload = { content: "> `❌` × **Nie znaleziono** kanału legit-rep.", flags: [MessageFlags.Ephemeral] };
-      if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-      else await interaction.reply(payload);
+      await interaction.reply({
+        content: "> `❌` × **Nie znaleziono** kanału legit-rep.",
+        flags: [MessageFlags.Ephemeral],
+      });
       return;
     }
 
-    const newName = `✅×〢legit-rep➔${ile}`;
+    const newName = `✅-×┃legit-rep➔${ile}`;
     await channel.setName(newName);
     
     // Wyślij informacyjną wiadomość
-    const successPayload = {
-      content: `LegitRepy: ${ile}\nLegitChecki: ${ile}`,
-      flags: [MessageFlags.Ephemeral],
-    };
-    if (interaction.deferred || interaction.replied) await interaction.editReply(successPayload);
-    else await interaction.reply(successPayload);
+    await interaction.reply({
+      content: `LegitRepy: ${ile}\nLegitChecki: ${ile}`
+    });
     
     // Zapisz stan
     scheduleSavePersistentState();
     
     console.log(`Nazwa kanału legit-rep zmieniona na: ${newName} przez ${interaction.user.tag}`);
+    
   } catch (error) {
-    console.error("Błąd podczas ustawiania legit-rep (outer catch):", error);
-    const payload = { content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.", flags: [MessageFlags.Ephemeral] };
-    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-    else await interaction.reply(payload);
+    console.error("Błąd podczas ustawiania legit-rep:", error);
+    await interaction.reply({
+      content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.",
+      flags: [MessageFlags.Ephemeral],
+    });
   }
 }
 
@@ -8236,118 +4759,9 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
 }
 
 async function handleSelectMenu(interaction) {
-  const embedTestPublishChannelMatch = interaction.customId.match(
-    /^embedtest_publish_channel_(\d+)$/,
-  );
-  if (embedTestPublishChannelMatch) {
-    const [, messageId] = embedTestPublishChannelMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może zakończyć ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const targetChannelId = interaction.values[0];
-    const targetChannel = await interaction.guild.channels
-      .fetch(targetChannelId)
-      .catch(() => null);
-    await publishEmbedTestToChannel(interaction, state, targetChannel);
-    return;
-  }
-
-  const embedTestColorMatch = interaction.customId.match(
-    /^embedtest_color_(\d+)$/,
-  );
-  if (embedTestColorMatch) {
-    const [, messageId] = embedTestColorMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const selectedColor = getEmbedTestColorDef(interaction.values[0]);
-    state.accentColorKey = selectedColor.value;
-    state.accentColor = selectedColor.color;
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.update(
-      buildEmbedTestControlPayload(
-        state,
-        `Ustawiłem kolor embeda na ${selectedColor.label}`,
-      ),
-    );
-    return;
-  }
-
-  if (interaction.customId === "kalkulator_typ") {
-    const selectedType = interaction.values[0];
-    try {
-      await interaction.showModal(buildKalkulatorModal(selectedType));
-    } catch (error) {
-      console.error("kalkulator_typ showModal error:", error);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: "> `❌` × Nie udało się otworzyć formularza kalkulatora. Spróbuj ponownie.",
-          flags: [MessageFlags.Ephemeral],
-        }).catch(() => null);
-      }
-    }
-    return;
-  }
-
   // KALKULATOR select menu handlers
   if (interaction.customId === "kalkulator_tryb" || interaction.customId === "kalkulator_metoda") {
     await handleKalkulatorSelect(interaction);
-    return;
-  }
-
-  if (interaction.customId === "testpanel_category") {
-    const selectedCategory = interaction.values[0];
-
-    if (selectedCategory !== "zakup") {
-      await interaction.reply({
-        content: "> `❌` × Ta kategoria testowa nie jest jeszcze dostępna.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await showZakupModal(interaction);
     return;
   }
 
@@ -8359,17 +4773,14 @@ async function handleSelectMenu(interaction) {
       case "zakup":
         await showZakupModal(interaction);
         break;
-      case "zakup_moda":
-        await showModyZakupModal(interaction);
-        break;
-      case "zakup_autorynku":
-        await showAutoRynekZakupModal(interaction);
-        break;
       case "sprzedaz":
         await showSprzedazModal(interaction);
         break;
       case "odbior":
         await showOdbiorModal(interaction);
+        break;
+      case "konkurs_odbior":
+        await showKonkursOdbiorModal(interaction);
         break;
       case "inne":
         await showInneModal(interaction);
@@ -8451,77 +4862,70 @@ async function handleSelectMenu(interaction) {
 }
 
 async function showZakupModal(interaction) {
-  await showZakupModalV2(interaction);
-}
-
-async function showModyZakupModal(interaction) {
-  const modNameInput = new TextInputBuilder()
-    .setCustomId("mod_name")
-    .setPlaceholder("Przykład: Auto_Dripstone")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(64);
-
-  const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("mod_payment_method")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(SIMPLE_PAYMENT_OPTIONS);
-
-  const modsCountInput = new TextInputBuilder()
-    .setCustomId("mods_count")
-    .setPlaceholder("Podaj liczbę od 1 do 4")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(1);
-
   const modal = new ModalBuilder()
-    .setCustomId("modal_mody_zakup")
-    .setTitle("Zakup moda")
-    .addLabelComponents(
-      new LabelBuilder()
-        .setLabel("Jakiego moda chcesz kupić?")
-        .setTextInputComponent(modNameInput),
-      new LabelBuilder()
-        .setLabel("Forma płatności")
-        .setStringSelectMenuComponent(paymentSelect),
-      new LabelBuilder()
-        .setLabel("Ile modów chcesz kupić?")
-        .setTextInputComponent(modsCountInput),
-    );
+    .setCustomId("modal_zakup")
+    .setTitle("Informacje dot. zakupu.");
+
+  const serwerInput = new TextInputBuilder()
+    .setCustomId("serwer")
+    .setLabel("Na jakim serwerze?")
+    .setPlaceholder("Przykład: Anarchia")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+
+  const kwotaInput = new TextInputBuilder()
+    .setCustomId("kwota")
+    .setLabel("Za ile chcesz kupić?")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Przykład: 20zł")
+    .setRequired(true);
+
+  const platnosInput = new TextInputBuilder()
+    .setCustomId("platnosc")
+    .setLabel("Jaką metodą płatności płacisz?")
+    .setPlaceholder("Przykład: Blik")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+
+  const oczekiwanaWalutaInput = new TextInputBuilder()
+    .setCustomId("oczekiwana_waluta")
+    .setLabel("Co chciałbyś zakupić")
+    .setPlaceholder("Przykład: Elytra")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(serwerInput),
+    new ActionRowBuilder().addComponents(kwotaInput),
+    new ActionRowBuilder().addComponents(platnosInput),
+    new ActionRowBuilder().addComponents(oczekiwanaWalutaInput),
+  );
 
   await interaction.showModal(modal);
 }
 
-async function showAutoRynekZakupModal(interaction) {
-  const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("autorynek_payment_method")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(AUTORYNEK_PAYMENT_OPTIONS);
-
+async function showKonkursOdbiorModal(interaction) {
   const modal = new ModalBuilder()
-    .setCustomId("modal_autorynek_zakup")
-    .setTitle("Zakup Auto Rynku")
-    .addLabelComponents(
-      new LabelBuilder()
-        .setLabel("Forma płatności")
-        .setStringSelectMenuComponent(paymentSelect),
-    );
+    .setCustomId("modal_konkurs_odbior")
+    .setTitle("Nagroda za konkurs");
+
+  const infoInput = new TextInputBuilder()
+    .setCustomId("konkurs_info")
+    .setLabel("Za jaki konkurs oraz jaka nagroda?")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Przykład: Wygrałem konkurs na elytre")
+    .setRequired(true)
+    .setMaxLength(128);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(infoInput));
 
   await interaction.showModal(modal);
 }
 
-async function ticketClaimCommon(interaction, channelId, opts = {}) {
+async function ticketClaimCommon(interaction, channelId) {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
-  const skipQuiz = opts.skipQuiz === true;
-  const bypassPermissionCheck = opts.bypassPermissionCheck === true;
 
-  if (!bypassPermissionCheck && !isAdminOrSeller(interaction.member)) {
+  if (!isAdminOrSeller(interaction.member)) {
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
         content: "> `❗` × Brak wymaganych uprawnień.",
@@ -8533,41 +4937,9 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
-    return { ok: false, reason: "permission" };
+    return;
   }
 
-  // quiz matematyczny przed przejęciem (przycisk + /przejmij)
-  if (!skipQuiz) {
-    const questions = [
-      { q: "Ile to 5 * 3?", a: "15" },
-      { q: "Ile to 3 * 3?", a: "9" },
-      { q: "Ile to 4 * 6?", a: "24" },
-      { q: "Ile to 7 + 8?", a: "15" },
-      { q: "Ile to 12 - 5?", a: "7" },
-      { q: "Ile to 9 + 6?", a: "15" },
-      { q: "Ile to 14 - 8?", a: "6" },
-      { q: "Ile to 6 * 4?", a: "24" },
-      { q: "Ile to 5 + 9?", a: "14" },
-    ];
-    const pick = questions[Math.floor(Math.random() * questions.length)];
-    const modalId = `claim_quiz_${channelId}_${interaction.user.id}_${Date.now()}`;
-    pendingClaimQuiz.set(modalId, { channelId, userId: interaction.user.id, answer: pick.a });
-
-    const modal = new ModalBuilder()
-      .setCustomId(modalId)
-      .setTitle("Weryfikacja przejęcia ticketu");
-    const input = new TextInputBuilder()
-      .setCustomId("claim_answer")
-      .setLabel(pick.q)
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(4);
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-    await interaction.showModal(modal).catch(() => null);
-    return { ok: false, reason: "quiz-required" };
-  }
-
-  // szybka odpowiedź, żeby Discord nie wyświetlał błędu interakcji (po quizie)
   if (!interaction.replied && !interaction.deferred) {
     if (isBtn) {
       await interaction.deferUpdate().catch(() => null);
@@ -8577,13 +4949,6 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
   }
 
   const replyEphemeral = async (text) => {
-    // jeśli interakcja nie została jeszcze potwierdzona, użyj reply()
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction
-        .reply({ content: text, flags: [MessageFlags.Ephemeral] })
-        .catch(() => null);
-      return;
-    }
     if (isBtn) {
       await interaction.followUp({ content: text, flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
@@ -8603,20 +4968,20 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     await replyEphemeral(
       "❌ Ten ticket został zablokowany do przejmowania (ustawienia/zmiana nazwy).",
     );
-    return { ok: false, reason: "locked" };
+    return;
   }
 
   if (ticketData && ticketData.claimedBy) {
     await replyEphemeral(
       `❌ Ten ticket został już przejęty przez <@${ticketData.claimedBy}>!`,
     );
-    return { ok: false, reason: "already-claimed", claimedBy: ticketData.claimedBy };
+    return;
   }
 
   const ch = await client.channels.fetch(channelId).catch(() => null);
   if (!ch) {
     await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
-    return { ok: false, reason: "channel-not-found" };
+    return;
   }
 
   try {
@@ -8692,50 +5057,17 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, claimerId).catch(() => null);
     }
 
-    const publicClaimerLabel =
-      (typeof opts.publicClaimerLabel === "string" && opts.publicClaimerLabel.trim()) ||
-      `<@${claimerId}>`;
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`✅\` × Ticket został przejęty przez ${publicClaimerLabel}`);
+      .setDescription(`> \`✅\` × Ticket został przejęty przez <@${claimerId}>`);
 
-    try {
-      const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
-      if (sent && sent.id) {
-        ticketData.lastClaimMsgId = sent.id;
-        ticketOwners.set(channelId, ticketData);
-        scheduleSavePersistentState();
-      }
-    } catch {
-      // ignore
-    }
-
-    await sendTicketLogEntry(interaction.guild, {
-      title: "Ticket przejęty",
-      icon: "🟢",
-      color: 0x57f287,
-      summary: "Ticket został przejęty przez obsługę.",
-      ticketChannel: ch,
-      ownerId: ticketData.userId,
-      actorId: interaction.user.id,
-      claimedById: claimerId,
-      ticketMeta: ticketData,
-      statusLabel: "PRZEJĘTY",
-      detailLines: [
-        przejetaKategoria
-          ? `Przeniesiono do kategorii: ${przejetaKategoria.name}`
-          : "Nie udało się odnaleźć kategorii przejętych.",
-      ],
-    }).catch((err) => console.error("ticket claim log error:", err));
-
+    await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
       await interaction.deleteReply().catch(() => null);
     }
-    return { ok: true, reason: "claimed", channelId, claimedBy: claimerId };
   } catch (err) {
     console.error("Błąd przy przejmowaniu ticketu:", err);
     await replyEphemeral("❌ Wystąpił błąd podczas przejmowania ticketu.");
-    return { ok: false, reason: "error", channelId };
   }
 }
 
@@ -8802,17 +5134,8 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     return;
   }
 
-  if (!interaction.replied && !interaction.deferred) {
-    if (isBtn) {
-      await interaction.deferUpdate().catch(() => null);
-    } else {
-      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
-    }
-  }
-
   try {
     const releaserId = interaction.user.id;
-    const previousClaimerId = ticketData.claimedBy || null;
 
     // Przywróć oryginalną kategorię jeśli istnieje
     if (ticketData.originalCategoryId) {
@@ -8910,82 +5233,9 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       await editTicketMessageButtons(ch, ticketData.ticketMessageId, null).catch(() => null);
     }
 
-    // log do logi-ticket + backup wiadomości przed czyszczeniem
-    try {
-      const logCh = await getLogiTicketChannel(interaction.guild);
-      // backup wiadomości przed usunięciem
-      let backupAttachment = null;
-      try {
-        const messages = await ch.messages.fetch({ limit: 100 }).catch(() => null);
-        if (messages && messages.size) {
-          const sorted = Array.from(messages.values()).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-          const lines = sorted.map((m) => {
-            const ts = new Date(m.createdTimestamp).toISOString();
-            const author = `${m.author.tag} (${m.author.id})`;
-            const content = (m.content || "").replace(/\n/g, " ");
-            const attachments = m.attachments?.size ? ` [załączniki: ${Array.from(m.attachments.values()).map((a) => a.url).join(", ")}]` : "";
-            return `[${ts}] ${author}: ${content}${attachments}`;
-          });
-          const buf = Buffer.from(lines.join("\n"), "utf8");
-          backupAttachment = new AttachmentBuilder(buf, { name: `ticket_${channelId}_history.txt` });
-        }
-      } catch (e) {
-        console.error("Backup messages before unclaim failed:", e);
-      }
-
-      if (logCh) {
-        await sendTicketLogEntry(interaction.guild, {
-          title: "Ticket zwolniony",
-          icon: "🟡",
-          color: COLOR_YELLOW,
-          summary: "Ticket został zwolniony i wrócił do statusu otwartego.",
-          ticketChannel: ch,
-          ownerId: ticketData.userId,
-          actorId: interaction.user.id,
-          claimedById: previousClaimerId,
-          ticketMeta: ticketData,
-          statusLabel: "OTWARTY",
-          detailLines: [
-            ticketData.originalCategoryId
-              ? `Przywrócono kategorię: <#${ticketData.originalCategoryId}>`
-              : null,
-            backupAttachment
-              ? "Dodano załącznik z historią wiadomości po przejęciu."
-              : null,
-          ],
-          files: backupAttachment ? [backupAttachment] : [],
-        }).catch(() => null);
-      }
-    } catch (e) {
-      console.error("Log unclaim failed:", e);
-    }
-
-    // wyczyść historię kanału od czasu przejęcia do teraz (zostawiając samą wiadomość o przejęciu)
-    try {
-      let claimMsg = null;
-      if (ticketData.lastClaimMsgId) {
-        claimMsg = await ch.messages.fetch(ticketData.lastClaimMsgId).catch(() => null);
-      }
-
-      const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => null);
-      if (msgs && msgs.size) {
-        const toDelete = msgs.filter((m) => {
-          if (claimMsg && m.id === claimMsg.id) return false;
-          if (m.id === interaction.message?.id) return false;
-          if (claimMsg) return m.createdTimestamp >= claimMsg.createdTimestamp;
-          return true;
-        });
-        if (toDelete.size) {
-          await ch.bulkDelete(toDelete, true).catch(() => null);
-        }
-      }
-    } catch (e) {
-      console.error("Nie udało się wyczyścić historii kanału po odprzejęciu:", e);
-    }
-
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>`);
+      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${releaserId}>`);
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
@@ -8998,42 +5248,36 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 }
 
 async function showSprzedazModal(interaction) {
-  const itemInput = new TextInputBuilder()
+  const modal = new ModalBuilder()
+    .setCustomId("modal_sprzedaz")
+    .setTitle("Informacje dot. zgłoszenia.");
+
+  const coInput = new TextInputBuilder()
     .setCustomId("co_sprzedac")
+    .setLabel("Co chcesz sprzedać?")
     .setPlaceholder("Przykład: 100k$")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
-  const serverSelect = new StringSelectMenuBuilder()
-    .setCustomId("sprzedaz_server")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(TEST_PANEL_SERVER_OPTIONS);
+  const serwerInput = new TextInputBuilder()
+    .setCustomId("serwer")
+    .setLabel("Na jakim serwerze?")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Przykład: Anarchia")
+    .setRequired(true);
 
-  const payoutSelect = new StringSelectMenuBuilder()
-    .setCustomId("sprzedaz_payout")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(PAYOUT_OPTIONS);
+  const ileInput = new TextInputBuilder()
+    .setCustomId("ile")
+    .setLabel("Ile oczekujesz?")
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder("Przykład: 20zł")
+    .setRequired(true);
 
-  const modal = new ModalBuilder()
-    .setCustomId("modal_sprzedaz")
-    .setTitle("Informacje dot. zgłoszenia.")
-    .addLabelComponents(
-      new LabelBuilder()
-        .setLabel("Co chcesz sprzedać?")
-        .setTextInputComponent(itemInput),
-      new LabelBuilder()
-        .setLabel("Na jakim serwerze?")
-        .setStringSelectMenuComponent(serverSelect),
-      new LabelBuilder()
-        .setLabel("Forma wypłaty")
-        .setStringSelectMenuComponent(payoutSelect),
-    );
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(coInput),
+    new ActionRowBuilder().addComponents(serwerInput),
+    new ActionRowBuilder().addComponents(ileInput),
+  );
 
   await interaction.showModal(modal);
 }
@@ -9077,361 +5321,6 @@ async function handleModalSubmit(interaction) {
   const guildId = interaction.guildId;
   if (!guildId || !interaction.guild) return;
 
-  const cid = interaction.customId || "";
-
-  const embedTestHeaderMatch = cid.match(/^embedtest_modal_header_(\d+)$/);
-  if (embedTestHeaderMatch) {
-    const [, messageId] = embedTestHeaderMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    state.headerBadge = interaction.fields
-      .getTextInputValue("header_badge")
-      .trim();
-    state.headerNote = interaction.fields
-      .getTextInputValue("header_note")
-      .trim();
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(state, "Zaktualizowałem górę embeda"),
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const embedTestEmojisMatch = cid.match(/^embedtest_modal_emojis_(\d+)$/);
-  if (embedTestEmojisMatch) {
-    const [, messageId] = embedTestEmojisMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    state.buttonOneEmoji = interaction.fields
-      .getTextInputValue("button_one_emoji")
-      .trim();
-    state.buttonTwoEmoji = interaction.fields
-      .getTextInputValue("button_two_emoji")
-      .trim();
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(state, "Zaktualizowałem emoji embeda"),
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const embedTestContentMatch = cid.match(/^embedtest_modal_content_(\d+)$/);
-  if (embedTestContentMatch) {
-    const [, messageId] = embedTestContentMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    state.title = interaction.fields.getTextInputValue("title").trim();
-    state.cashSectionTitle = interaction.fields
-      .getTextInputValue("cash_section_title")
-      .trim();
-    state.cashBody = interaction.fields.getTextInputValue("cash_body").trim();
-    state.itemsSectionTitle = interaction.fields
-      .getTextInputValue("items_section_title")
-      .trim();
-    state.itemsBody = interaction.fields.getTextInputValue("items_body").trim();
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(state, "Zaktualizowałem treść embeda"),
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const embedTestExtraContentMatch = cid.match(
-    /^embedtest_modal_content_extra_(\d+)$/,
-  );
-  if (embedTestExtraContentMatch) {
-    const [, messageId] = embedTestExtraContentMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    state.extraSectionTitle = interaction.fields
-      .getTextInputValue("extra_section_title")
-      .trim();
-    state.extraSectionBody = interaction.fields
-      .getTextInputValue("extra_section_body")
-      .trim();
-    state.extraSectionTwoTitle = interaction.fields
-      .getTextInputValue("extra_section_two_title")
-      .trim();
-    state.extraSectionTwoBody = interaction.fields
-      .getTextInputValue("extra_section_two_body")
-      .trim();
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(
-        state,
-        "Zaktualizowałem dodatkowe sekcje embeda",
-      ),
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const embedTestButtonsMatch = cid.match(/^embedtest_modal_buttons_(\d+)$/);
-  if (embedTestButtonsMatch) {
-    const [, messageId] = embedTestButtonsMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const buttonTwoUrl = interaction.fields
-      .getTextInputValue("button_two_url")
-      .trim();
-    const buttonOneActionInput = interaction.fields
-      .getTextInputValue("button_one_action")
-      .trim();
-
-    const buttonOneLabel = interaction.fields
-      .getTextInputValue("button_one_label")
-      .trim();
-    const buttonTwoLabel = interaction.fields
-      .getTextInputValue("button_two_label")
-      .trim();
-    const parsedButtonOneAction = parseEmbedTestPrimaryButtonActionInput(
-      buttonOneActionInput,
-      state.buttonOneAction || "zakup",
-    );
-
-    if (buttonTwoUrl && !isHttpUrl(buttonTwoUrl)) {
-      await interaction.reply({
-        content: "> `❌` × Link przycisku 2 musi zaczynać się od `http` lub `https`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (buttonTwoUrl && !buttonTwoLabel) {
-      await interaction.reply({
-        content: "> `❌` × Jeśli przycisk 2 ma link, podaj też jego nazwę.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (!parsedButtonOneAction) {
-      await interaction.reply({
-        content:
-          "> `❌` × Dla przycisku 1 wpisz jedną z akcji: `zakup`, `autorynek`, `mod`, `sprzedaz`, `odbior`, `pomoc` albo `panel`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    state.buttonOneLabel = buttonOneLabel;
-    state.buttonOneAction = parsedButtonOneAction.value;
-    state.buttonTwoLabel = buttonTwoLabel;
-    state.buttonTwoUrl = buttonTwoUrl;
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(
-        state,
-        `Zaktualizowałem przyciski embeda, a Kup teraz otwiera: ${parsedButtonOneAction.label}`,
-      ),
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  // quiz do przejęcia ticketu
-  if (cid.startsWith("claim_quiz_")) {
-    const data = pendingClaimQuiz.get(cid);
-    if (!data || data.userId !== interaction.user.id) {
-      await interaction.reply({ content: "> `❌` × Ta weryfikacja wygasła. Kliknij **Przejmij** ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
-      return;
-    }
-    const answer = (interaction.fields.getTextInputValue("claim_answer") || "").trim();
-    if (answer !== data.answer) {
-      await interaction.reply({ content: "> `❌` × Zła odpowiedź. Spróbuj ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
-      pendingClaimQuiz.delete(cid);
-      return;
-    }
-    pendingClaimQuiz.delete(cid);
-    await ticketClaimCommon(interaction, data.channelId, { skipQuiz: true });
-    return;
-  }
-
-  // captcha do wlaczenia /autoprzejmij
-  if (cid.startsWith("autoprzejmij_quiz_")) {
-    const data = pendingAutoPrzejmijQuiz.get(cid);
-    if (!data || data.userId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❌` × Ta captcha wygasla. Uzyj /autoprzejmij ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      }).catch(() => null);
-      return;
-    }
-
-    const answer = (interaction.fields.getTextInputValue("autoprzejmij_answer") || "").trim();
-    if (answer !== data.answer) {
-      pendingAutoPrzejmijQuiz.delete(cid);
-      await interaction.reply({
-        content: "> `❌` × Zla odpowiedz captcha. Sprobuj ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      }).catch(() => null);
-      return;
-    }
-
-    pendingAutoPrzejmijQuiz.delete(cid);
-    autoPrzejmijSettings.set(data.guildId, {
-      enabled: true,
-      ownerId: data.ownerId,
-      ownerName: data.ownerName,
-      enabledAt: Date.now(),
-    });
-    scheduleSavePersistentState();
-
-    const stats = await runAutoPrzejmijSweep(
-      interaction.guild,
-      data.ownerId,
-      data.ownerName,
-      null,
-    );
-
-    await interaction.reply({
-      content: formatAutoPrzejmijSummary(
-        stats,
-        "> `✅` × Autoprzejmowanie zostalo **wlaczone**.",
-      ),
-      flags: [MessageFlags.Ephemeral],
-    }).catch(() => null);
-    return;
-  }
-
   const botName = client.user?.username || "NEWSHOP";
 
   // NEW: konkurs create modal
@@ -9444,10 +5333,6 @@ async function handleModalSubmit(interaction) {
     try {
       const kwotaStr = interaction.fields.getTextInputValue("kwota");
       const kwota = parseFloat(kwotaStr.replace(",", "."));
-      const selectedServer =
-        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
-      const selectedPayment =
-        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (isNaN(kwota) || kwota <= 0) {
         await interaction.reply({
@@ -9457,42 +5342,30 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      if (kwota > MAX_PURCHASE_PLN) {
-        await interaction.reply({
-          content: "> `❌` × Maksymalna kwota w kalkulatorze to **10 000zł**.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (selectedServer && selectedPayment) {
-        const result = buildKalkulatorResultMessage({
-          typ: "otrzymam",
-          kwota,
-          tryb: selectedServer,
-          metoda: selectedPayment,
-        });
-
-        await interaction.reply({
-          content: result.error || result.message,
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      // Fallback dla starszych wiadomości kalkulatora
+      // Zapisz kwotę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { kwota, typ: "otrzymam" });
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_SERVER_OPTIONS);
+        .setPlaceholder("Wybierz serwer...")
+        .addOptions(
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+        );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
+        .setPlaceholder("Wybierz metodę płatności...")
+        .addOptions(
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+        );
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -9525,10 +5398,6 @@ async function handleModalSubmit(interaction) {
     try {
       const walutaStr = interaction.fields.getTextInputValue("waluta");
       const waluta = parseShortNumber(walutaStr);
-      const selectedServer =
-        getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
-      const selectedPayment =
-        getModalStringSelectValueSafe(interaction, "kalkulator_payment") || "";
 
       if (!waluta || waluta <= 0 || waluta > 999_000_000) {
         await interaction.reply({
@@ -9538,34 +5407,30 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      if (selectedServer && selectedPayment) {
-        const result = buildKalkulatorResultMessage({
-          typ: "muszedac",
-          waluta,
-          tryb: selectedServer,
-          metoda: selectedPayment,
-        });
-
-        await interaction.reply({
-          content: result.error || result.message,
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      // Fallback dla starszych wiadomości kalkulatora
+      // Zapisz walutę i pokaż menu z wyborem trybu i metody
       const userId = interaction.user.id;
       kalkulatorData.set(userId, { waluta, typ: "muszedac" });
 
       const trybSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_tryb")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_SERVER_OPTIONS);
+        .setPlaceholder("Wybierz serwer...")
+        .addOptions(
+          { label: "ANARCHIA LIFESTEAL", value: "ANARCHIA_LIFESTEAL", emoji: { id: "1457109250949124258" } },
+          { label: "ANARCHIA BOXPVP", value: "ANARCHIA_BOXPVP", emoji: { id: "1457109250949124258" } },
+          { label: "PYK MC", value: "PYK_MC", emoji: { id: "1457113144412475635" } }
+        );
 
       const metodaSelect = new StringSelectMenuBuilder()
         .setCustomId("kalkulator_metoda")
-        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-        .addOptions(KALKULATOR_PAYMENT_OPTIONS);
+        .setPlaceholder("Wybierz metodę płatności...")
+        .addOptions(
+          { label: "BLIK", value: "BLIK", description: "Szybki przelew BLIK (0% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "Kod BLIK", value: "Kod BLIK", description: "Kod BLIK (10% prowizji)", emoji: { id: "1449354065887756378" } },
+          { label: "PSC", value: "PSC", description: "Paysafecard (10% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PSC bez paragonu", value: "PSC bez paragonu", description: "Paysafecard bez paragonu (20% prowizji)", emoji: { id: "1449352743591608422" } },
+          { label: "PayPal", value: "PayPal", description: "PayPal (5% prowizji)", emoji: { id: "1449354427755659444" } },
+          { label: "LTC", value: "LTC", description: "Litecoin (5% prowizji)", emoji: { id: "1449186363101548677" } }
+        );
 
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -9638,7 +5503,7 @@ async function handleModalSubmit(interaction) {
 
     if (numeric !== record.answer) {
       await interaction.reply({
-        content: "> \`❌\` × **Źle! Nieprawidłowy wynik. Spróbuj jeszcze raz.**",
+        content: "> \`❌\` **Źle! Nieprawidłowy wynik. Spróbuj jeszcze raz.**",
         flags: [MessageFlags.Ephemeral],
       });
       // remove record so they can request a new puzzle
@@ -9716,13 +5581,13 @@ async function handleModalSubmit(interaction) {
         await interaction.user.send({ embeds: [dmEmbed] });
         // ephemeral confirmation (not public)
         await interaction.reply({
-          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
+          content: "> \`✅\` **Pomyślnie zweryfikowano**",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (dmError) {
         console.error("Nie udało się wysłać DM po weryfikacji:", dmError);
         await interaction.reply({
-          content: "> \`✅\` × Zostałeś pomyślnie zweryfikowany",
+          content: "> \`✅\` **Pomyślnie zweryfikowano**",
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -9760,7 +5625,7 @@ async function handleModalSubmit(interaction) {
     if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
       await interaction.reply({
         content:
-          "❌ Kod na 70k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
+          "❌ Kod na 50k$ można wpisać jedynie klikając kategorię 'Nagroda za zaproszenia' w TicketPanel i wpisując tam kod!",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -9853,25 +5718,10 @@ async function handleModalSubmit(interaction) {
       return;
     }
     try {
-      const oldName = channel.name;
       await channel.setName(newName);
 
-      await sendTicketLogEntry(interaction.guild, {
-        title: "Zmieniono nazwę ticketu",
-        icon: "📝",
-        color: COLOR_BLUE,
-        summary: "Nazwa ticketu została zmieniona przez obsługę.",
-        ticketChannel: channel,
-        ownerId: data.userId || null,
-        actorId: interaction.user.id,
-        claimedById: data.claimedBy || null,
-        ticketMeta: data,
-        statusLabel: data.claimedBy ? "PRZEJĘTY" : "OTWARTY",
-        detailLines: [
-          `Stara nazwa: ${oldName}`,
-          `Nowa nazwa: ${newName}`,
-        ],
-      }).catch((err) => console.error("ticket rename log error:", err));
+      // prepare DM embed (as requested)
+      // send DM to user
 
       await interaction.reply({
         content: `✅ Zmieniono nazwę ticketu na \`${newName}\`.`,
@@ -9941,21 +5791,6 @@ async function handleModalSubmit(interaction) {
         SendMessages: true,
         ReadMessageHistory: true,
       });
-
-      await sendTicketLogEntry(interaction.guild, {
-        title: "Dodano użytkownika do ticketu",
-        icon: "👥",
-        color: COLOR_BLUE,
-        summary: "Do ticketu został dodany dodatkowy użytkownik.",
-        ticketChannel: channel,
-        ownerId: data.userId || null,
-        actorId: interaction.user.id,
-        claimedById: data.claimedBy || null,
-        ticketMeta: data,
-        statusLabel: data.claimedBy ? "PRZEJĘTY" : "OTWARTY",
-        detailLines: [`Dodano użytkownika: <@${userIdToAdd}>`],
-      }).catch((err) => console.error("ticket add-user log error:", err));
-
       await interaction.reply({
         content: `✅ Dodano <@${userIdToAdd}> do ticketu.`,
         flags: [MessageFlags.Ephemeral],
@@ -10021,21 +5856,6 @@ async function handleModalSubmit(interaction) {
       await channel.permissionOverwrites
         .delete(userIdToRemove)
         .catch(() => null);
-
-      await sendTicketLogEntry(interaction.guild, {
-        title: "Usunięto użytkownika z ticketu",
-        icon: "➖",
-        color: COLOR_YELLOW,
-        summary: "Z ticketu usunięto dodatkowego użytkownika.",
-        ticketChannel: channel,
-        ownerId: data.userId || null,
-        actorId: interaction.user.id,
-        claimedById: data.claimedBy || null,
-        ticketMeta: data,
-        statusLabel: data.claimedBy ? "PRZEJĘTY" : "OTWARTY",
-        detailLines: [`Usunięto użytkownika: <@${userIdToRemove}>`],
-      }).catch((err) => console.error("ticket remove-user log error:", err));
-
       await interaction.reply({
         content: `✅ Usunięto <@${userIdToRemove}> z ticketu.`,
         flags: [MessageFlags.Ephemeral],
@@ -10060,79 +5880,47 @@ async function handleModalSubmit(interaction) {
   let ticketTypeLabel;
   let formInfo;
   let ticketTopic;
-  let forceOwnerOnlyVisibility = false;
-  let preferredChannelName = null;
 
   switch (interaction.customId) {
-    case "modal_testpanel_purchase":
     case "modal_zakup": {
-      const itemToBuy =
-        (getModalTextInputValueSafe(interaction, "co_kupic") || "").trim();
-      const selectedServer =
-        getModalStringSelectValueSafe(interaction, "zakup_server") ||
-        getModalStringSelectValueSafe(interaction, "testpanel_purchase_server") ||
-        getModalTextInputValueSafe(interaction, "serwer") ||
-        "";
-      const selectedPayment =
-        getModalStringSelectValueSafe(interaction, "zakup_payment") ||
-        getModalStringSelectValueSafe(interaction, "testpanel_purchase_payment") ||
-        getModalTextInputValueSafe(interaction, "platnosc") ||
-        "";
-      const kwotaRaw = getModalTextInputValueSafe(interaction, "kwota") || "";
-      let kwotaNum = parseFloat(
-        kwotaRaw.replace(/[^0-9,.\-]/g, "").replace(/,/g, "."),
+      const serwer = interaction.fields.getTextInputValue("serwer");
+      const kwotaRaw = interaction.fields.getTextInputValue("kwota");
+      const platnosc = interaction.fields.getTextInputValue("platnosc");
+      const oczekiwanaWaluta = interaction.fields.getTextInputValue(
+        "oczekiwana_waluta",
       );
 
+      // VALIDATION: reject if kwota contains letters (user requested)
+      if (/[A-Za-z\u00C0-\u017F]/.test(kwotaRaw)) {
+        await interaction.reply({
+          content:
+            "❌ Proszę podaj kwotę jako samą liczbę (bez liter, np. `40`). Jeśli chciałeś napisać `40zł`, wpisz `40`.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      // extract numeric
+      const kwotaNum = parseInt(kwotaRaw.replace(/[^0-9]/g, ""), 10);
       if (Number.isNaN(kwotaNum)) {
         await interaction.reply({
-          content: "> `❌` × Podaj kwotę jako liczbę, np. `20` lub `20.5`.",
+          content: "> `❌` × **Nieprawidłowa** kwota — wpisz proszę **liczbę** (np. `40`).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      if (!Number.isFinite(kwotaNum) || kwotaNum < 0) kwotaNum = 0;
-
-      if (kwotaNum < 5) {
+      // if too large (arbitrary safeguard)
+      if (kwotaNum > 100000) {
         await interaction.reply({
-          content: "> `❌` × Minimalna kwota zakupu to **5zł**.",
+          content:
+            "❌ Podana kwota jest zbyt wysoka. Jeśli to pomyłka, wpisz poprawną kwotę (np. `40`).",
           flags: [MessageFlags.Ephemeral],
         });
         return;
       }
 
-      if (kwotaNum > MAX_PURCHASE_PLN) {
-        await interaction.reply({
-          content: "> `❌` × Maksymalna kwota zakupu to **10 000zł**.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!selectedServer) {
-        await interaction.reply({
-          content: "> `❌` × Wybierz serwer przed wysłaniem formularza.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!selectedPayment) {
-        await interaction.reply({
-          content: "> `❌` × Wybierz formę płatności przed wysłaniem formularza.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!itemToBuy) {
-        await interaction.reply({
-          content: "> `❌` × Podaj, co chcesz kupić przed wysłaniem formularza.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
+      // routing to categories: treat >100 as 100-200+ (user requested)
       if (kwotaNum <= 20) {
         categoryId = categories["zakup-0-20"];
         ticketType = "zakup-0-20";
@@ -10143,175 +5931,31 @@ async function handleModalSubmit(interaction) {
         categoryId = categories["zakup-50-100"];
         ticketType = "zakup-50-100";
       } else {
-        categoryId = categories["zakup-100-200"];
-        ticketType = "zakup-100-200";
-      }
-
-      const serverLabel = getShopServerLabel(selectedServer);
-      const paymentLabel = getShopPaymentLabel(selectedPayment);
-
-      ticketTypeLabel = "ZAKUP";
-      ticketTopic = `Zakup itemów na serwerze: ${serverLabel} (${kwotaNum}zł)`;
-      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      preferredChannelName = buildPurchaseTicketChannelName(
-        selectedServer,
-        selectedPayment,
-      );
-
-      formInfo =
-        `> <a:arrowwhite:1469100658606211233> × **Co chcesz kupić:** \`${itemToBuy}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serverLabel}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentLabel}\``;
-      break;
-    }
-    case "modal_mody_zakup": {
-      const modName = (getModalTextInputValueSafe(interaction, "mod_name") || "").trim();
-      const paymentMethodRaw =
-        getModalStringSelectValueSafe(interaction, "mod_payment_method") ||
-        getModalTextInputValueSafe(interaction, "payment_method") ||
-        "";
-      const modsCountRaw =
-        getModalStringSelectValueSafe(interaction, "mods_count_select") ||
-        getModalTextInputValueSafe(interaction, "mods_count") ||
-        "";
-
-      if (!modName) {
-        await interaction.reply({
-          content: "> `❌` × Podaj nazwę moda, którego chcesz kupić.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!paymentMethodRaw) {
-        await interaction.reply({
-          content: "> `❌` × Wybierz formę płatności.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!/^\d+$/.test(modsCountRaw)) {
-        await interaction.reply({
-          content: "> `❌` × Liczba modów musi być liczbą od **1** do **4**.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      const modsCount = parseInt(modsCountRaw, 10);
-      if (modsCount < 1 || modsCount > 4) {
-        await interaction.reply({
-          content: "> `❌` × Możesz kupić jednorazowo od **1** do **4** modów.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      const totalPrice = modsCount * 20;
-      if (totalPrice <= 20) {
-        categoryId = categories["zakup-0-20"];
-        ticketType = "zakup-0-20";
-      } else if (totalPrice <= 50) {
-        categoryId = categories["zakup-20-50"];
-        ticketType = "zakup-20-50";
-      } else if (totalPrice <= 100) {
-        categoryId = categories["zakup-50-100"];
-        ticketType = "zakup-50-100";
-      } else {
+        // anything above 100 goes to 100-200+ category
         categoryId = categories["zakup-100-200"];
         ticketType = "zakup-100-200";
       }
 
       ticketTypeLabel = "ZAKUP";
-      ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
+      // Prosty opis bez kalkulacji
+      ticketTopic = `Zakup na serwerze: ${serwer}`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      forceOwnerOnlyVisibility = true;
 
-      const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
-
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Ilość modów:** \`${modsCount}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Łączna kwota:** \`${totalPrice}zł\``;
-      break;
-    }
-    case "modal_autorynek_zakup": {
-      const paymentMethodRaw =
-        getModalStringSelectValueSafe(interaction, "autorynek_payment_method") ||
-        getModalTextInputValueSafe(interaction, "payment_method") ||
-        "";
-      if (!paymentMethodRaw) {
-        await interaction.reply({
-          content: "> `❌` × Wybierz formę płatności.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      categoryId = categories["zakup-20-50"];
-      ticketType = "zakup-20-50";
-      ticketTypeLabel = "ZAKUP AUTO RYNKU";
-      ticketTopic = "Zakup AutoRynku";
-      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      forceOwnerOnlyVisibility = true;
-
-      const paymentMethod = getShopPaymentLabel(paymentMethodRaw);
-
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\``;
+      formInfo = `> \`➖\` × **Serwer:** \`${serwer}\`\n` +
+        `> \`➖\` × **Kwota:** \`${kwotaNum}zł\`\n` +
+        `> \`➖\` × **Metoda płatności:** \`${platnosc}\`\n` +
+        `> \`➖\` × **Chciałby zakupić:** \`${oczekiwanaWaluta}\``;
       break;
     }
     case "modal_sprzedaz": {
-      const co = getModalTextInputValueSafe(interaction, "co_sprzedac") || "";
-      const serwerRaw =
-        getModalStringSelectValueSafe(interaction, "sprzedaz_server") ||
-        getModalTextInputValueSafe(interaction, "serwer") ||
-        "";
-      const payoutRaw =
-        getModalStringSelectValueSafe(interaction, "sprzedaz_payout") ||
-        getModalTextInputValueSafe(interaction, "payout_method") ||
-        getModalTextInputValueSafe(interaction, "platnosc") ||
-        "";
-      const coTrimmed = co.trim();
-
-      if (!serwerRaw) {
-        await interaction.reply({
-          content: "> `❌` × Wybierz serwer przed wysłaniem formularza.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!payoutRaw) {
-        await interaction.reply({
-          content: "> `❌` × Wybierz formę wypłaty przed wysłaniem formularza.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-
-      if (!coTrimmed) {
-        await interaction.reply({
-          content: "> `❌` × Opisz, co chcesz sprzedać.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
+      const co = interaction.fields.getTextInputValue("co_sprzedac");
+      const serwer = interaction.fields.getTextInputValue("serwer");
+      const ile = interaction.fields.getTextInputValue("ile");
 
       categoryId = categories["sprzedaz"];
       ticketType = "sprzedaz";
       ticketTypeLabel = "SPRZEDAŻ";
-      const serwer = getShopServerLabel(serwerRaw);
-      const payoutMethod = getShopPaymentLabel(payoutRaw);
-
-      ticketTopic = `Sprzedaż na serwerze: ${serwer}`;
-      if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-
-      formInfo =
-        `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${coTrimmed}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Forma wypłaty:** \`${payoutMethod}\``;
+      formInfo = `> \`➖\` × **Co chce sprzedać:** \`${co}\`\n> \`➖\` × **Serwer:** \`${serwer}\`\n> \`➖\` × **Oczekiwana kwota:** \`${ile}\``;
       break;
     }
     case "modal_odbior": {
@@ -10397,10 +6041,10 @@ async function handleModalSubmit(interaction) {
         ? Math.floor(codeData.expiresAt / 1000)
         : null;
       const expiryLine = expiryTs
-        ? `\n> <a:arrowwhite:1469100658606211233> × **Kod wygasa za:** <t:${expiryTs}:R>`
+        ? `\n> \`➖\` × **Kod wygasa za:** <t:${expiryTs}:R>`
         : "";
 
-      const formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "70k$"}\`${expiryLine}`;
+      const formInfo = `> \`➖\` × **Kod:** \`${enteredCode}\`\n> \`➖\` × **Nagroda:** \`${codeData.rewardText || INVITE_REWARD_TEXT || "50k$"}\`${expiryLine}`;
 
       try {
         let parentToUse = categoryId;
@@ -10443,14 +6087,14 @@ async function handleModalSubmit(interaction) {
 
         const channel = await interaction.guild.channels.create(createOptions);
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-      .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+        const embed = new EmbedBuilder()
+          .setColor(COLOR_BLUE)
+          .setDescription(
+            `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
-            `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-            `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
+            `> \`➖\` **× Ping:** <@${user.id}>\n` +
+            `> \`➖\` × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+            `> \`➖\` × **ID:** \`${user.id}\`\n` +
             `### ・ \`📋\` × Informacje z formularza:\n` +
             `${formInfo}`,
           )
@@ -10493,9 +6137,6 @@ async function handleModalSubmit(interaction) {
           userId: user.id,
           ticketMessageId: sentMsg.id,
           locked: false,
-          ticketTypeLabel,
-          formInfo,
-          openedAt: Date.now(),
         });
         scheduleSavePersistentState();
 
@@ -10508,7 +6149,7 @@ async function handleModalSubmit(interaction) {
         }).catch(() => { });
 
         await interaction.reply({
-          content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
+          content: `> \`✅\` **Utworzono ticket! Przejdź do:** <#${channel.id}>.`,
           flags: [MessageFlags.Ephemeral],
         });
       } catch (err) {
@@ -10520,13 +6161,22 @@ async function handleModalSubmit(interaction) {
       }
       break;
     }
+    case "modal_konkurs_odbior": {
+      const info = interaction.fields.getTextInputValue("konkurs_info");
+
+      categoryId = REWARDS_CATEGORY_ID;
+      ticketType = "konkurs-nagrody";
+      ticketTypeLabel = "NAGRODA ZA KONKURS";
+      formInfo = `> \`➖\` × **Informacje:** \`${info}\``;
+      break;
+    }
     case "modal_inne": {
       const sprawa = interaction.fields.getTextInputValue("sprawa");
 
       categoryId = categories["inne"];
       ticketType = "inne";
-      ticketTypeLabel = "PYTANIE";
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
+      ticketTypeLabel = "INNE";
+      formInfo = `> \`➖\` × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -10547,9 +6197,7 @@ async function handleModalSubmit(interaction) {
           .catch(() => null);
         if (existingChannel) {
           await interaction.reply({
-            content:
-              `> \`❌\` × **Masz już otwarty** ticket: <#${chanId}>\n` +
-              "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
+            content: `❌ Masz już otwarty ticket: <#${chanId}> — zamknij go zanim otworzysz nowy.`,
             flags: [MessageFlags.Ephemeral],
           });
           return;
@@ -10589,7 +6237,7 @@ async function handleModalSubmit(interaction) {
 
     // create channel with or without parent
     const createOptions = {
-      name: preferredChannelName || `ticket-${user.username}`,
+      name: `ticket-${user.username}`,
       type: ChannelType.GuildText,
       permissionOverwrites: [
         {
@@ -10607,23 +6255,8 @@ async function handleModalSubmit(interaction) {
       ],
     };
 
-    if (
-      forceOwnerOnlyVisibility &&
-      interaction.guild.ownerId &&
-      interaction.guild.ownerId !== interaction.user.id
-    ) {
-      createOptions.permissionOverwrites.push({
-        id: interaction.guild.ownerId,
-        allow: [
-          PermissionsBitField.Flags.ViewChannel,
-          PermissionsBitField.Flags.SendMessages,
-          PermissionsBitField.Flags.ReadMessageHistory,
-        ],
-      });
-    }
-
     // Dodaj rangi limitów w zależności od kategorii
-    if (parentToUse && !forceOwnerOnlyVisibility) {
+    if (parentToUse) {
       const categoryId = parentToUse;
       
       // Zakup 0-20 - wszystkie rangi widzą
@@ -10676,20 +6309,15 @@ async function handleModalSubmit(interaction) {
     if (parentToUse) createOptions.parent = parentToUse;
 
     const channel = await interaction.guild.channels.create(createOptions);
-    if (forceOwnerOnlyVisibility) {
-      await channel.permissionOverwrites
-        .set(createOptions.permissionOverwrites)
-        .catch(() => null);
-    }
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
+        `> \`➖\` **× Ping:** <@${user.id}>\n` +
+        `> \`➖\` × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> \`➖\` × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -10709,7 +6337,7 @@ async function handleModalSubmit(interaction) {
 
     const buttons = [closeButton, settingsButton];
 
-    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
+    if (ticketTypeLabel === "ZAKUP") {
       buttons.push(
         new ButtonBuilder()
           .setCustomId(`ticket_code_${channel.id}_${user.id}`)
@@ -10745,9 +6373,6 @@ async function handleModalSubmit(interaction) {
       userId: user.id,
       ticketMessageId: sentMsg.id,
       locked: false,
-      ticketTypeLabel,
-      formInfo,
-      openedAt: Date.now(),
     });
     scheduleSavePersistentState();
 
@@ -10765,15 +6390,9 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
+      content: `> \`✅\` **Utworzono ticket! Przejdź do:** <#${channel.id}>`,
       flags: [MessageFlags.Ephemeral],
     });
-
-    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
-      await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
-        console.error("[autoprzejmij] Auto-claim po utworzeniu ticketa nieudany:", err),
-      );
-    }
   } catch (error) {
     console.error("Błąd tworzenia ticketu:", error);
     await interaction.reply({
@@ -10786,86 +6405,6 @@ async function handleModalSubmit(interaction) {
 // message create handler: enforce channel restrictions and keep existing legitcheck behavior
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
-
-  if (message.guild) {
-    const pendingKey = getPendingEmbedTestPublishKey(
-      message.guild.id,
-      message.author.id,
-    );
-    const pending = pendingEmbedTestPublish.get(pendingKey);
-
-    if (pending) {
-      if (pending.expiresAt <= Date.now()) {
-        pendingEmbedTestPublish.delete(pendingKey);
-      } else if (pending.sourceChannelId !== message.channelId) {
-        // czekamy tylko na wiadomość w tym samym kanale, w którym kliknięto Zakończ
-      } else {
-        const state = embedTestStates.get(pending.messageId);
-        if (!state || state.ownerId !== message.author.id) {
-          pendingEmbedTestPublish.delete(pendingKey);
-        } else {
-          const targetChannel = resolveEmbedTestPublishTargetFromMessage(message);
-
-          if (!targetChannel) {
-            const warn = await message.reply({
-              content:
-                "> `❌` × Nie znalazłem tego kanału. Wyślij `#kanał` albo ID kanału.",
-            }).catch(() => null);
-
-            if (warn) {
-              setTimeout(() => warn.delete().catch(() => null), 7_000);
-            }
-            return;
-          }
-
-          try {
-            const sentMessage = await sendEmbedTestToTargetChannel(
-              state,
-              targetChannel,
-            );
-
-            if (!sentMessage) {
-              const warn = await message.reply({
-                content:
-                  "> `❌` × Nie mogę wysłać tam wiadomości. Wybierz inny kanał.",
-              }).catch(() => null);
-              if (warn) {
-                setTimeout(() => warn.delete().catch(() => null), 7_000);
-              }
-              return;
-            }
-
-            await message.delete().catch(() => null);
-
-            const confirm = await message.channel.send({
-              content:
-                `> \`✅\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
-                `> \`🔗\` × ${getDiscordMessageUrl(
-                  message.guild.id,
-                  targetChannel.id,
-                  sentMessage.id,
-                )}`,
-            }).catch(() => null);
-
-            if (confirm) {
-              setTimeout(() => confirm.delete().catch(() => null), 10_000);
-            }
-            return;
-          } catch (error) {
-            console.error("embedtest publish by message failed:", error);
-            const warn = await message.reply({
-              content:
-                "> `❌` × Nie udało się opublikować embeda. Sprawdź uprawnienia bota.",
-            }).catch(() => null);
-            if (warn) {
-              setTimeout(() => warn.delete().catch(() => null), 8_000);
-            }
-            return;
-          }
-        }
-      }
-    }
-  }
 
   // ANTI-DISCORD-INVITE: delete invite links and timeout user for 30 minutes
   try {
@@ -11039,47 +6578,112 @@ client.on(Events.MessageCreate, async (message) => {
       `• \`❗\` __**Na tym kanale można losować tylko zniżki!**__`,
     );
 
+  // Enforce drop-channel-only rule (only allow messages starting with "/drop")
   try {
     const guildId = message.guildId;
     if (guildId) {
-      const content = (message.content || "").trim();
-
       const dropChannelId = dropChannels.get(guildId);
       if (dropChannelId && message.channel.id === dropChannelId) {
-        // Usuń każdą wiadomość użytkownika (także wpisane "/drop"), zostaw tylko slash-command
-        if (!message.author.bot) {
-          await message.delete().catch(() => null);
-          return;
-        }
-      }
-
-      const opinieChannelId = opinieChannels.get(guildId);
-      if (opinieChannelId && message.channel.id === opinieChannelId) {
-        if (!message.author.bot) {
-          await message.delete().catch(() => null);
-          return;
-        }
-      }
-
-      const zapCh = message.guild
-        ? message.guild.channels.cache.find(
-          (c) =>
-            c.type === ChannelType.GuildText &&
-            (c.name === "❓-×┃sprawdz-zapro" ||
-              c.name.includes("sprawdz-zapro") ||
-              c.name.includes("sprawdz-zaproszenia")),
-        )
-        : null;
-
-      if (zapCh && message.channel.id === zapCh.id) {
-        if (!message.author.bot) {
-          await message.delete().catch(() => null);
+        const content = (message.content || "").trim();
+        // allow if message begins with "/drop" (user typed it)
+        if (!content.toLowerCase().startsWith("/drop")) {
+          // delete and warn
+          try {
+            await message.delete().catch(() => null);
+          } catch (e) {
+            // ignore
+          }
+          try {
+            const warnMsg = await message.channel.send({
+              content: `<@${message.author.id}>`,
+              embeds: [dropInvalidEmbed],
+            });
+            setTimeout(() => warnMsg.delete().catch(() => { }), 3000);
+          } catch (e) {
+            // ignore
+          }
           return;
         }
       }
     }
   } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguł kanałów drop/opinia/zaproszenia:", e);
+    console.error("Błąd przy egzekwowaniu reguły kanału drop:", e);
+  }
+
+  // Enforce opinie-channel-only rule (only allow messages starting with "/opinia")
+  try {
+    const guildId = message.guildId;
+    if (guildId) {
+      const opinieChannelId = opinieChannels.get(guildId);
+      if (opinieChannelId && message.channel.id === opinieChannelId) {
+        const content = (message.content || "").trim();
+        if (!content.toLowerCase().startsWith("/opinia")) {
+          // delete and warn
+          try {
+            await message.delete().catch(() => null);
+          } catch (e) {
+            // ignore
+          }
+          try {
+            const warnMsg = await message.channel.send({
+              content: `<@${message.author.id}>`,
+              embeds: [opinInvalidEmbed],
+            });
+            setTimeout(() => warnMsg.delete().catch(() => { }), 3000);
+          } catch (e) {
+            // ignore
+          }
+          return;
+        } else {
+          // If user typed plain "/opinia" (not using slash command) we should also enforce per-user cooldown here.
+          const last = opinionCooldowns.get(message.author.id) || 0;
+          if (Date.now() - last < OPINION_COOLDOWN_MS) {
+            const remaining = OPINION_COOLDOWN_MS - (Date.now() - last);
+            try {
+              await message.delete().catch(() => null);
+            } catch (e) { }
+            try {
+              const warnMsg = await message.channel.send({
+                content: `<@${message.author.id}>`,
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(COLOR_BLUE)
+                    .setDescription(
+                      `• \`❗\` Musisz poczekać ${humanizeMs(remaining)}, zanim użyjesz /opinia ponownie.`,
+                    ),
+                ],
+              });
+              setTimeout(() => warnMsg.delete().catch(() => { }), 4000);
+            } catch (e) { }
+            return;
+          } else {
+            // allow typed /opinia but start cooldown
+            opinionCooldowns.set(message.author.id, Date.now());
+            // delete typed /opinia to reduce clutter:
+            try {
+              await message.delete().catch(() => null);
+            } catch (e) { }
+            // Inform user to use slash command properly (instruction should be yellow and mention command id)
+            try {
+              const info = await message.channel.send({
+                content: `<@${message.author.id}>`,
+                embeds: [
+                  new EmbedBuilder()
+                    .setColor(COLOR_YELLOW)
+                    .setDescription(
+                      `Użyj **komendy** × </opinia:1464015495392133321> aby wystawić opinię — post został przyjęty.`,
+                    ),
+                ],
+              });
+              setTimeout(() => info.delete().catch(() => { }), 3000);
+            } catch (e) { }
+            return;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Błąd przy egzekwowaniu reguły kanału opinii:", e);
   }
 
   // Enforce zaproszenia-check-only channel rule:
@@ -11100,6 +6704,18 @@ client.on(Events.MessageCreate, async (message) => {
       if (!content.toLowerCase().startsWith("/sprawdz-zaproszenia")) {
         try {
           await message.delete().catch(() => null);
+        } catch (e) { }
+        try {
+          const warnEmbed = new EmbedBuilder()
+            .setColor(COLOR_RED)
+            .setDescription(
+              `• \`❗\` __**Na tym kanale można sprawdzać tylko swoje zaproszenia!**__`,
+            );
+          const warn = await message.channel.send({
+            content: `<@${message.author.id}>`,
+            embeds: [warnEmbed],
+          });
+          setTimeout(() => warn.delete().catch(() => { }), 4000);
         } catch (e) { }
         return;
       } else {
@@ -11127,77 +6743,35 @@ client.on(Events.MessageCreate, async (message) => {
       if (message.content.trim().startsWith("/")) return;
 
       const channel = message.channel;
-      const messageContent = message.content.trim();
-      const now = Date.now();
-      const COOLDOWN_MS = 15 * 60 * 1000; // 15 minut
 
-      // Cooldown dla autora (15 min po poprawnym +rep)
-      const lastRepTs = legitRepCooldown.get(message.author.id);
-      if (lastRepTs && now - lastRepTs < COOLDOWN_MS) {
-        const remaining = COOLDOWN_MS - (now - lastRepTs);
-        await message.delete().catch(() => null);
-        const cooldownEmbed = new EmbedBuilder()
-          .setColor(COLOR_BLUE)
-          .setDescription(
-            "```\n" +
-            "✅ New Shop × LEGIT CHECK\n" +
-            "```\n" +
-            `<a:arrowwhite:1469100658606211233> **__Stop!__**\n` +
-            `<a:arrowwhite:1469100658606211233> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
-          )
-          .setTimestamp();
-        message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
-        return;
-      }
-
-      // Wzorzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]
-      const mentionPattern = /<@!?\d+>|@\S+/;
-      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
-      const hasMention = mentionPattern.test(messageContent);
-      const isValidRep = repPattern.test(messageContent);
-
-      console.log(`[+rep] Otrzymano wiadomość: "${messageContent}" | hasMention=${hasMention} | valid=${isValidRep}`);
-
-      if (!hasMention) {
-        try {
-          await message.delete();
-          const warningEmbed = new EmbedBuilder()
-            .setColor(COLOR_RED)
-            .setDescription(`• \`❗\` × __**Stosuj się do wzoru legit checka!**__`);
-          const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
-          setTimeout(
-            () => warnMsg.delete().catch(() => null),
-            LEGIT_REP_WARNING_DELETE_DELAY_MS,
-          );
-        } catch (err) {
-          console.error("Błąd usuwania nieoznaczonego legit-rep:", err);
-        }
-        return;
-      }
+      // Pattern: +rep @user [action] [amount] [server]
+      const repPattern = /^\+rep\s+<@!?(\d+)>\s+\S+\s+\S+\s+.+$/i;
+      const isValidRep = repPattern.test(message.content.trim());
+      
+      console.log(`[+rep] Pattern validation: ${isValidRep} for message: "${message.content}"`);
 
       if (!isValidRep) {
+        // Delete invalid message and send warning
         try {
           await message.delete();
           const warningEmbed = new EmbedBuilder()
             .setColor(COLOR_RED)
             .setDescription(
-              `• \`❗\` × __**Stosuj się do wzoru legit checka!**__`,
+              `• \`❗\` __**Stosuj się do wzoru legit checka!**__`,
             );
-
-          const warnMsg = await channel.send({ content: `<@${message.author.id}>`, embeds: [warningEmbed] });
-          setTimeout(
-            () => warnMsg.delete().catch(() => null),
-            LEGIT_REP_WARNING_DELETE_DELAY_MS,
-          );
-        } catch (err) {
-          console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
+          const warningMsg = await channel.send({
+            content: `<@${message.author.id}>`,
+            embeds: [warningEmbed],
+          });
+          setTimeout(() => warningMsg.delete().catch(() => { }), 2000);
+        } catch (delErr) {
+          console.error("Błąd usuwania nieprawidłowej wiadomości:", delErr);
         }
         return;
       }
 
-      // Valid +rep message - increment counter + cooldown
+      // Valid +rep message - increment counter
       legitRepCount++;
-      legitRepCooldown.set(message.author.id, now);
       console.log(`+rep otrzymany! Licznik: ${legitRepCount}`);
 
       // Sprawdź czy istnieje ticket oczekujący na +rep od tego użytkownika
@@ -11206,43 +6780,57 @@ client.on(Events.MessageCreate, async (message) => {
         console.log(`[+rep] Sprawdzam tickety oczekujące na +rep od użytkownika ${senderId}`);
         
         // Przeszukaj wszystkie tickety oczekujące na +rep
-        for (const [ticketChannelId, ticketData] of pendingTicketClose.entries()) {
-          console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
-          if (
-            ticketData.awaitingRep &&
-            ticketData.userId === senderId &&
-            channel.id === ticketData.legitRepChannelId
-          ) {
-            // Sprawdź czy w wiadomości +rep jest wzmianka o sprzedawcy/używającym komendę
+        for (const [channelId, ticketData] of pendingTicketClose.entries()) {
+          console.log(`[+rep] Sprawdzam ticket ${channelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
+          if (ticketData.awaitingRep && ticketData.userId === senderId) {
+            // Sprawdź czy w wiadomości +rep jest nick osoby która użyła komendy
             const expectedUsername = ticketData.commandUsername;
-            const expectedId = ticketData.commandUserId;
-            const msgContent = message.content.trim();
-
-            const mentionMatchesSeller = message.mentions.users.has(expectedId);
-            const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
-
-            if (mentionMatchesSeller || usernameIncluded) {
-              console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
-              const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
+            const messageContent = message.content.trim();
+            
+            // Sprawdź czy wiadomość zawiera oczekiwany nick
+            if (messageContent.includes(`@${expectedUsername}`)) {
+              console.log(`Znaleziono ticket ${channelId} - twórca ticketu ${senderId} wysłał +rep z nickiem ${expectedUsername}`);
+              
+              // Pobierz kanał ticketu
+              const ticketChannel = await client.channels.fetch(channelId).catch(() => null);
               if (ticketChannel) {
+                // Wyślij wiadomość o zamknięciu ticketu za 5 sekund
                 try {
-                  const ticketMeta = ticketOwners.get(ticketChannelId) || null;
-                  await archiveTicketOnClose(
-                    ticketChannel,
-                    message.author.id,
-                    ticketMeta,
-                    {
-                      closeMethod: "Automatyczne zamknięcie po +rep",
-                    },
-                  ).catch((e) => console.error("archiveTicketOnClose error (+rep):", e));
-                  await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                  pendingTicketClose.delete(ticketChannelId);
-                  ticketOwners.delete(ticketChannelId);
-                  console.log(`Ticket ${ticketChannelId} został zamknięty po +rep`);
-                } catch (closeErr) {
-                  console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
+                  const closeMessage = await ticketChannel.send({
+                    content: `✅ **Otrzymano +rep!** Ticket zostanie zamknięty za **5 sekund**...`
+                  });
+                  
+                  // Zamknij ticket po 5 sekundach
+                  setTimeout(async () => {
+                    try {
+                      // Spróbuj zamknąć kanał
+                      await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
+                      
+                      // Usuń z mapy oczekujących ticketów
+                      pendingTicketClose.delete(channelId);
+                      ticketOwners.delete(channelId);
+                      
+                      console.log(`Ticket ${channelId} został zamknięty po otrzymaniu +rep`);
+                    } catch (closeErr) {
+                      console.error(`Błąd zamykania ticketu ${channelId}:`, closeErr);
+                      
+                      // Jeśli nie udało się zamknąć kanału, wyślij wiadomość o błędzie
+                      try {
+                        await ticketChannel.send({
+                          content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu. Skontaktuj się z **administracją**."
+                        });
+                      } catch (msgErr) {
+                        console.error("Błąd wysyłania wiadomości o błędzie:", msgErr);
+                      }
+                    }
+                  }, 5000);
+                  
+                } catch (msgErr) {
+                  console.error("Błąd wysyłania wiadomości o zamknięciu ticketu:", msgErr);
                 }
               }
+              
+              break; // Znaleziono ticket, nie trzeba dalej szukać
             }
           }
         }
@@ -11267,7 +6855,9 @@ client.on(Events.MessageCreate, async (message) => {
       const prevId = repLastInfoMessage.get(channel.id);
       if (prevId) {
         try {
-          const prevMsg = await channel.messages.fetch(prevId).catch(() => null);
+          const prevMsg = await channel.messages
+            .fetch(prevId)
+            .catch(() => null);
           if (prevMsg && prevMsg.deletable) {
             await prevMsg.delete().catch(() => null);
           }
@@ -11307,13 +6897,14 @@ client.on(Events.MessageCreate, async (message) => {
           "```\n" +
           "✅ New Shop × LEGIT CHECK\n" +
           "```\n" +
-          "- `📝` **× Jak napisać:**\n" +
-          `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]\`\n\n` +
-          "- `📋` **× Przykład:**\n" +
+          "- `📝` **× Wzór:**\n" +
+          `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrode] [ile] [serwer]\`\n\n` +
+          "- `📋` **× Przykład**\n" +
           `> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
-        .setImage(imageUrl);
+        .setImage(imageUrl)
+        .setTimestamp();
 
       // Always send a new info message (after deleting the previous one) so it appears below the new +rep
       try {
@@ -11579,6 +7170,18 @@ async function handleWyczyscKanalCommand(interaction) {
   // Defer to avoid timeout and allow multiple replies
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
 
+  // Sprawdź czy właściciel
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    try {
+      await interaction.editReply({
+        content: "> `❗` × Brak wymaganych uprawnień.",
+      });
+    } catch (e) {
+      // ignore
+    }
+    return;
+  }
+
   // only text channels
   if (
     !channel ||
@@ -11738,7 +7341,7 @@ async function handleWyczyscKanalCommand(interaction) {
 async function scheduleRepChannelRename(channel, count) {
   if (!channel || typeof channel.setName !== "function") return;
 
-  const newName = `✅×〢legit-rep➔${count}`;
+  const newName = `✅-×┃legit-rep➔${count}`;
   const now = Date.now();
   const since = now - lastChannelRename;
   const remaining = Math.max(0, CHANNEL_RENAME_COOLDOWN - since);
@@ -11855,7 +7458,7 @@ async function handleResetLCCommand(interaction) {
     if (remaining === 0 && !pendingRename) {
       try {
         // attempt immediate rename (may fail if missing ManageChannels)
-        await channel.setName(`✅×〢legit-rep➔${legitRepCount}`);
+        await channel.setName(`✅-×┃legit-rep➔${legitRepCount}`);
         lastChannelRename = Date.now();
         pendingRename = false;
         console.log(`[resetlc] Kanał ${channel.id} zaktualizowany do 0.`);
@@ -11921,36 +7524,21 @@ async function handleZresetujCzasCommand(interaction) {
   }
 
   try {
-    const what = interaction.options.getString("co");
-    const targetUser = interaction.options.getUser("kto") || interaction.user;
-    const targetId = targetUser.id;
-    const targets = [];
-    if (what === "drop" || what === "all") {
-      targets.push("/drop");
-      dropCooldowns.delete(targetId);
-    }
-    if (what === "opinia" || what === "all") {
-      targets.push("/opinia");
-      opinionCooldowns.delete(targetId);
-    }
-    if (what === "zaproszenia" || what === "all") {
-      targets.push("/sprawdz-zaproszenia");
-      sprawdzZaproszeniaCooldowns.delete(targetId);
-    }
-    if (what === "rep" || what === "all") {
-      targets.push("+rep");
-      legitRepCooldown.delete(targetId);
-    }
-
-    infoCooldowns.delete(targetId); // reset internal info cooldown for target
+    // clear cooldown maps
+    dropCooldowns.clear();
+    opinionCooldowns.clear();
+    infoCooldowns.clear();
 
     await interaction.reply({
-      content: `✅ Zresetowano czas oczekiwania (${targets.join(', ') || 'brak'}) dla <@${targetId}>.`,
+      content:
+        "✅ Czasy oczekiwania dla /drop, /opinia oraz wewnętrznych info zostały zresetowane.",
       flags: [MessageFlags.Ephemeral],
     });
-    console.log(`[zco] ${interaction.user.tag} zresetował cooldowny: ${targets.join(', ')} dla ${targetUser.tag}`);
+    console.log(
+      `[zresetujczasoczekiwania] Użytkownik ${interaction.user.tag} zresetował cooldowny.`,
+    );
   } catch (err) {
-    console.error("[zco] Błąd:", err);
+    console.error("[zresetujczasoczekiwania] Błąd:", err);
     await interaction.reply({
       content: "> `❌` × **Wystąpił** błąd podczas resetowania czasów **oczekiwania**.",
       flags: [MessageFlags.Ephemeral],
@@ -11973,9 +7561,6 @@ client.on(Events.GuildMemberAdd, async (member) => {
     let inviterId = null;
     let countThisInvite = false;
     let isFakeAccount = false;
-    let usedVanityCode = null;
-    let selfInviteDetected = false;
-    let invalidInviterDetected = false;
 
     try {
       // jeśli ten użytkownik wcześniej opuścił i mieliśmy to zapisane -> usuń "leave" (kompensacja)
@@ -12000,124 +7585,37 @@ client.on(Events.GuildMemberAdd, async (member) => {
         }
       }
 
-      // fetch current invites with a few retries because Discord often updates uses with delay
-      const prevMap = new Map(guildInvites.get(member.guild.id) || new Map());
-      let latestInviteMap = null;
+      // fetch current invites
+      const currentInvites = await member.guild.invites
+        .fetch()
+        .catch(() => null);
 
-      for (let attempt = 0; attempt < 3 && !inviterId; attempt++) {
-        const currentInvites = await member.guild.invites.fetch().catch(() => null);
+      if (currentInvites) {
+        // previous cached map (may be empty)
+        const prevMap = guildInvites.get(member.guild.id) || new Map();
 
-        if (currentInvites) {
-          const newMap = new Map();
-          const increasedInvites = [];
+        // build new map & detect which invite increased
+        const newMap = new Map();
+        for (const inv of currentInvites.values()) {
+          newMap.set(inv.code, inv.uses || 0);
+        }
 
-          for (const inv of currentInvites.values()) {
-            newMap.set(inv.code, inv.uses || 0);
-          }
-
-          latestInviteMap = newMap;
-
-          for (const inv of currentInvites.values()) {
-            const prevUses = prevMap.get(inv.code) || 0;
-            const nowUses = inv.uses || 0;
-            const diff = nowUses - prevUses;
-
-            if (diff > 0) {
-              increasedInvites.push({ invite: inv, diff });
-            }
-          }
-
-          if (increasedInvites.length === 1) {
-            inviterId = increasedInvites[0].invite.inviter
-              ? increasedInvites[0].invite.inviter.id
-              : null;
+        for (const inv of currentInvites.values()) {
+          const prevUses = prevMap.get(inv.code) || 0;
+          const nowUses = inv.uses || 0;
+          if (nowUses > prevUses) {
+            inviterId = inv.inviter ? inv.inviter.id : null;
             countThisInvite = true;
-          } else if (increasedInvites.length > 1) {
-            increasedInvites.sort(
-              (a, b) =>
-                b.diff - a.diff ||
-                (b.invite.uses || 0) - (a.invite.uses || 0),
-            );
-            inviterId = increasedInvites[0].invite.inviter
-              ? increasedInvites[0].invite.inviter.id
-              : null;
-            countThisInvite = true;
-            console.log(
-              `[invites] Wykryto kilka rosnących invite'ów dla ${member.user.tag}; używam ${increasedInvites[0].invite.code}.`,
-            );
+            break;
           }
-        } else if (attempt === 0) {
-          console.warn(
-            `[invites] Nie udało się pobrać invite'ów dla guild ${member.guild.id} — sprawdź uprawnienia bota (MANAGE_GUILD).`,
-          );
         }
 
-        if (!inviterId && attempt < 2) {
-          await sleep(1250);
-        }
-      }
-
-      if (latestInviteMap) {
-        guildInvites.set(member.guild.id, latestInviteMap);
-      }
-
-      const previousVanityUses = guildVanityUses.has(member.guild.id)
-        ? guildVanityUses.get(member.guild.id)
-        : null;
-      const currentVanityData = await fetchGuildVanityDataSafe(member.guild);
-      const currentVanityUses =
-        typeof currentVanityData?.uses === "number"
-          ? currentVanityData.uses
-          : null;
-      const currentVanityCode =
-        typeof currentVanityData?.code === "string" &&
-        currentVanityData.code.trim()
-          ? currentVanityData.code.trim()
-          : null;
-
-      if (
-        !inviterId &&
-        previousVanityUses !== null &&
-        typeof currentVanityUses === "number" &&
-        currentVanityUses > previousVanityUses
-      ) {
-        usedVanityCode = currentVanityCode || "newshop";
-        console.log(
-          `[invites] Wykryto wejście przez vanity URL ${usedVanityCode} dla guild ${member.guild.id}.`,
+        // update cache (always)
+        guildInvites.set(member.guild.id, newMap);
+      } else {
+        console.warn(
+          `[invites] Nie udało się pobrać invite'ów dla guild ${member.guild.id} — sprawdź uprawnienia bota (MANAGE_GUILD).`,
         );
-      }
-
-      if (typeof currentVanityUses === "number") {
-        guildVanityUses.set(member.guild.id, currentVanityUses);
-      }
-
-      if (!inviterId && !usedVanityCode) {
-        const deletedInviteFallback = consumeRecentDeletedInvite(member.guild.id);
-        if (deletedInviteFallback?.inviterId) {
-          inviterId = deletedInviteFallback.inviterId;
-          countThisInvite = true;
-          console.log(
-            `[invites] Użyto fallbacku po usuniętym invicie ${deletedInviteFallback.code} dla ${member.user.tag}.`,
-          );
-        }
-      }
-
-      if (inviterId && inviterId === member.id) {
-        console.log(
-          `[invites] Pomijam self-invite dla ${member.user.tag} (${member.id}).`,
-        );
-        selfInviteDetected = true;
-        inviterId = null;
-        countThisInvite = false;
-      }
-
-      if (inviterId && !/^\d{17,20}$/.test(String(inviterId))) {
-        console.log(
-          `[invites] Pomijam nieprawidłowe ID zapraszającego (${inviterId}) dla ${member.user.tag}.`,
-        );
-        invalidInviterDetected = true;
-        inviterId = null;
-        countThisInvite = false;
       }
     } catch (e) {
       console.error("Błąd podczas wykrywania invite:", e);
@@ -12163,7 +7661,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
     // If we detected an inviter (even if not counted due to rate-limit, inviterId may be present)
     let fakeMap = null;
-    const ownerId = member.guild.ownerId;
+    const ownerId = "1305200545979437129";
 
     if (inviterId) {
       // Ensure all maps exist
@@ -12193,7 +7691,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
       scheduleSavePersistentState();
 
       // Liczymy zaproszenia tylko jeśli nie jest właścicielem
-      if (countThisInvite && inviterId !== ownerId) {
+      if (inviterId !== ownerId) {
+        // ZAWSZE liczymy zaproszenia z kont < 2 mies.
         if (!isFakeAccount) {
           const prev = gMap.get(inviterId) || 0;
           gMap.set(inviterId, prev + 1);
@@ -12242,8 +7741,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
           // Zapisz kod
           activeCodes.set(rewardCode, {
             oderId: inviterId,
-            rewardAmount: 70000,
-            rewardText: "70k$",
+            rewardAmount: 50000,
+            rewardText: "50k$",
             type: "invite_cash",
             created: Date.now(),
             expiresAt,
@@ -12265,7 +7764,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
                 "```\n" +
                 rewardCode +
                 "\n```\n" +
-                `\`💰\` × **Wartość:** \`70k\$\`\n` +
+                `\`💰\` × **Wartość:** \`50k\$\`\n` +
                 `\`🕑\` × **Kod wygaśnie za:** <t:${expiryTs}:R>\n\n` +
                 `\`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
                 `\`Odbiór nagrody\` i w polu wpisz otrzymany kod.`
@@ -12296,15 +7795,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
     const memberKey = `${member.guild.id}:${member.id}`;
     inviterOfMember.set(memberKey, {
       inviterId,
-      counted: !!(
-        inviterId &&
-        countThisInvite &&
-        !isFakeAccount &&
-        inviterId !== ownerId
-      ),
+      counted: !!(countThisInvite && !isFakeAccount),
       isFake: !!isFakeAccount,
-      isVanity: !!usedVanityCode,
-      vanityCode: usedVanityCode || null,
     });
 
     // persist join/invite state
@@ -12314,24 +7806,15 @@ client.on(Events.GuildMemberAdd, async (member) => {
     const zapChannelId = "1449159392388972554";
     const zapChannel = member.guild.channels.cache.get(zapChannelId);
 
-    if (zapChannel) {
+    if (zapChannel && inviterId) {
       const gMap = inviteCounts.get(member.guild.id) || new Map();
-      const hasValidInviterId =
-        typeof inviterId === "string" && /^\d{17,20}$/.test(inviterId);
-      const currentInvites = hasValidInviterId ? gMap.get(inviterId) || 0 : 0;
+      const currentInvites = gMap.get(inviterId) || 0;
       const inviteWord = getInviteWord(currentInvites);
+      const ownerId = "1305200545979437129";
       
       try {
         let message;
-        if (usedVanityCode) {
-          message = isFakeAccount
-            ? `> \`✉️\` × <@${member.id}> dołączył używając linku **${usedVanityCode}**. (konto ma mniej niż 2 mies.)`
-            : `> \`✉️\` × <@${member.id}> dołączył używając linku **${usedVanityCode}**.`;
-        } else if (selfInviteDetected) {
-          message = `> \`✉️\` × <@${member.id}> dołączył swoim własnym linkiem. Zaproszenie nie zostało zaliczone.`;
-        } else if (invalidInviterDetected || !hasValidInviterId) {
-          message = `> \`✉️\` × <@${member.id}> dołączył, ale nie udało się poprawnie wykryć użytego linku zaproszenia.`;
-        } else if (inviterId === ownerId) {
+        if (inviterId === ownerId) {
           // Zaproszenie przez właściciela - nie liczymy zaproszeń
           message = `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> (został zaproszony przez właściciela)`;
         } else {
@@ -12339,10 +7822,6 @@ client.on(Events.GuildMemberAdd, async (member) => {
           message = isFakeAccount 
             ? `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}! (konto ma mniej niż 2 mies.)`
             : `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}!`;
-        }
-
-        if (!message) {
-          message = `> \`✉️\` × <@${member.id}> dołączył, ale nie udało się wykryć użytego linku zaproszenia.`;
         }
         await zapChannel.send(message);
       } catch (e) { }
@@ -12399,23 +7878,18 @@ client.on(Events.GuildMemberRemove, async (member) => {
     if (!stored) return;
 
     // backward-compat: jeżeli stary format (string), zamieniamy na obiekt
-    let inviterId, counted, wasFake, vanityCode;
+    let inviterId, counted, wasFake;
     if (typeof stored === "string") {
       inviterId = stored;
       counted = true; // zakładamy, że wcześniej był liczony
       wasFake = false;
-      vanityCode = null;
     } else {
       inviterId = stored.inviterId;
       counted = !!stored.counted;
       wasFake = !!stored.isFake;
-      vanityCode =
-        typeof stored.vanityCode === "string" && stored.vanityCode.trim()
-          ? stored.vanityCode.trim()
-          : null;
     }
 
-    if (!inviterId && !vanityCode) {
+    if (!inviterId) {
       inviterOfMember.delete(key);
       return;
     }
@@ -12424,10 +7898,10 @@ client.on(Events.GuildMemberRemove, async (member) => {
     if (!inviteCounts.has(member.guild.id))
       inviteCounts.set(member.guild.id, new Map());
     const gMap = inviteCounts.get(member.guild.id);
-    const ownerId = member.guild.ownerId;
+    const ownerId = "1305200545979437129";
     
     // Odejmujemy zaproszenia tylko jeśli nie jest właścicielem
-    if (counted && inviterId && inviterId !== ownerId) {
+    if (counted && inviterId !== ownerId) {
       const prev = gMap.get(inviterId) || 0;
       const newCount = Math.max(0, prev - 1);
       gMap.set(inviterId, newCount);
@@ -12435,34 +7909,32 @@ client.on(Events.GuildMemberRemove, async (member) => {
       scheduleSavePersistentState(true); // Natychmiastowy zapis
     }
 
-    if (inviterId) {
-      // decrement totalJoined (since we incremented it on join unconditionally)
-      if (!inviteTotalJoined.has(member.guild.id))
-        inviteTotalJoined.set(member.guild.id, new Map());
-      const totalMap = inviteTotalJoined.get(member.guild.id);
-      const prevTotal = totalMap.get(inviterId) || 0;
-      totalMap.set(inviterId, Math.max(0, prevTotal - 1));
+    // decrement totalJoined (since we incremented it on join unconditionally)
+    if (!inviteTotalJoined.has(member.guild.id))
+      inviteTotalJoined.set(member.guild.id, new Map());
+    const totalMap = inviteTotalJoined.get(member.guild.id);
+    const prevTotal = totalMap.get(inviterId) || 0;
+    totalMap.set(inviterId, Math.max(0, prevTotal - 1));
 
-      // If it was marked as fake on join, decrement fake counter
-      if (wasFake) {
-        if (!inviteFakeAccounts.has(member.guild.id))
-          inviteFakeAccounts.set(member.guild.id, new Map());
-        const fMap = inviteFakeAccounts.get(member.guild.id);
-        const prevFake = fMap.get(inviterId) || 0;
-        fMap.set(inviterId, Math.max(0, prevFake - 1));
-      }
-
-      // increment leaves count
-      if (!inviteLeaves.has(member.guild.id))
-        inviteLeaves.set(member.guild.id, new Map());
-      const lMap = inviteLeaves.get(member.guild.id);
-      const prevLeft = lMap.get(inviterId) || 0;
-      lMap.set(inviterId, prevLeft + 1);
-      inviteLeaves.set(member.guild.id, lMap);
-
-      // Zapisz do leaveRecords na wypadek powrotu
-      leaveRecords.set(key, inviterId);
+    // If it was marked as fake on join, decrement fake counter
+    if (wasFake) {
+      if (!inviteFakeAccounts.has(member.guild.id))
+        inviteFakeAccounts.set(member.guild.id, new Map());
+      const fMap = inviteFakeAccounts.get(member.guild.id);
+      const prevFake = fMap.get(inviterId) || 0;
+      fMap.set(inviterId, Math.max(0, prevFake - 1));
     }
+
+    // increment leaves count
+    if (!inviteLeaves.has(member.guild.id))
+      inviteLeaves.set(member.guild.id, new Map());
+    const lMap = inviteLeaves.get(member.guild.id);
+    const prevLeft = lMap.get(inviterId) || 0;
+    lMap.set(inviterId, prevLeft + 1);
+    inviteLeaves.set(member.guild.id, lMap);
+
+    // Zapisz do leaveRecords na wypadek powrotu
+    leaveRecords.set(key, inviterId);
 
     // remove mapping
     inviterOfMember.delete(key);
@@ -12484,12 +7956,11 @@ client.on(Events.GuildMemberRemove, async (member) => {
       // compute newCount for message (inviteCounts after possible decrement)
       const currentCount = gMap.get(inviterId) || 0;
       const inviteWord = getInviteWord(currentCount);
+      const ownerId = "1305200545979437129";
       
       try {
         let message;
-        if (vanityCode) {
-          message = `> \`🚪\` × <@${member.id}> opuścił serwer. Dołączył używając linku **${vanityCode}**.`;
-        } else if (inviterId === ownerId) {
+        if (inviterId === ownerId) {
           // Opuszczenie przez zaproszenie właściciela - nie odejmowaliśmy zaproszeń
           message = `> \`🚪\` × <@${member.id}> opuścił serwer. (Był zaproszony przez właściciela)`;
         } else {
@@ -12500,15 +7971,9 @@ client.on(Events.GuildMemberRemove, async (member) => {
       } catch (e) { }
     }
 
-    if (vanityCode) {
-      console.log(
-        `Użytkownik ${member.id} opuścił serwer po wejściu przez vanity URL ${vanityCode}.`,
-      );
-    } else {
-      console.log(
-        `Odejmuję zaproszenie od ${inviterId} po leave (counted=${counted}, wasFake=${wasFake}).`,
-      );
-    }
+    console.log(
+      `Odejmuję zaproszenie od ${inviterId} po leave (counted=${counted}, wasFake=${wasFake}).`,
+    );
   } catch (err) {
     console.error("Błąd przy obsłudze odejścia członka:", err);
   }
@@ -12596,7 +8061,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
           "📩 New Shop × ZAPROSZENIA\n" +
           "```\n" +
       `> \`👤\` × <@${userId}> **posiada:** \`${displayedInvites}\` **${inviteWord}**!\n` +
-      `> \`💸\` × **Brakuje ci zaproszeń do nagrody:** \`${missingToReward}\`\n\n` +
+      `> \`💸\` × **Brakuje ci zaproszeń do nagrody ${INVITE_REWARD_TEXT}:** \`${missingToReward}\`\n\n` +
       `> \`👥\` × **Prawdziwe osoby które dołączyły:** \`${displayedInvites}\`\n` +
       `> \`🚶\` × **Osoby które opuściły serwer:** \`${left}\`\n` +
       `> \`⚠️\` × **Niespełniające kryteriów (< konto 2 mies.):** \`${fake}\`\n` +
@@ -12857,6 +8322,7 @@ async function handleZaprosieniaStatsCommand(interaction) {
             "```\n" +
             codesList +
             "\n```\n" +
+            `> \`💸\` × **Otrzymałeś:** \`${INVITE_REWARD_TEXT}\`\n` +
             `> \`🕑\` × **Kod wygaśnie za:** <t:${expiresAtSeconds}:R> \n\n` +
             `> \`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
             `> \`Odbiór nagrody\` i w polu wpisz otrzymany kod.`,
@@ -13985,238 +9451,29 @@ async function getLogiTicketChannel(guild) {
   return ch;
 }
 
-function truncateTicketLogValue(value, max = 1024) {
-  const text = (value || "").toString().trim();
-  if (!text) return "brak";
-  if (text.length <= max) return text;
-  return `${text.slice(0, Math.max(0, max - 3))}...`;
-}
-
-function formatTicketLogUser(userId) {
-  if (!userId) return "brak";
-  return `<@${userId}>\n\`${userId}\``;
-}
-
-function formatTicketLogChannel(ticketChannel) {
-  if (!ticketChannel) return "brak";
-  return `<#${ticketChannel.id}>\n\`${ticketChannel.name}\``;
-}
-
-function formatTicketLogCategory(ticketChannel) {
-  if (!ticketChannel?.parentId) return "brak";
-
-  const parent =
-    ticketChannel.parent ||
-    ticketChannel.guild?.channels?.cache?.get(ticketChannel.parentId) ||
-    null;
-
-  if (!parent) return `<#${ticketChannel.parentId}>`;
-  return `<#${ticketChannel.parentId}>\n\`${parent.name}\``;
-}
-
-function formatTicketLogTimestamp(timestamp) {
-  if (!timestamp) return "brak";
-  const unix = Math.floor(timestamp / 1000);
-  return `<t:${unix}:F>\n<t:${unix}:R>`;
-}
-
-function cleanTicketLogText(raw = "") {
-  const lines = String(raw)
-    .split("\n")
-    .map((line) =>
-      line
-        .replace(/^>\s*/, "")
-        .replace(/<a?:[A-Za-z0-9_~]+:\d+>\s*/g, "")
-        .replace(/\*\*/g, "")
-        .replace(/`/g, "")
-        .replace(/\s+×\s+/g, " ")
-        .trim(),
-    )
-    .filter(Boolean);
-
-  return lines.length ? lines.join("\n") : "brak";
-}
-
-function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
-  if (ticketMeta?.ticketTypeLabel) return ticketMeta.ticketTypeLabel;
-  if (!ticketChannel?.guild) return "brak";
-
-  if (ticketChannel.parentId && String(ticketChannel.parentId) === String(REWARDS_CATEGORY_ID)) {
-    return "NAGRODA ZA ZAPROSZENIA";
-  }
-
-  const cats = ticketCategories.get(ticketChannel.guild.id) || {};
-  const zakupCategoryIds = [
-    cats["zakup-0-20"],
-    cats["zakup-20-50"],
-    cats["zakup-50-100"],
-    cats["zakup-100-200"],
-  ].filter(Boolean);
-
-  if (zakupCategoryIds.includes(ticketChannel.parentId) || isModernPurchaseTicketChannelName(ticketChannel.name)) {
-    return "ZAKUP";
-  }
-  if (ticketChannel.parentId === cats["sprzedaz"]) return "SPRZEDAŻ";
-  if (ticketChannel.parentId === cats["inne"]) return "PYTANIE / POMOC";
-  if (ticketChannel.parentId === cats["odbior-nagrody"]) return "NAGRODA ZA ZAPROSZENIA";
-
-  return "TICKET";
-}
-
-function buildTicketLogDetailsValue({ formInfo = "", detailLines = [] } = {}) {
-  const chunks = [];
-  const cleanedFormInfo = cleanTicketLogText(formInfo);
-  if (cleanedFormInfo !== "brak") chunks.push(cleanedFormInfo);
-
-  for (const line of detailLines) {
-    if (!line) continue;
-    chunks.push(`• ${line}`);
-  }
-
-  if (!chunks.length) return "brak";
-  return truncateTicketLogValue(chunks.join("\n"), 1024);
-}
-
-async function sendTicketLogEntry(guild, options = {}) {
-  const logCh = await getLogiTicketChannel(guild);
-  if (!logCh) return null;
-
-  const ticketChannel = options.ticketChannel || null;
-  const ticketMeta = options.ticketMeta || null;
-  const detailsValue = buildTicketLogDetailsValue({
-    formInfo: options.formInfo,
-    detailLines: options.detailLines,
-  });
-
-  const embed = new EmbedBuilder()
-    .setColor(options.color ?? COLOR_BLUE)
-    .setAuthor({ name: "New Shop × Logi Ticketów" })
-    .setTitle(`${options.icon || "🎫"} ${options.title || "Akcja na tickecie"}`)
-    .setTimestamp();
-
-  if (options.summary) {
-    embed.setDescription(truncateTicketLogValue(options.summary, 4096));
-  }
-
-  const fields = [
-    {
-      name: "Kanał",
-      value: truncateTicketLogValue(formatTicketLogChannel(ticketChannel)),
-      inline: true,
-    },
-    {
-      name: "Status",
-      value: truncateTicketLogValue(options.statusLabel || "brak"),
-      inline: true,
-    },
-    {
-      name: "Typ",
-      value: truncateTicketLogValue(
-        options.ticketTypeLabel || guessTicketTypeLabel(ticketChannel, ticketMeta),
-      ),
-      inline: true,
-    },
-    {
-      name: "Właściciel",
-      value: truncateTicketLogValue(
-        formatTicketLogUser(options.ownerId ?? ticketMeta?.userId ?? null),
-      ),
-      inline: true,
-    },
-    {
-      name: "Wykonał",
-      value: truncateTicketLogValue(formatTicketLogUser(options.actorId)),
-      inline: true,
-    },
-    {
-      name: "Przejęty przez",
-      value: truncateTicketLogValue(
-        formatTicketLogUser(options.claimedById ?? ticketMeta?.claimedBy ?? null),
-      ),
-      inline: true,
-    },
-    {
-      name: "Kategoria",
-      value: truncateTicketLogValue(formatTicketLogCategory(ticketChannel)),
-      inline: true,
-    },
-    {
-      name: "Utworzony",
-      value: truncateTicketLogValue(
-        formatTicketLogTimestamp(
-          options.openedAt ?? ticketMeta?.openedAt ?? ticketChannel?.createdTimestamp,
-        ),
-      ),
-      inline: true,
-    },
-  ];
-
-  if (typeof options.messageCount === "number") {
-    fields.push({
-      name: "Wiadomości",
-      value: `\`${options.messageCount}\``,
-      inline: true,
-    });
-  }
-
-  if (options.participantsText) {
-    fields.push({
-      name: "Uczestnicy",
-      value: truncateTicketLogValue(options.participantsText, 1024),
-      inline: false,
-    });
-  }
-
-  if (options.reason) {
-    fields.push({
-      name: "Powód",
-      value: truncateTicketLogValue(options.reason, 1024),
-      inline: false,
-    });
-  }
-
-  if (detailsValue !== "brak") {
-    fields.push({
-      name: "Szczegóły",
-      value: detailsValue,
-      inline: false,
-    });
-  }
-
-  embed.addFields(fields.slice(0, 25));
-
-  const payload = { embeds: [embed] };
-  if (options.files?.length) payload.files = options.files;
-  await logCh.send(payload);
-  return logCh;
-}
-
 async function logTicketCreation(guild, ticketChannel, details) {
   try {
-    await sendTicketLogEntry(guild, {
-      title: "Ticket utworzony",
-      icon: "🟢",
-      color: COLOR_BLUE,
-      summary: "Nowy ticket został utworzony i czeka na obsługę.",
-      ticketChannel,
-      ownerId: details.openerId,
-      actorId: details.openerId,
-      claimedById: null,
-      statusLabel: "OTWARTY",
-      ticketTypeLabel: details.ticketTypeLabel,
-      formInfo: details.formInfo,
-      detailLines: [
-        details.ticketMessageId
-          ? `ID wiadomości startowej: ${details.ticketMessageId}`
-          : null,
-      ],
-    });
+    const logCh = await getLogiTicketChannel(guild);
+    if (!logCh) return;
+
+    const embed = new EmbedBuilder()
+      .setTitle("🎟️ Ticket utworzony")
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        `> \`🆔\` × Kanał: <#${ticketChannel.id}>\n` +
+        `> \`👤\` × Właściciel: <@${details.openerId}> (\`${details.openerId}\`)\n` +
+        `> \`📌\` × Typ ticketu: ${details.ticketTypeLabel}\n` +
+        `> \`📄\` × Informacje:\n${details.formInfo}`,
+      )
+      .setTimestamp();
+
+    await logCh.send({ embeds: [embed] });
   } catch (e) {
     console.error("logTicketCreation error:", e);
   }
 }
 
-async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta, extra = {}) {
+async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta) {
   try {
     const guild = ticketChannel.guild;
     const logCh = await getLogiTicketChannel(guild);
@@ -14257,6 +9514,19 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta, extra
       ? `${participantsPreview.map((id) => `<@${id}>`).join(" ")}${participants.length > participantsPreview.length ? ` (+${participants.length - participantsPreview.length})` : ""}`
       : "brak";
 
+    const embed = new EmbedBuilder()
+      .setTitle("🎟️ Ticket zamknięty")
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        `> \`🆔\` × Kanał: **${ticketChannel.name}** (\`${ticketChannel.id}\`)\n` +
+          `> \`👤\` × Właściciel: ${openerId ? `<@${openerId}> (\`${openerId}\`)` : "unknown"}\n` +
+          `> \`🧑‍💼\` × Przejęty przez: ${claimedById ? `<@${claimedById}> (\`${claimedById}\`)` : "brak"}\n` +
+          `> \`🔒\` × Zamknął: <@${closedById}> (\`${closedById}\`)\n` +
+          `> \`💬\` × Wiadomości: **${messages.length}**\n` +
+          `> \`👥\` × Uczestnicy: ${participantsText}`,
+      )
+      .setTimestamp();
+
     // Build transcript
     const lines = messages.map((m) => {
       const time = new Date(m.createdTimestamp).toLocaleString("pl-PL");
@@ -14276,12 +9546,9 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta, extra
     let transcriptText =
       `Ticket: ${ticketChannel.name}\n` +
       `Channel ID: ${ticketChannel.id}\n` +
-      `Close method: ${extra.closeMethod || "standard"}\n` +
-      `Close reason: ${extra.reason || "brak"}\n` +
       `Closed by: ${closedById}\n` +
       `Opened by: ${openerId || "unknown"}\n` +
       `Claimed by: ${claimedById || "brak"}\n` +
-      `Type: ${guessTicketTypeLabel(ticketChannel, ticketMeta)}\n` +
       `Messages: ${messages.length}\n` +
       `Participants: ${participants.join(", ") || "brak"}\n\n` +
       `--- MESSAGES ---\n\n` +
@@ -14299,28 +9566,7 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta, extra
     const fileName = `ticket-${ticketChannel.name.replace(/[^a-z0-9-_]/gi, "_")}-${Date.now()}.txt`;
     const attachment = new AttachmentBuilder(buffer, { name: fileName });
 
-    await sendTicketLogEntry(guild, {
-      title: "Ticket zamknięty",
-      icon: "🔴",
-      color: COLOR_RED,
-      summary: "Ticket został zamknięty i zapisany w logach wraz z transkryptem.",
-      ticketChannel,
-      ownerId: openerId,
-      actorId: closedById,
-      claimedById,
-      ticketMeta,
-      ticketTypeLabel: guessTicketTypeLabel(ticketChannel, ticketMeta),
-      statusLabel: "ZAMKNIĘTY",
-      formInfo: ticketMeta?.formInfo,
-      detailLines: [
-        extra.closeMethod ? `Sposób zamknięcia: ${extra.closeMethod}` : null,
-        "Transkrypt rozmowy został dodany jako załącznik.",
-      ],
-      reason: extra.reason || null,
-      messageCount: messages.length,
-      participantsText,
-      files: [attachment],
-    });
+    await logCh.send({ embeds: [embed], files: [attachment] });
   } catch (e) {
     console.error("archiveTicketOnClose error:", e);
   }
@@ -14587,20 +9833,12 @@ setInterval(async () => {
   const webhookUrl = process.env.UPTIME_WEBHOOK;
   if (!webhookUrl) return;
 
-  const monitorUrl = process.env.MONITOR_HTTP_URL || process.env.RENDER_EXTERNAL_URL;
-  if (!monitorUrl) {
-    console.warn('[MONITOR_HTTP] Pomijam — brak MONITOR_HTTP_URL/RENDER_EXTERNAL_URL');
-    return;
-  }
-
   try {
     const startTime = Date.now();
-    const parsed = new URL(monitorUrl);
-
+    
     const options = {
-      protocol: parsed.protocol,
-      hostname: parsed.hostname,
-      path: parsed.pathname || '/',
+      hostname: 'bot-discord-hixl.onrender.com',
+      path: '/',
       method: 'GET'
     };
 
@@ -14686,46 +9924,6 @@ async function checkBotStatus() {
   };
 }
 
-// Szybka weryfikacja tokena przed logowaniem (REST /users/@me)
-async function validateBotToken() {
-  return new Promise((resolve) => {
-    try {
-      const req = https.request({
-        method: 'GET',
-        hostname: 'discord.com',
-        path: '/api/v10/users/@me',
-        headers: {
-          Authorization: `Bot ${process.env.BOT_TOKEN}`,
-        },
-      }, (res) => {
-        let body = '';
-        res.on('data', (chunk) => body += chunk);
-        res.on('end', () => {
-          console.log(`[TOKEN_CHECK] status=${res.statusCode}`);
-          if (body) console.log(`[TOKEN_CHECK] body=${body.slice(0, 200)}`);
-          resolve(res.statusCode);
-        });
-      });
-
-      req.on('error', (err) => {
-        console.error('[TOKEN_CHECK] error:', err.message);
-        resolve(null);
-      });
-
-      req.setTimeout(5000, () => {
-        console.error('[TOKEN_CHECK] timeout');
-        req.destroy();
-        resolve(null);
-      });
-
-      req.end();
-    } catch (err) {
-      console.error('[TOKEN_CHECK] unexpected error:', err.message);
-      resolve(null);
-    }
-  });
-}
-
 // 8. Komenda statusu (opcjonalnie - można dodać do slash commands)
 async function sendStatusReport(channel) {
   const status = await checkBotStatus();
@@ -14756,77 +9954,31 @@ console.log("[DEBUG] Próba połączenia z Discord...");
 console.log("[DEBUG] BOT_TOKEN exists:", !!process.env.BOT_TOKEN);
 console.log("[DEBUG] BOT_TOKEN length:", process.env.BOT_TOKEN?.length || 0);
 
-// Test WebSocket połączenia
-console.log("[WS_TEST] Testuję połączenie WebSocket z Discord...");
-try {
-  const WebSocket = require('ws');
-  const ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
-  
-  const wsTimeout = setTimeout(() => {
-    console.error("[WS_TEST] WebSocket timeout - Render.com blokuje połączenia!");
-    ws.terminate();
-  }, 10000);
-  
-  ws.on('open', () => {
-    console.log("[WS_TEST] WebSocket połączony pomyślnie!");
-    clearTimeout(wsTimeout);
-    ws.close();
-  });
-  
-  ws.on('error', (err) => {
-    console.error("[WS_TEST] WebSocket error:", err.message);
-    clearTimeout(wsTimeout);
-  });
-  
-  ws.on('close', () => {
-    console.log("[WS_TEST] WebSocket zamknięty");
-  });
-} catch (err) {
-  console.error("[WS_TEST] Błąd tworzenia WebSocket:", err.message);
-}
-
-// Prosta funkcja retry z backoffem i obsługą 429 + diagnostyka
-async function loginWithRetry(maxRetries = 5) {
+// Prosta funkcja retry
+async function loginWithRetry(maxRetries = 3) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const attempt = i + 1;
-      console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
-
-      const slowLoginWarning = setTimeout(() => {
-        console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
-      }, 30000);
-
-      const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
-
-      await Promise.race([client.login(process.env.BOT_TOKEN), hardTimeout]);
-
-      clearTimeout(slowLoginWarning);
-
+      console.log(`[LOGIN] Próba ${i + 1}/${maxRetries}...`);
+      
+      // Dodaj timeout do login
+      const loginPromise = client.login(process.env.BOT_TOKEN);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Login timeout po 20 sekundach')), 20000);
+      });
+      
+      await Promise.race([loginPromise, timeoutPromise]);
       console.log("[LOGIN] Sukces! Bot połączony z Discord.");
       return;
     } catch (err) {
-      const is429 = err?.code === 429 || /429/.test(err?.message || "");
-      const retryAfterHeader = Number(err?.data?.retry_after || err?.retry_after || 0) * 1000;
-      const backoff = is429 ? Math.max(retryAfterHeader, 30000) : 10000 * (i + 1);
-
-      console.error(`[LOGIN] Błąd próby ${i + 1}:`, err?.message || err);
-      if (err?.code) console.error(`[LOGIN] err.code=${err.code}`);
-      if (err?.status) console.error(`[LOGIN] err.status=${err.status}`);
-      if (err?.data?.retry_after) console.error(`[LOGIN] retry_after=${err.data.retry_after}`);
-
-      if (err?.name === 'DiscordAPIError' && err?.rawError) {
-        console.error('[LOGIN] rawError:', err.rawError);
-      }
-
+      console.error(`[LOGIN] Błąd próby ${i + 1}:`, err.message);
       if (i < maxRetries - 1) {
-        console.log(`[LOGIN] Czekam ${Math.round(backoff / 1000)}s przed kolejną próbą...`);
-        await new Promise(resolve => setTimeout(resolve, backoff));
+        console.log(`[LOGIN] Czekam 10 sekund przed kolejną próbą...`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
       }
     }
   }
-
   console.error("[LOGIN] Wszystkie próby nieudane!");
-
+  
   // Sprawdź połączenie sieciowe
   console.log("[NETWORK] Sprawdzam połączenie z Discord API...");
   try {
@@ -14853,102 +10005,10 @@ async function loginWithRetry(maxRetries = 5) {
 }
 
 // Start login
-validateBotToken().finally(() => loginWithRetry());
+loginWithRetry();
 
 const express = require('express');
 const app = express();
-
-function getVideoContentType(filePath) {
-  const ext = path.extname(filePath || "").toLowerCase();
-  if (ext === ".mp4") return "video/mp4";
-  if (ext === ".mov") return "video/quicktime";
-  if (ext === ".webm") return "video/webm";
-  return "application/octet-stream";
-}
-
-app.get('/videos/:videoKey', (req, res) => {
-  try {
-    const videoKey = (req.params.videoKey || "").trim();
-    const videoCfg = MODS_VIDEO_FILES.find((v) => v.key === videoKey);
-
-    if (!videoCfg) {
-      res.status(404).json({ error: "video_not_found" });
-      return;
-    }
-
-    const localVideoPath = resolveLocalModsVideoPath(videoCfg);
-    if (!localVideoPath) {
-      res.status(404).json({ error: "video_file_missing" });
-      return;
-    }
-
-    const stat = fs.statSync(localVideoPath);
-    const totalSize = stat.size;
-    const rangeHeader = req.headers.range;
-    const contentType = getVideoContentType(localVideoPath);
-
-    res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Cache-Control", "public, max-age=3600");
-    res.setHeader("Content-Type", contentType);
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="${path.basename(localVideoPath)}"`,
-    );
-
-    if (!rangeHeader) {
-      res.setHeader("Content-Length", totalSize);
-      const stream = fs.createReadStream(localVideoPath);
-      stream.on("error", (err) => {
-        console.error("[VIDEO] Błąd streamu bez range:", err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "stream_error" });
-        } else {
-          res.end();
-        }
-      });
-      stream.pipe(res);
-      return;
-    }
-
-    const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
-    if (!match) {
-      res.status(416).setHeader("Content-Range", `bytes */${totalSize}`);
-      res.end();
-      return;
-    }
-
-    let start = match[1] ? parseInt(match[1], 10) : 0;
-    let end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
-
-    if (!Number.isFinite(start) || start < 0) start = 0;
-    if (!Number.isFinite(end) || end >= totalSize) end = totalSize - 1;
-
-    if (start > end || start >= totalSize) {
-      res.status(416).setHeader("Content-Range", `bytes */${totalSize}`);
-      res.end();
-      return;
-    }
-
-    const chunkSize = end - start + 1;
-    res.status(206);
-    res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
-    res.setHeader("Content-Length", chunkSize);
-
-    const stream = fs.createReadStream(localVideoPath, { start, end });
-    stream.on("error", (err) => {
-      console.error("[VIDEO] Błąd streamu range:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "stream_error" });
-      } else {
-        res.end();
-      }
-    });
-    stream.pipe(res);
-  } catch (err) {
-    console.error("[VIDEO] Błąd endpointu /videos/:videoKey:", err);
-    res.status(500).json({ error: "internal_error" });
-  }
-});
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -14990,7 +10050,4 @@ app.get('/health', (req, res) => {
   res.status(isHealthy ? 200 : 503).json(status, null, 2);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`[HTTP] Status endpoint nasłuchuje na porcie ${PORT}`);
-});
+app.listen(3000);
