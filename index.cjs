@@ -853,7 +853,12 @@ async function syncFreeKasaChannelAccess(member, options = {}) {
     ) {
       await channel.permissionOverwrites
         .edit(member.id, { SendMessages: true })
-        .catch(() => null);
+        .catch((error) => {
+          console.error(
+            `[free-kasa] Nie udało się nadać allow dla ${member.user?.tag || member.id}:`,
+            error,
+          );
+        });
       return;
     }
 
@@ -867,7 +872,12 @@ async function syncFreeKasaChannelAccess(member, options = {}) {
       if (shouldAllow) {
         await channel.permissionOverwrites
           .edit(member.id, { SendMessages: true })
-          .catch(() => null);
+          .catch((error) => {
+            console.error(
+              `[free-kasa] Nie udało się odblokować kanału dla ${member.user?.tag || member.id}:`,
+              error,
+            );
+          });
       }
       return;
     }
@@ -876,7 +886,12 @@ async function syncFreeKasaChannelAccess(member, options = {}) {
       if (!isCurrentlyDenied || overwrite?.allow?.has(PermissionFlagsBits.SendMessages) || forceBlock) {
         await channel.permissionOverwrites
           .edit(member.id, { SendMessages: false })
-          .catch(() => null);
+          .catch((error) => {
+            console.error(
+              `[free-kasa] Nie udało się zablokować kanału dla ${member.user?.tag || member.id}:`,
+              error,
+            );
+          });
       }
     }
   } finally {
