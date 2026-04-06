@@ -842,7 +842,7 @@ async function syncFreeKasaChannelAccess(member, options = {}) {
       member.permissions?.has?.(PermissionFlagsBits.Administrator)
     ) {
       await channel.permissionOverwrites
-        .edit(member.id, { SendMessages: null })
+        .edit(member.id, { SendMessages: true })
         .catch(() => null);
       return;
     }
@@ -853,11 +853,9 @@ async function syncFreeKasaChannelAccess(member, options = {}) {
     const hasRequiredStatus = memberHasFreeKasaStatus(member);
 
     if (hasRequiredStatus) {
-      if (overwrite) {
-        await channel.permissionOverwrites
-          .edit(member.id, { SendMessages: null })
-          .catch(() => null);
-      }
+      await channel.permissionOverwrites
+        .edit(member.id, { SendMessages: true })
+        .catch(() => null);
       return;
     }
 
@@ -966,6 +964,8 @@ async function handleFreeKasaCommand(interaction) {
     });
     return;
   }
+
+  await syncFreeKasaChannelAccess(member, { forceBlock: false }).catch(() => null);
 
   const last = freeKasaCooldowns.get(user.id) || 0;
   const now = Date.now();
