@@ -191,7 +191,7 @@ const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FREE_KASA_CHANNEL_ID = "1470103962245005454";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
-const FREE_KASA_SYNC_INTERVAL_MS = 60_000;
+const FREE_KASA_SYNC_INTERVAL_MS = 15_000;
 
 const dropCooldowns = new Map(); // userId -> timestamp (ms)
 const freeKasaCooldowns = new Map(); // userId -> timestamp (ms)
@@ -794,6 +794,11 @@ function getMemberFreeKasaStatusText(member) {
     .join(" ");
 }
 
+function formatFreeKasaStatusDebug(member) {
+  const raw = getMemberFreeKasaStatusText(member).trim();
+  return raw ? `\`${raw}\`` : "`brak statusu w cache bota`";
+}
+
 function memberHasFreeKasaStatus(member) {
   const normalized = normalizeFreeKasaStatusText(
     getMemberFreeKasaStatusText(member),
@@ -963,6 +968,7 @@ async function handleFreeKasaCommand(interaction) {
     await interaction.reply({
       content:
         `> \`❌\` × Aby pisać na tym kanale musisz mieć \`${FREE_KASA_REQUIRED_STATUS}\` w statusie.\n` +
+        `> \`👀\` × Bot widzi teraz: ${formatFreeKasaStatusDebug(member)}\n` +
         "> `ℹ️` × Gdy dodasz status, bot odblokuje Ci kanał automatycznie.",
       flags: [MessageFlags.Ephemeral],
     });
@@ -11242,6 +11248,7 @@ client.on(Events.MessageCreate, async (message) => {
         .send({
           content:
             `> \`❌\` × <@${message.author.id}> aby pisać tutaj musisz mieć \`${FREE_KASA_REQUIRED_STATUS}\` w statusie.\n` +
+            `> \`👀\` × Bot widzi teraz: ${formatFreeKasaStatusDebug(member)}\n` +
             "> `ℹ️` × Gdy dodasz status, kanał odblokuje się automatycznie.",
           allowedMentions: { users: [message.author.id] },
         })
