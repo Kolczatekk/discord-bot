@@ -754,7 +754,7 @@ function buildFreeKasaInstructionEmbed() {
         "Spróbuj swojego szczęścia i zgarnij darmowe nagrody.",
         "",
         "**Zasady:**",
-        "1. Miej `.gg/newshop` w opisie profilu.",
+        "1. Miej `.gg/newshop` w statusie Discord.",
         "2. Użyj komendy `/free-kasa`, aby zagrać.",
         "3. Masz **1 próbę co 12 godzin**.",
         "4. Nagrody mają **bardzo małą szansę**.",
