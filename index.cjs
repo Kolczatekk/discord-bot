@@ -785,12 +785,16 @@ function getMemberFreeKasaStatusText(member) {
     return "";
   }
 
+  const customStatusActivity =
+    member.presence.activities.find((activity) => activity?.type === 4) || null;
+
+  if (customStatusActivity?.state) {
+    return customStatusActivity.state;
+  }
+
   return member.presence.activities
-    .map((activity) =>
-      [activity?.name, activity?.state, activity?.details]
-        .filter(Boolean)
-        .join(" "),
-    )
+    .map((activity) => activity?.state || activity?.details || activity?.name || "")
+    .filter(Boolean)
     .join(" ");
 }
 
