@@ -218,6 +218,47 @@ const inviteRewards = new Map(); // guildId -> Map<inviterId, rewardsGiven>
 const inviterRateLimit = new Map(); // guildId -> Map<inviterId, [timestamps]> to limit invites per hour
 // track members who left so we can undo "leave" counters if they rejoin
 const leaveRecords = new Map(); // key = `${guildId}:${memberId}` -> inviterId
+const recentDeletedInvites = new Map(); // guildId -> [{ code, inviterId, deletedAt, uses }]
+
+function rememberDeletedInvite(invite) {
+  if (!invite?.guild?.id || !invite.code) return;
+
+  const guildId = invite.guild.id;
+  const now = Date.now();
+  const existing = recentDeletedInvites.get(guildId) || [];
+  const trimmed = existing.filter((entry) => now - entry.deletedAt < 30_000);
+
+  trimmed.push({
+    code: invite.code,
+    inviterId: invite.inviter?.id || null,
+    deletedAt: now,
+    uses: invite.uses || 0,
+  });
+
+  recentDeletedInvites.set(guildId, trimmed);
+}
+
+function consumeRecentDeletedInvite(guildId) {
+  const now = Date.now();
+  const existing = recentDeletedInvites.get(guildId) || [];
+  const trimmed = existing
+    .filter((entry) => now - entry.deletedAt < 30_000)
+    .sort((a, b) => b.deletedAt - a.deletedAt);
+
+  if (!trimmed.length) {
+    recentDeletedInvites.delete(guildId);
+    return null;
+  }
+
+  const [latest, ...rest] = trimmed;
+  if (rest.length) {
+    recentDeletedInvites.set(guildId, rest);
+  } else {
+    recentDeletedInvites.delete(guildId);
+  }
+
+  return latest;
+}
 
 // keep invite cache up-to-date (global listeners, NOT inside GuildMemberAdd)
 client.on("inviteCreate", (invite) => {
@@ -232,6 +273,7 @@ client.on("inviteCreate", (invite) => {
 });
 client.on("inviteDelete", (invite) => {
   try {
+    rememberDeletedInvite(invite);
     const map = guildInvites.get(invite.guild.id);
     if (map) {
       map.delete(invite.code);
@@ -5329,8 +5371,6 @@ function buildSendMessageCardPayload({
   bodyText,
   mediaUrls,
   includeDate,
-  pingMode,
-  pingContent,
   fileUrls,
 }) {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
@@ -5377,14 +5417,9 @@ function buildSendMessageCardPayload({
   }
 
   return {
-    content: pingMode === "zpingiem" && pingContent ? pingContent : undefined,
     components: [container],
     files: fileUrls.length ? fileUrls : undefined,
     flags: MessageFlags.IsComponentsV2,
-    allowedMentions:
-      pingMode === "zpingiem"
-        ? { parse: ["users", "roles", "everyone"] }
-        : { parse: [] },
   };
 }
 
@@ -5474,10 +5509,15 @@ async function handleSendMessageCommand(interaction) {
         bodyText: finalBodyText,
         mediaUrls,
         includeDate,
-        pingMode,
-        pingContent,
         fileUrls,
       });
+
+      if (pingMode === "zpingiem" && pingContent) {
+        await targetChannel.send({
+          content: pingContent,
+          allowedMentions: { parse: ["users", "roles", "everyone"] },
+        });
+      }
 
       await targetChannel.send(sendOptions);
 
@@ -5490,7 +5530,7 @@ async function handleSendMessageCommand(interaction) {
       try {
         await interaction.followUp({
           content:
-            "❌ Nie udało się wysłać wiadomości (sprawdź uprawnienia bota do wysyłania wiadomości/załączników).",
+            "❌ Nie udało się wysłać wiadomości. Sprawdź kanał, załączniki i format treści.",
           flags: [MessageFlags.Ephemeral],
         });
       } catch (e) {}
@@ -11958,37 +11998,65 @@ client.on(Events.GuildMemberAdd, async (member) => {
         }
       }
 
-      // fetch current invites
-      const currentInvites = await member.guild.invites
-        .fetch()
-        .catch(() => null);
+      // fetch current invites with a few retries because Discord often updates uses with delay
+      const prevMap = new Map(guildInvites.get(member.guild.id) || new Map());
+      let latestInviteMap = null;
 
-      if (currentInvites) {
-        // previous cached map (may be empty)
-        const prevMap = guildInvites.get(member.guild.id) || new Map();
+      for (let attempt = 0; attempt < 3 && !inviterId; attempt++) {
+        const currentInvites = await member.guild.invites.fetch().catch(() => null);
 
-        // build new map & detect which invite increased
-        const newMap = new Map();
-        for (const inv of currentInvites.values()) {
-          newMap.set(inv.code, inv.uses || 0);
-        }
+        if (currentInvites) {
+          const newMap = new Map();
+          const increasedInvites = [];
 
-        for (const inv of currentInvites.values()) {
-          const prevUses = prevMap.get(inv.code) || 0;
-          const nowUses = inv.uses || 0;
-          if (nowUses > prevUses) {
-            inviterId = inv.inviter ? inv.inviter.id : null;
-            countThisInvite = true;
-            break;
+          for (const inv of currentInvites.values()) {
+            newMap.set(inv.code, inv.uses || 0);
           }
+
+          latestInviteMap = newMap;
+
+          for (const inv of currentInvites.values()) {
+            const prevUses = prevMap.get(inv.code) || 0;
+            const nowUses = inv.uses || 0;
+            const diff = nowUses - prevUses;
+
+            if (diff > 0) {
+              increasedInvites.push({ invite: inv, diff });
+            }
+          }
+
+          if (increasedInvites.length === 1) {
+            inviterId = increasedInvites[0].invite.inviter
+              ? increasedInvites[0].invite.inviter.id
+              : null;
+            countThisInvite = true;
+          } else if (increasedInvites.length > 1) {
+            increasedInvites.sort(
+              (a, b) =>
+                b.diff - a.diff ||
+                (b.invite.uses || 0) - (a.invite.uses || 0),
+            );
+            inviterId = increasedInvites[0].invite.inviter
+              ? increasedInvites[0].invite.inviter.id
+              : null;
+            countThisInvite = true;
+            console.log(
+              `[invites] Wykryto kilka rosnących invite'ów dla ${member.user.tag}; używam ${increasedInvites[0].invite.code}.`,
+            );
+          }
+        } else if (attempt === 0) {
+          console.warn(
+            `[invites] Nie udało się pobrać invite'ów dla guild ${member.guild.id} — sprawdź uprawnienia bota (MANAGE_GUILD).`,
+          );
         }
 
-        // update cache (always)
-        guildInvites.set(member.guild.id, newMap);
-      } else {
-        console.warn(
-          `[invites] Nie udało się pobrać invite'ów dla guild ${member.guild.id} — sprawdź uprawnienia bota (MANAGE_GUILD).`,
-        );
+        if (!inviterId && attempt < 2) {
+          await sleep(1250);
+        }
+      }
+
+      if (latestInviteMap) {
+        guildInvites.set(member.guild.id, latestInviteMap);
       }
 
       const previousVanityUses = guildVanityUses.has(member.guild.id)
@@ -12019,6 +12087,25 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
       if (typeof currentVanityUses === "number") {
         guildVanityUses.set(member.guild.id, currentVanityUses);
+      }
+
+      if (!inviterId && !usedVanityCode) {
+        const deletedInviteFallback = consumeRecentDeletedInvite(member.guild.id);
+        if (deletedInviteFallback?.inviterId) {
+          inviterId = deletedInviteFallback.inviterId;
+          countThisInvite = true;
+          console.log(
+            `[invites] Użyto fallbacku po usuniętym invicie ${deletedInviteFallback.code} dla ${member.user.tag}.`,
+          );
+        }
+      }
+
+      if (inviterId && inviterId === member.id) {
+        console.log(
+          `[invites] Pomijam self-invite dla ${member.user.tag} (${member.id}).`,
+        );
+        inviterId = null;
+        countThisInvite = false;
       }
     } catch (e) {
       console.error("Błąd podczas wykrywania invite:", e);
@@ -12094,8 +12181,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
       scheduleSavePersistentState();
 
       // Liczymy zaproszenia tylko jeśli nie jest właścicielem
-      if (inviterId !== ownerId) {
-        // ZAWSZE liczymy zaproszenia z kont < 2 mies.
+      if (countThisInvite && inviterId !== ownerId) {
         if (!isFakeAccount) {
           const prev = gMap.get(inviterId) || 0;
           gMap.set(inviterId, prev + 1);
@@ -12198,7 +12284,12 @@ client.on(Events.GuildMemberAdd, async (member) => {
     const memberKey = `${member.guild.id}:${member.id}`;
     inviterOfMember.set(memberKey, {
       inviterId,
-      counted: !!(countThisInvite && !isFakeAccount),
+      counted: !!(
+        inviterId &&
+        countThisInvite &&
+        !isFakeAccount &&
+        inviterId !== ownerId
+      ),
       isFake: !!isFakeAccount,
       isVanity: !!usedVanityCode,
       vanityCode: usedVanityCode || null,
@@ -12211,7 +12302,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
     const zapChannelId = "1449159392388972554";
     const zapChannel = member.guild.channels.cache.get(zapChannelId);
 
-    if (zapChannel && (inviterId || usedVanityCode)) {
+    if (zapChannel) {
       const gMap = inviteCounts.get(member.guild.id) || new Map();
       const currentInvites = gMap.get(inviterId) || 0;
       const inviteWord = getInviteWord(currentInvites);
@@ -12230,6 +12321,10 @@ client.on(Events.GuildMemberAdd, async (member) => {
           message = isFakeAccount 
             ? `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}! (konto ma mniej niż 2 mies.)`
             : `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}!`;
+        }
+
+        if (!message) {
+          message = `> \`✉️\` × <@${member.id}> dołączył, ale nie udało się wykryć użytego linku zaproszenia.`;
         }
         await zapChannel.send(message);
       } catch (e) { }
