@@ -838,6 +838,7 @@ async function fetchMemberWithPresence(guild, userId) {
     const fetched = await guild.members.fetch({
       user: userId,
       withPresences: true,
+      force: true,
       time: 10_000,
     });
     if (fetched?.first) {
@@ -848,6 +849,21 @@ async function fetchMemberWithPresence(guild, userId) {
   }
 
   return guild.members.cache.get(userId) || (await guild.members.fetch(userId).catch(() => null));
+}
+
+async function getFreeKasaChannel(guild) {
+  if (!guild) return null;
+  const channel =
+    guild.channels.cache.get(FREE_KASA_CHANNEL_ID) ||
+    (await guild.channels.fetch(FREE_KASA_CHANNEL_ID).catch(() => null));
+  return channel?.type === ChannelType.GuildText ? channel : null;
+}
+
+async function memberCanSendFreeKasa(member) {
+  if (!member?.guild) return false;
+  const channel = await getFreeKasaChannel(member.guild);
+  if (!channel) return false;
+  return channel.permissionsFor(member)?.has(PermissionFlagsBits.SendMessages) || false;
 }
 
 async function getOrCreateFreeKasaAccessRole(guild) {
@@ -1042,7 +1058,7 @@ async function refreshFreeKasaInstruction(channel) {
 async function handleFreeKasaCommand(interaction) {
   const user = interaction.user;
   const guildId = interaction.guildId;
-  const member =
+  let member =
     (await fetchMemberWithPresence(interaction.guild, user.id)) ||
     interaction.member;
 
@@ -1064,7 +1080,7 @@ async function handleFreeKasaCommand(interaction) {
   }
 
   if (!memberHasFreeKasaStatus(member)) {
-    await syncFreeKasaChannelAccess(member, { forceBlock: true });
+    await syncFreeKasaChannelAccess(member);
     await interaction.reply({
       content:
         `> \`❌\` × Aby pisać na tym kanale musisz mieć \`${FREE_KASA_REQUIRED_STATUS}\` w statusie.\n` +
@@ -1075,7 +1091,26 @@ async function handleFreeKasaCommand(interaction) {
     return;
   }
 
-  await syncFreeKasaChannelAccess(member, { forceBlock: false }).catch(() => null);
+  await syncFreeKasaChannelAccess(member).catch(() => null);
+  member = (await fetchMemberWithPresence(interaction.guild, user.id)) || member;
+
+  if (!(await memberCanSendFreeKasa(member))) {
+    await syncFreeKasaChannelAccess(member, {
+      statusTextOverride: resolveFreeKasaStatusText(member),
+    }).catch(() => null);
+    member = (await fetchMemberWithPresence(interaction.guild, user.id)) || member;
+  }
+
+  if (!(await memberCanSendFreeKasa(member))) {
+    await interaction.reply({
+      content:
+        `> \`❌\` × Wykryłem poprawny status, ale Discord nadal nie dał Ci dostępu do pisania.\n` +
+        `> \`👀\` × Bot widzi teraz: ${formatFreeKasaStatusDebug(member)}\n` +
+        "> `🛠️` × Sprawdź, czy rola bota ma uprawnienie `Zarządzanie rolami` i jest wyżej niż `free-kasa-access`.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
   const last = freeKasaCooldowns.get(user.id) || 0;
   const now = Date.now();
@@ -11335,13 +11370,13 @@ client.on(Events.MessageCreate, async (message) => {
     message.channel?.id === FREE_KASA_CHANNEL_ID &&
     !message.interactionMetadata
   ) {
-    const member =
+    let member =
       (await fetchMemberWithPresence(message.guild, message.author.id)) ||
       message.member ||
       null;
 
     if (member && !memberHasFreeKasaStatus(member)) {
-      await syncFreeKasaChannelAccess(member, { forceBlock: true });
+      await syncFreeKasaChannelAccess(member);
       await message.delete().catch(() => null);
 
       const warn = await message.channel
@@ -11358,6 +11393,11 @@ client.on(Events.MessageCreate, async (message) => {
         setTimeout(() => warn.delete().catch(() => null), 8_000);
       }
       return;
+    }
+
+    if (member) {
+      await syncFreeKasaChannelAccess(member).catch(() => null);
+      member = (await fetchMemberWithPresence(message.guild, message.author.id)) || member;
     }
   }
 
