@@ -11974,6 +11974,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
     let countThisInvite = false;
     let isFakeAccount = false;
     let usedVanityCode = null;
+    let selfInviteDetected = false;
+    let invalidInviterDetected = false;
 
     try {
       // jeśli ten użytkownik wcześniej opuścił i mieliśmy to zapisane -> usuń "leave" (kompensacja)
@@ -12104,6 +12106,16 @@ client.on(Events.GuildMemberAdd, async (member) => {
         console.log(
           `[invites] Pomijam self-invite dla ${member.user.tag} (${member.id}).`,
         );
+        selfInviteDetected = true;
+        inviterId = null;
+        countThisInvite = false;
+      }
+
+      if (inviterId && !/^\d{17,20}$/.test(String(inviterId))) {
+        console.log(
+          `[invites] Pomijam nieprawidłowe ID zapraszającego (${inviterId}) dla ${member.user.tag}.`,
+        );
+        invalidInviterDetected = true;
         inviterId = null;
         countThisInvite = false;
       }
@@ -12304,7 +12316,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
     if (zapChannel) {
       const gMap = inviteCounts.get(member.guild.id) || new Map();
-      const currentInvites = gMap.get(inviterId) || 0;
+      const hasValidInviterId =
+        typeof inviterId === "string" && /^\d{17,20}$/.test(inviterId);
+      const currentInvites = hasValidInviterId ? gMap.get(inviterId) || 0 : 0;
       const inviteWord = getInviteWord(currentInvites);
       
       try {
@@ -12313,6 +12327,10 @@ client.on(Events.GuildMemberAdd, async (member) => {
           message = isFakeAccount
             ? `> \`✉️\` × <@${member.id}> dołączył używając linku **${usedVanityCode}**. (konto ma mniej niż 2 mies.)`
             : `> \`✉️\` × <@${member.id}> dołączył używając linku **${usedVanityCode}**.`;
+        } else if (selfInviteDetected) {
+          message = `> \`✉️\` × <@${member.id}> dołączył swoim własnym linkiem. Zaproszenie nie zostało zaliczone.`;
+        } else if (invalidInviterDetected || !hasValidInviterId) {
+          message = `> \`✉️\` × <@${member.id}> dołączył, ale nie udało się poprawnie wykryć użytego linku zaproszenia.`;
         } else if (inviterId === ownerId) {
           // Zaproszenie przez właściciela - nie liczymy zaproszeń
           message = `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> (został zaproszony przez właściciela)`;
