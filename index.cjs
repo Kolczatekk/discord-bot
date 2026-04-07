@@ -193,6 +193,8 @@ const FREE_KASA_CHANNEL_ID = "1470103962245005454";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
 const FREE_KASA_COMMAND_MENTION = "</free-kasa:1491005286859800646>";
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
+const FREE_KASA_CASH_CLAIM_THRESHOLD = 50_000;
+const FREE_KASA_HISTORY_LIMIT = 20;
 const FREE_KASA_REQUIRED_STATUS_ALIASES = [
   FREE_KASA_REQUIRED_STATUS,
   "discord.gg/newshop",
@@ -200,6 +202,17 @@ const FREE_KASA_REQUIRED_STATUS_ALIASES = [
 const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
+const FREE_KASA_REWARD_CODE_EXPIRES_MS = 90 * 24 * 60 * 60 * 1000;
+const INVITE_REWARD_MILESTONES = [
+  { threshold: 5, amount: 70_000, label: "70k$" },
+  { threshold: 10, amount: 160_000, label: "160k$" },
+];
+const PURCHASE_STAFF_ROLE_IDS = [
+  "1449448705563557918",
+  "1449448702925209651",
+  "1449448686156255333",
+  "1449448860517798061",
+];
 
 const dropCooldowns = new Map(); // userId -> timestamp (ms)
 const freeKasaCooldowns = new Map(); // userId -> timestamp (ms)
@@ -207,6 +220,9 @@ const opinionCooldowns = new Map(); // userId -> timestamp (ms)
 const freeKasaAccessSyncInFlight = new Set();
 const freeKasaAccessRoleIds = new Map();
 const freeKasaChannelSetupAt = new Map();
+const freeKasaRewardProgress = new Map(); // userId -> { cashBalance, totalWonCash, pendingSwords, history[] }
+const rewardTicketClaims = new Map(); // channelId -> { userId, inviteMilestones, freeKasaCashToClaim, freeKasaSwordCount, createdAt }
+const claimedInviteRewardMilestones = new Map(); // guildId -> Map<userId, Set<milestone>>
 
 // Colors
 const COLOR_BLUE = 0x00aaff;
@@ -222,6 +238,20 @@ const FREE_KASA_REWARD_POOL = [
     rewardText: "50k$ na anarchia.gg",
     rewardAmount: 50000,
     weight: 1,
+  },
+  {
+    key: "cash_40k",
+    kind: "reward",
+    rewardText: "40k$ na anarchia.gg",
+    rewardAmount: 40000,
+    weight: 1,
+  },
+  {
+    key: "cash_30k",
+    kind: "reward",
+    rewardText: "30k$ na anarchia.gg",
+    rewardAmount: 30000,
+    weight: 2,
   },
   {
     key: "cash_20k",
@@ -255,6 +285,7 @@ const FREE_KASA_REWARD_POOL = [
     key: "item_sword",
     kind: "reward",
     rewardText: "Anarchiczny miecz",
+    rewardItem: "Anarchiczny miecz",
     weight: 2,
   },
 ];
@@ -629,11 +660,44 @@ function buildPersistentStateData() {
     }
   }
 
+  const freeKasaRewardProgressObj = {};
+  if (
+    typeof freeKasaRewardProgress !== "undefined" &&
+    freeKasaRewardProgress instanceof Map
+  ) {
+    for (const [userId, progress] of freeKasaRewardProgress.entries()) {
+      freeKasaRewardProgressObj[userId] = {
+        cashBalance: Number(progress?.cashBalance || 0),
+        totalWonCash: Number(progress?.totalWonCash || 0),
+        pendingSwords: Number(progress?.pendingSwords || 0),
+        history: Array.isArray(progress?.history)
+          ? progress.history.slice(0, FREE_KASA_HISTORY_LIMIT)
+          : [],
+      };
+    }
+  }
+
   // Convert opinionCooldowns to plain object
   const opinionCooldownsObj = {};
   if (typeof opinionCooldowns !== "undefined" && opinionCooldowns instanceof Map) {
     for (const [userId, timestamp] of opinionCooldowns.entries()) {
       opinionCooldownsObj[userId] = timestamp;
+    }
+  }
+
+  const rewardTicketClaimsObj = {};
+  if (typeof rewardTicketClaims !== "undefined" && rewardTicketClaims instanceof Map) {
+    for (const [channelId, claimData] of rewardTicketClaims.entries()) {
+      rewardTicketClaimsObj[channelId] = {
+        guildId: claimData?.guildId || null,
+        userId: claimData?.userId || null,
+        inviteMilestones: Array.isArray(claimData?.inviteMilestones)
+          ? claimData.inviteMilestones
+          : [],
+        freeKasaCashToClaim: Number(claimData?.freeKasaCashToClaim || 0),
+        freeKasaSwordCount: Number(claimData?.freeKasaSwordCount || 0),
+        createdAt: Number(claimData?.createdAt || Date.now()),
+      };
     }
   }
 
@@ -658,6 +722,21 @@ function buildPersistentStateData() {
     }
   }
 
+  const claimedInviteRewardMilestonesObj = {};
+  if (
+    typeof claimedInviteRewardMilestones !== "undefined" &&
+    claimedInviteRewardMilestones instanceof Map
+  ) {
+    for (const [guildId, userMap] of claimedInviteRewardMilestones.entries()) {
+      claimedInviteRewardMilestonesObj[guildId] = {};
+      if (userMap && typeof userMap.forEach === "function") {
+        userMap.forEach((levelSet, userId) => {
+          claimedInviteRewardMilestonesObj[guildId][userId] = Array.from(levelSet || []);
+        });
+      }
+    }
+  }
+
   // Convert opinieChannels to plain object
   const opinieChannelsObj = {};
   if (typeof opinieChannels !== "undefined" && opinieChannels instanceof Map) {
@@ -676,6 +755,7 @@ function buildPersistentStateData() {
     inviteLeaves: mapOfMapsToPlainObject(inviteLeaves),
     inviteRewardsGiven: mapOfMapsToPlainObject(inviteRewardsGiven),
     inviteRewardLevels: inviteRewardLevelsObj,
+    claimedInviteRewardMilestones: claimedInviteRewardMilestonesObj,
     inviteTotalJoined: mapOfMapsToPlainObject(inviteTotalJoined),
     inviteFakeAccounts: mapOfMapsToPlainObject(inviteFakeAccounts),
     inviteBonusInvites: mapOfMapsToPlainObject(inviteBonusInvites),
@@ -702,7 +782,9 @@ function buildPersistentStateData() {
     repLastInfoMessage: repLastInfoMessageObj,
     dropCooldowns: dropCooldownsObj,
     freeKasaCooldowns: freeKasaCooldownsObj,
+    freeKasaRewardProgress: freeKasaRewardProgressObj,
     opinionCooldowns: opinionCooldownsObj,
+    rewardTicketClaims: rewardTicketClaimsObj,
     pendingTicketClose: pendingTicketCloseObj,
     opinieChannels: opinieChannelsObj,
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
@@ -755,59 +837,243 @@ function pickFreeKasaReward() {
   return null;
 }
 
+function formatRewardCashAmount(amount = 0) {
+  const numeric = Number(amount || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "0$";
+  if (numeric % 1000 === 0) return `${numeric / 1000}k$`;
+  return `${(numeric / 1000).toString().replace(".", ",")}k$`;
+}
+
+function getFreeKasaRewardProgress(userId) {
+  const existing = freeKasaRewardProgress.get(userId);
+  if (existing && typeof existing === "object") {
+    existing.cashBalance = Number(existing.cashBalance || 0);
+    existing.totalWonCash = Number(existing.totalWonCash || 0);
+    existing.pendingSwords = Number(existing.pendingSwords || 0);
+    existing.history = Array.isArray(existing.history)
+      ? existing.history.slice(0, FREE_KASA_HISTORY_LIMIT)
+      : [];
+    return existing;
+  }
+
+  const created = {
+    cashBalance: 0,
+    totalWonCash: 0,
+    pendingSwords: 0,
+    history: [],
+  };
+  freeKasaRewardProgress.set(userId, created);
+  return created;
+}
+
+function pushFreeKasaHistoryEntry(userId, entry) {
+  const state = getFreeKasaRewardProgress(userId);
+  state.history.unshift({
+    kind: entry?.kind || "reward",
+    rewardText: entry?.rewardText || "Nagroda",
+    amount: Number(entry?.amount || 0),
+    createdAt: Number(entry?.createdAt || Date.now()),
+  });
+  state.history = state.history.slice(0, FREE_KASA_HISTORY_LIMIT);
+  freeKasaRewardProgress.set(userId, state);
+  return state;
+}
+
+function registerFreeKasaRewardWin(userId, reward) {
+  const state = getFreeKasaRewardProgress(userId);
+  const createdAt = Date.now();
+
+  if (reward?.rewardAmount) {
+    state.cashBalance += Number(reward.rewardAmount || 0);
+    state.totalWonCash += Number(reward.rewardAmount || 0);
+    pushFreeKasaHistoryEntry(userId, {
+      kind: "cash",
+      rewardText: reward.rewardText,
+      amount: reward.rewardAmount,
+      createdAt,
+    });
+  } else {
+    state.pendingSwords += 1;
+    pushFreeKasaHistoryEntry(userId, {
+      kind: "item",
+      rewardText: reward?.rewardText || "Nagroda",
+      amount: 0,
+      createdAt,
+    });
+  }
+
+  freeKasaRewardProgress.set(userId, state);
+  scheduleSavePersistentState(true);
+  return state;
+}
+
+async function createFreeKasaRewardCode(userId, reward) {
+  const code = generateCode();
+  const expiresAt = Date.now() + FREE_KASA_REWARD_CODE_EXPIRES_MS;
+  const payload = {
+    oderId: userId,
+    rewardText: reward?.rewardText || "Nagroda",
+    rewardAmount: Number(reward?.rewardAmount || 0),
+    rewardItem: reward?.rewardItem || null,
+    type: "free_kasa_reward",
+    expiresAt,
+    created: Date.now(),
+  };
+
+  activeCodes.set(code, payload);
+  await db.saveActiveCode(code, payload);
+  scheduleSavePersistentState(true);
+
+  setTimeout(() => {
+    activeCodes.delete(code);
+    db.deleteActiveCode(code).catch(() => null);
+    scheduleSavePersistentState();
+  }, FREE_KASA_REWARD_CODE_EXPIRES_MS);
+
+  return {
+    code,
+    expiresAt,
+    expiryTimestamp: Math.floor(expiresAt / 1000),
+    payload,
+  };
+}
+
+function getInviteDisplayCount(guildId, userId) {
+  const valid = inviteCounts.get(guildId)?.get(userId) || 0;
+  const bonus = inviteBonusInvites.get(guildId)?.get(userId) || 0;
+  return valid + bonus;
+}
+
+function getClaimedInviteRewardLevels(guildId, userId) {
+  if (!claimedInviteRewardMilestones.has(guildId)) {
+    claimedInviteRewardMilestones.set(guildId, new Map());
+  }
+  const guildLevels = claimedInviteRewardMilestones.get(guildId);
+  if (!guildLevels.has(userId)) {
+    guildLevels.set(userId, new Set());
+  }
+  return guildLevels.get(userId);
+}
+
+function getAvailableInviteRewardMilestones(guildId, userId) {
+  const displayedInvites = getInviteDisplayCount(guildId, userId);
+  const claimedLevels = getClaimedInviteRewardLevels(guildId, userId);
+
+  return INVITE_REWARD_MILESTONES.filter(
+    (milestone) =>
+      displayedInvites >= milestone.threshold &&
+      !claimedLevels.has(String(milestone.threshold)),
+  );
+}
+
+function getNextInviteRewardMilestone(guildId, userId) {
+  const displayedInvites = getInviteDisplayCount(guildId, userId);
+  const claimedLevels = getClaimedInviteRewardLevels(guildId, userId);
+
+  return (
+    INVITE_REWARD_MILESTONES.find(
+      (milestone) =>
+        !claimedLevels.has(String(milestone.threshold)) &&
+        displayedInvites < milestone.threshold,
+    ) || null
+  );
+}
+
+function buildFreeKasaHistoryLines(userId, limit = 6) {
+  const state = getFreeKasaRewardProgress(userId);
+  const entries = Array.isArray(state.history) ? state.history.slice(0, limit) : [];
+  if (!entries.length) {
+    return ["• Brak zapisanej historii nagród z FREE KASA."];
+  }
+
+  return entries.map((entry) => {
+    const rewardLabel =
+      entry.kind === "cash" && entry.amount
+        ? `${formatRewardCashAmount(entry.amount)} na anarchia.gg`
+        : entry.rewardText || "Nagroda";
+    const timeTag = entry.createdAt
+      ? ` <t:${Math.floor(Number(entry.createdAt) / 1000)}:R>`
+      : "";
+    return `• ${rewardLabel}${timeTag}`;
+  });
+}
+
+function getRewardClaimAvailability(guildId, userId) {
+  const inviteMilestones = getAvailableInviteRewardMilestones(guildId, userId);
+  const nextInviteMilestone = getNextInviteRewardMilestone(guildId, userId);
+  const displayedInvites = getInviteDisplayCount(guildId, userId);
+  const freeKasaState = getFreeKasaRewardProgress(userId);
+  const freeKasaCashToClaim = Math.max(0, Number(freeKasaState.cashBalance || 0));
+  const freeKasaCashRemainder = 0;
+
+  return {
+    displayedInvites,
+    inviteMilestones,
+    nextInviteMilestone,
+    freeKasaState,
+    freeKasaCashToClaim,
+    freeKasaCashRemainder,
+    freeKasaSwordCount: Number(freeKasaState.pendingSwords || 0),
+    hasAnyClaim:
+      inviteMilestones.length > 0 ||
+      freeKasaCashToClaim > 0 ||
+      Number(freeKasaState.pendingSwords || 0) > 0,
+  };
+}
+
+function isRewardTicketLabel(label = "") {
+  const normalized = String(label || "").toUpperCase();
+  return (
+    normalized === "NAGRODA" ||
+    normalized === "NAGRODA ZA ZAPROSZENIA" ||
+    normalized === "FREE KASA"
+  );
+}
+
 function buildFreeKasaInstructionPayload() {
-  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent("```NEW SHOP × FREE KASA```"),
+  const attachmentName = "free_kasa_status_guide.png";
+  const attachmentPath = path.join(
+    __dirname,
+    "attached_assets",
+    attachmentName,
   );
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
+  const attachment = fs.existsSync(attachmentPath)
+    ? new AttachmentBuilder(attachmentPath, { name: attachmentName })
+    : null;
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_YELLOW)
+    .setDescription(
       [
-        "**DARMOWE NAGRODY**",
-        "-# Spróbuj swojego szczęścia i zgarnij darmowe nagrody.",
-      ].join("\n"),
-    ),
-  );
-
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      [
-        "**ZASADY**",
-        "• Miej `.gg/newshop` w statusie.",
-        `• Użyj komendy ${FREE_KASA_COMMAND_MENTION}, aby zagrać.`,
-        "• Masz **1 próbę co 12 godzin**.",
-      ].join("\n"),
-    ),
-  );
-
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      [
-        "**DO WYGRANIA**",
+        "```",
+        "🎀 New Shop × FREE KASA",
+        "```",
+        "> `🎯` × **Spróbuj swojego szczęścia i zgarnij darmowe nagrody.**",
+        "",
+        "`📌` × **Ustaw w statusie Discord:** `.gg/newshop`",
+        `\`🎮\` × **Użyj komendy:** ${FREE_KASA_COMMAND_MENTION}`,
+        "`⏰` × **Masz 1 próbę co 12 godzin**",
+        "",
+        "`🖼️` × **Na obrazku poniżej masz pokazane, gdzie ustawić status.**",
+        "",
+        "`🎁` × **Do wygrania:**",
         "• 10k$ na anarchia.gg",
         "• 20k$ na anarchia.gg",
+        "• 30k$ na anarchia.gg",
+        "• 40k$ na anarchia.gg",
         "• 50k$ na anarchia.gg",
         "• Zniżka -5% na zakupy",
         "• Zniżka -10% na zakupy",
         "• Anarchiczny miecz",
       ].join("\n"),
-    ),
-  );
+    );
 
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      "-# Bot działa automatycznie. Próby obchodzenia systemu kończą się blokadą.",
-    ),
-  );
+  if (attachment) {
+    embed.setImage(`attachment://${attachmentName}`);
+  }
 
   return {
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
+    embeds: [embed],
+    files: attachment ? [attachment] : undefined,
   };
 }
 
@@ -935,10 +1201,12 @@ function isFreeKasaInstructionMessage(message) {
   if (!message || message.author?.id !== client.user?.id) return false;
 
   const embedMatch = message.embeds.some((embed) => {
-    const description = embed?.description || "";
+    const description = `${embed?.title || ""}\n${embed?.description || ""}`.toLowerCase();
     return (
-      description.includes("NEW SHOP × FREE KASA") &&
-      description.includes("Spróbuj swojego szczęścia i zgarnij darmowe nagrody.")
+      description.includes("new shop × free kasa") &&
+      (description.includes(".gg/newshop") ||
+        description.includes("wymagany status") ||
+        description.includes("użyj komendy"))
     );
   });
 
@@ -949,11 +1217,12 @@ function isFreeKasaInstructionMessage(message) {
       message.components.map((component) =>
         typeof component?.toJSON === "function" ? component.toJSON() : component,
       ),
-    );
+    ).toLowerCase();
 
     return (
-      componentDump.includes("NEW SHOP × FREE KASA") &&
-      componentDump.includes("Spróbuj swojego szczęścia i zgarnij darmowe nagrody.")
+      componentDump.includes("new shop × free kasa") &&
+      (componentDump.includes(".gg/newshop") ||
+        componentDump.includes("spróbuj swojego szczęścia"))
     );
   } catch (_error) {
     return false;
@@ -1105,7 +1374,6 @@ async function handleFreeKasaCommand(interaction) {
   }
 
   const channel = interaction.channel;
-  await cleanupFreeKasaPermissionArtifacts(interaction.guild).catch(() => null);
 
   if (!memberHasFreeKasaStatus(member)) {
     await interaction.reply({
@@ -1128,24 +1396,23 @@ async function handleFreeKasaCommand(interaction) {
   }
 
   freeKasaCooldowns.set(user.id, now);
-  scheduleSavePersistentState();
+  scheduleSavePersistentState(true);
 
   const reward = pickFreeKasaReward();
 
   if (!reward) {
     const loseEmbed = new EmbedBuilder()
-      .setColor(COLOR_ORANGE)
+      .setColor(COLOR_GRAY)
       .setDescription(
         [
-          "`💥` **Niestety...**",
-          "",
-          "Tym razem los Ci nie sprzyjał i skrzynka okazała się pusta. Spróbuj ponownie za 12h powodzenia!!",
-          "",
-          "> `»` *Brak nagrody*",
-          "",
-          "Spróbuj ponownie za równe **12 godzin**!",
+          "```",
+          "🎀 New Shop × FREE KASA",
+          "```",
+          `\`👤\` × **Użytkownik:** ${user}`,
+          "`😢` × **Niestety, tym razem nie udało się! Spróbuj ponownie później...**",
         ].join("\n"),
-      );
+      )
+      .setTimestamp();
 
     await interaction.reply({
       content: `<@${user.id}>`,
@@ -1156,13 +1423,11 @@ async function handleFreeKasaCommand(interaction) {
     return;
   }
 
-  const code = generateCode();
-  const expiresAt = Date.now() + FREE_KASA_CODE_EXPIRES_MS;
-  const expiryTimestamp = Math.floor(expiresAt / 1000);
-
-  let codePayload;
   if (reward.kind === "discount") {
-    codePayload = {
+    const code = generateCode();
+    const expiresAt = Date.now() + FREE_KASA_CODE_EXPIRES_MS;
+    const expiryTimestamp = Math.floor(expiresAt / 1000);
+    const codePayload = {
       oderId: user.id,
       discount: reward.discount,
       expiresAt,
@@ -1170,73 +1435,113 @@ async function handleFreeKasaCommand(interaction) {
       type: "discount",
       rewardText: reward.rewardText,
     };
-  } else {
-    codePayload = {
-      oderId: user.id,
-      discount: 0,
-      expiresAt,
-      created: Date.now(),
-      type: "free_kasa_reward",
-      rewardAmount: reward.rewardAmount || null,
-      rewardText: reward.rewardText,
-      reward: reward.rewardText,
-    };
+    activeCodes.set(code, codePayload);
+    await db.saveActiveCode(code, codePayload);
+    scheduleSavePersistentState(true);
+
+    setTimeout(() => {
+      activeCodes.delete(code);
+      db.deleteActiveCode(code).catch(() => null);
+      scheduleSavePersistentState();
+    }, FREE_KASA_CODE_EXPIRES_MS);
+
+    const winEmbed = new EmbedBuilder()
+      .setColor(0xd4af37)
+      .setDescription(
+        [
+          "```",
+          "🎀 New Shop × FREE KASA",
+          "```",
+          `\`👤\` × **Użytkownik:** ${user}`,
+          `\`🎉\` × **Gratulacje! Udało Ci się wygrać ${reward.rewardText}.**`,
+          "`📩` × **Sprawdź prywatne wiadomości po kod!**",
+        ].join("\n"),
+      )
+      .setTimestamp();
+
+    let dmDelivered = true;
+    try {
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xd4af37)
+        .setDescription(
+          [
+            "```",
+            "🔑 Twój kod rabatowy",
+            "```",
+            "```",
+            code,
+            "```",
+            `> \`💸\` × **Otrzymałeś:** \`-${reward.discount}%\``,
+            `> \`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
+            "",
+            "> `🎟️` × Aby użyć kodu, otwórz ticket zakupu i wpisz go w polu na kod rabatowy.",
+          ].join("\n"),
+        )
+        .setTimestamp();
+
+      await user.send({ embeds: [dmEmbed] });
+    } catch (_error) {
+      dmDelivered = false;
+    }
+
+    await interaction.reply({
+      content: `<@${user.id}>`,
+      allowedMentions: { users: [user.id] },
+      embeds: [winEmbed],
+    });
+    await refreshFreeKasaInstruction(channel);
+
+    if (!dmDelivered) {
+      await interaction.followUp({
+        content:
+          `> \`📩\` × Nie mogłem wysłać DM, więc masz kod tutaj: ||\`${code}\`||\n` +
+          `> \`🎁\` × Nagroda: \`${reward.rewardText}\`\n` +
+          `> \`🕑\` × Kod wygaśnie za: <t:${expiryTimestamp}:R>`,
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
+
+    return;
   }
 
-  activeCodes.set(code, codePayload);
-  await db.saveActiveCode(code, codePayload);
-  scheduleSavePersistentState();
-
-  setTimeout(() => {
-    activeCodes.delete(code);
-    db.deleteActiveCode(code).catch(() => null);
-    scheduleSavePersistentState();
-  }, FREE_KASA_CODE_EXPIRES_MS);
+  const rewardCodeData = await createFreeKasaRewardCode(user.id, reward);
 
   const winEmbed = new EmbedBuilder()
-    .setColor(COLOR_YELLOW)
+    .setColor(0xd4af37)
     .setDescription(
       [
-        "`🎉` **Gratulacje!**",
-        "",
-        "Tym razem szczęście było po Twojej stronie i udało Ci się wygrać nagrodę.",
-        "",
-        `> \`»\` **Nagroda:** \`${reward.rewardText}\``,
-        "> `📩` **Kod trafił do Twojej wiadomości prywatnej.**",
-        "",
-        "Spróbuj ponownie za równe **12 godzin**!",
+        "```",
+        "🎀 New Shop × FREE KASA",
+        "```",
+        `\`👤\` × **Użytkownik:** ${user}`,
+        `\`🎉\` × **Gratulacje! Udało Ci się wygrać ${reward.rewardText}.**`,
+        "`📩` × **Sprawdź prywatne wiadomości po kod!**",
       ].join("\n"),
-    );
+    )
+    .setTimestamp();
 
   let dmDelivered = true;
   try {
     const dmEmbed = new EmbedBuilder()
-      .setColor(COLOR_YELLOW)
+      .setColor(0xd4af37)
       .setDescription(
-        reward.kind === "discount"
-          ? [
-              "```\n🎁 New Shop × FREE KASA\n```",
-              `\`🔑\` × **Twój kod:**`,
-              `\`\`\`\n${code}\n\`\`\``,
-              `\`🎉\` × **Nagroda:** \`${reward.rewardText}\``,
-              `\`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
-              "",
-              "`❔` × Aby zrealizować kod utwórz ticket zakupu i użyj pola na kod rabatowy.",
-            ].join("\n")
-          : [
-              "```\n🎁 New Shop × FREE KASA\n```",
-              `\`🔑\` × **Twój kod:**`,
-              `\`\`\`\n${code}\n\`\`\``,
-              `\`🎉\` × **Nagroda:** \`${reward.rewardText}\``,
-              `\`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
-              "",
-              "`❔` × Aby odebrać nagrodę utwórz ticket i wybierz kategorię `Nagroda za zaproszenia`, a potem wpisz ten kod.",
-            ].join("\n"),
+        [
+          "```",
+          "🎁 Twoja nagroda z FREE KASA",
+          "```",
+          "```",
+          rewardCodeData.code,
+          "```",
+          `> \`🏆\` × **Wygrałeś:** \`${reward.rewardText}\``,
+          `> \`🕑\` × **Kod wygaśnie za:** <t:${rewardCodeData.expiryTimestamp}:R>`,
+          "",
+          "> `🎟️` × Aby odebrać nagrodę, otwórz kategorię `Odbierz nagrodę` i wpisz ten kod.",
+        ].join("\n"),
       )
       .setTimestamp();
 
     await user.send({ embeds: [dmEmbed] });
-  } catch (error) {
+  } catch (_error) {
     dmDelivered = false;
   }
 
@@ -1250,13 +1555,12 @@ async function handleFreeKasaCommand(interaction) {
   if (!dmDelivered) {
     await interaction.followUp({
       content:
-        `> \`📩\` × Nie mogłem wysłać DM, więc masz kod tutaj: ||\`${code}\`||\n` +
-        `> \`🎁\` × Nagroda: \`${reward.rewardText}\`\n` +
-        `> \`🕑\` × Kod wygaśnie za: <t:${expiryTimestamp}:R>`,
+        `> \`📩\` × Nie mogłem wysłać DM, więc masz kod tutaj: ||\`${rewardCodeData.code}\`||\n` +
+        `> \`🎁\` × Wygrałeś: \`${reward.rewardText}\`\n` +
+        `> \`🕑\` × Kod wygaśnie za: <t:${rewardCodeData.expiryTimestamp}:R>`,
       flags: [MessageFlags.Ephemeral],
     }).catch(() => null);
   }
-
 }
 
 // Handler dla komendy /wezwij
@@ -1488,6 +1792,19 @@ async function loadPersistentState() {
         inviteRewardLevels.set(guildId, userMap);
       }
       console.log("[state] Wczytano inviteRewardLevels");
+    }
+
+    if (botStateData.claimedInviteRewardMilestones) {
+      for (const [guildId, userObj] of Object.entries(botStateData.claimedInviteRewardMilestones)) {
+        const userMap = new Map();
+        for (const [userId, levelsArray] of Object.entries(userObj)) {
+          if (Array.isArray(levelsArray)) {
+            userMap.set(userId, new Set(levelsArray));
+          }
+        }
+        claimedInviteRewardMilestones.set(guildId, userMap);
+      }
+      console.log("[state] Wczytano claimedInviteRewardMilestones");
     }
 
     if (
@@ -1771,10 +2088,46 @@ async function loadPersistentState() {
       }
     }
 
+    if (
+      botStateData.freeKasaRewardProgress &&
+      typeof botStateData.freeKasaRewardProgress === "object"
+    ) {
+      for (const [userId, progress] of Object.entries(botStateData.freeKasaRewardProgress)) {
+        if (!progress || typeof progress !== "object") continue;
+        freeKasaRewardProgress.set(userId, {
+          cashBalance: Number(progress.cashBalance || 0),
+          totalWonCash: Number(progress.totalWonCash || 0),
+          pendingSwords: Number(progress.pendingSwords || 0),
+          history: Array.isArray(progress.history)
+            ? progress.history.slice(0, FREE_KASA_HISTORY_LIMIT)
+            : [],
+        });
+      }
+    }
+
     // Load opinionCooldowns
     if (botStateData.opinionCooldowns && typeof botStateData.opinionCooldowns === "object") {
       for (const [userId, timestamp] of Object.entries(botStateData.opinionCooldowns)) {
         opinionCooldowns.set(userId, timestamp);
+      }
+    }
+
+    if (
+      botStateData.rewardTicketClaims &&
+      typeof botStateData.rewardTicketClaims === "object"
+    ) {
+      for (const [channelId, claimData] of Object.entries(botStateData.rewardTicketClaims)) {
+        if (!claimData || typeof claimData !== "object") continue;
+        rewardTicketClaims.set(channelId, {
+          guildId: claimData.guildId || null,
+          userId: claimData.userId || null,
+          inviteMilestones: Array.isArray(claimData.inviteMilestones)
+            ? claimData.inviteMilestones.map((value) => Number(value)).filter(Boolean)
+            : [],
+          freeKasaCashToClaim: Number(claimData.freeKasaCashToClaim || 0),
+          freeKasaSwordCount: Number(claimData.freeKasaSwordCount || 0),
+          createdAt: Number(claimData.createdAt || Date.now()),
+        });
       }
     }
 
@@ -1885,7 +2238,7 @@ const DEFAULT_NAMES = {
     "zakup-50-100": "zakup 50-100",
     "zakup-100-200": "zakup 100-200+",
     sprzedaz: "sprzedaz",
-    "odbior-nagrody": "nagroda za zaproszenia",
+    "odbior-nagrody": "odbierz nagrode",
     inne: "inne",
   },
 };
@@ -2162,12 +2515,12 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("autoprzejmij")
-    .setDescription("Automatyczne przejmowanie ticketow zakupowych (wlacz/wylacz)")
+    .setDescription("Ukryj lub przywróć widoczność ticketów zakupowych dla sprzedawców")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((option) =>
       option
         .setName("status")
-        .setDescription("Wlacz lub wylacz autoprzejmowanie")
+        .setDescription("Włącz lub wyłącz tryb tylko dla właściciela")
         .setRequired(true)
         .addChoices(
           { name: "WLACZ", value: "wlacz" },
@@ -3729,7 +4082,7 @@ async function handleModalSubmit(interaction) {
     ) {
       await interaction.reply({
         content:
-          "❌ Ten kod odbierzesz tylko w kategorii 'Nagroda za zaproszenia' w TicketPanel.",
+          "❌ Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -3976,10 +4329,7 @@ async function handleModalSubmit(interaction) {
       const enteredCode = enteredCodeRaw.trim().toUpperCase();
 
       if (!enteredCode) {
-        await interaction.reply({
-          content: "> `❌` × **Musisz** wpisać kod!",
-          flags: [MessageFlags.Ephemeral],
-        });
+        await openRewardClaimTicket(interaction);
         return;
       }
 
@@ -4032,10 +4382,7 @@ async function handleModalSubmit(interaction) {
 
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "odbior-nagrody";
-      ticketTypeLabel =
-        codeData.type === "free_kasa_reward"
-          ? "FREE KASA"
-          : "NAGRODA ZA ZAPROSZENIA";
+      ticketTypeLabel = "NAGRODA";
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || codeData.reward || "Brak"}\``;
       break;
     }
@@ -4161,11 +4508,11 @@ async function handleModalSubmit(interaction) {
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("Przejmij")
-      .setStyle(ticketTypeLabel && ticketTypeLabel === "NAGRODA ZA ZAPROSZENIA" ? ButtonStyle.Secondary : ButtonStyle.Primary);
+        .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
     const unclaimButton = new ButtonBuilder()
       .setCustomId(`ticket_unclaim_${channel.id}`)
       .setLabel("Odprzejmij")
-      .setStyle(ticketTypeLabel && ticketTypeLabel === "NAGRODA ZA ZAPROSZENIA" ? ButtonStyle.Secondary : ButtonStyle.Danger)
+        .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
       .setDisabled(true);
 
     const buttonRow = new ActionRowBuilder().addComponents(
@@ -4777,6 +5124,7 @@ const nickInput = new TextInputBuilder()
       pendingTicketClose.delete(chId);
       // remove ticketOwners entry immediately
       const ticketMeta = ticketOwners.get(chId) || null;
+      await commitRewardTicketClaim(chId).catch(() => null);
       ticketOwners.delete(chId);
       scheduleSavePersistentState();
 
@@ -5432,46 +5780,86 @@ function getPurchaseTicketCategoryIdsForGuild(guild) {
   return purchaseCategoryIds;
 }
 
+function isPurchaseTicketLabel(label = "") {
+  const normalized = String(label || "").toUpperCase();
+  return normalized === "ZAKUP" || normalized === "ZAKUP AUTO RYNKU";
+}
+
+function getPurchaseStaffRoleIdsForCategory(categoryId) {
+  const normalized = String(categoryId || "");
+  switch (normalized) {
+    case "1449526840942268526":
+      return [...PURCHASE_STAFF_ROLE_IDS];
+    case "1449526958508474409":
+      return PURCHASE_STAFF_ROLE_IDS.slice(1);
+    case "1449451716129984595":
+      return PURCHASE_STAFF_ROLE_IDS.slice(2);
+    case "1449452354201190485":
+      return PURCHASE_STAFF_ROLE_IDS.slice(3);
+    default:
+      return [...PURCHASE_STAFF_ROLE_IDS];
+  }
+}
+
+async function syncPurchaseTicketSellerVisibility(
+  guild,
+  channel,
+  ownerId,
+  hideStaff,
+) {
+  if (!guild || !channel || channel.type !== ChannelType.GuildText) return false;
+
+  const allowedRoleIds = getPurchaseStaffRoleIdsForCategory(channel.parentId);
+  if (!allowedRoleIds.length) return false;
+
+  if (ownerId) {
+    await channel.permissionOverwrites.edit(ownerId, {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true,
+    }).catch(() => null);
+  }
+
+  for (const roleId of PURCHASE_STAFF_ROLE_IDS) {
+    if (hideStaff) {
+      await channel.permissionOverwrites.edit(roleId, {
+        ViewChannel: false,
+        SendMessages: false,
+        ReadMessageHistory: false,
+      }).catch(() => null);
+      continue;
+    }
+
+    if (allowedRoleIds.includes(roleId)) {
+      await channel.permissionOverwrites.edit(roleId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      }).catch(() => null);
+      continue;
+    }
+
+    await channel.permissionOverwrites.delete(roleId).catch(() => null);
+  }
+
+  return true;
+}
+
 async function runAutoPrzejmijSweep(guild, ownerId, ownerName, targetChannelId = null) {
   const purchaseCategoryIds = getPurchaseTicketCategoryIdsForGuild(guild);
-  const CLAIMED_CATEGORY_ID = "1457446529395593338";
-  const ARCHIVED_CATEGORY_ID = "1469059216303198261";
-  const ownerMember = await guild.members.fetch(ownerId).catch(() => null);
+  const hideStaff = Boolean(autoPrzejmijSettings.get(guild.id)?.enabled);
 
   const stats = {
-    claimedCount: 0,
+    changedCount: 0,
     skippedNonPurchase: 0,
-    skippedClaimed: 0,
-    skippedLocked: 0,
-    skippedArchived: 0,
     staleRemoved: 0,
     errorCount: 0,
-    claimedChannels: [],
+    changedChannels: [],
     missingPurchaseCategories: purchaseCategoryIds.size === 0,
+    mode: hideStaff ? "ukryte" : "przywrocone",
   };
 
   if (stats.missingPurchaseCategories) return stats;
-
-  const nick = (ownerName || ownerMember?.displayName || "Wlasciciel")
-    .toString()
-    .replace(/`/g, "")
-    .trim();
-
-  const fakeInteraction = {
-    user: { id: ownerId, username: nick || "Wlasciciel" },
-    member: ownerMember,
-    guild,
-    replied: true,
-    deferred: true,
-    isButton: () => false,
-    reply: async () => null,
-    followUp: async () => null,
-    editReply: async () => null,
-    deleteReply: async () => null,
-    deferReply: async () => null,
-    deferUpdate: async () => null,
-    showModal: async () => null,
-  };
 
   for (const [channelId] of ticketOwners.entries()) {
     if (targetChannelId && channelId !== targetChannelId) continue;
@@ -5494,38 +5882,23 @@ async function runAutoPrzejmijSweep(guild, ownerId, ownerName, targetChannelId =
     }
 
     const parentId = channel.parentId ? String(channel.parentId) : "";
-    if (parentId === ARCHIVED_CATEGORY_ID) {
-      stats.skippedArchived += 1;
-      continue;
-    }
-    if (parentId === CLAIMED_CATEGORY_ID) {
-      stats.skippedClaimed += 1;
-      continue;
-    }
-    if (!purchaseCategoryIds.has(parentId)) {
+    const ticketMeta = ticketOwners.get(channel.id) || null;
+    const ticketLabel = guessTicketTypeLabel(channel, ticketMeta);
+    if (!purchaseCategoryIds.has(parentId) || !isPurchaseTicketLabel(ticketLabel)) {
       stats.skippedNonPurchase += 1;
       continue;
     }
 
-    const result = await ticketClaimCommon(fakeInteraction, channel.id, {
-      skipQuiz: true,
-      bypassPermissionCheck: true,
-      publicClaimerLabel: `<@${ownerId}>`,
-    });
+    const synced = await syncPurchaseTicketSellerVisibility(
+      guild,
+      channel,
+      ownerId,
+      hideStaff,
+    ).catch(() => false);
 
-    if (result && result.ok) {
-      stats.claimedCount += 1;
-      stats.claimedChannels.push(`<#${channel.id}>`);
-      continue;
-    }
-
-    const reason = result?.reason || "error";
-    if (reason === "already-claimed") {
-      stats.skippedClaimed += 1;
-    } else if (reason === "locked") {
-      stats.skippedLocked += 1;
-    } else if (reason === "channel-not-found") {
-      stats.staleRemoved += 1;
+    if (synced) {
+      stats.changedCount += 1;
+      stats.changedChannels.push(`<#${channel.id}>`);
     } else {
       stats.errorCount += 1;
     }
@@ -5544,25 +5917,22 @@ function formatAutoPrzejmijSummary(stats, statusLine) {
     return lines.join("\n");
   }
 
-  lines.push(`> \`✅\` × Przejete tickety zakupowe: **${stats.claimedCount}**.`);
+  lines.push(`> \`✅\` × Tickety zakupowe ${stats.mode}: **${stats.changedCount}**.`);
   lines.push(`> \`⏭️\` × Pominiete nie-zakupowe: **${stats.skippedNonPurchase}**.`);
-  lines.push(`> \`⏭️\` × Pominiete (juz przejete): **${stats.skippedClaimed}**.`);
-  lines.push(`> \`⏭️\` × Pominiete (zablokowane): **${stats.skippedLocked}**.`);
-  lines.push(`> \`⏭️\` × Pominiete (zrealizowane): **${stats.skippedArchived}**.`);
 
   if (stats.staleRemoved > 0) {
     lines.push(`> \`🧹\` × Usuniete nieaktualne wpisy: **${stats.staleRemoved}**.`);
   }
   if (stats.errorCount > 0) {
-    lines.push(`> \`⚠️\` × Bledy podczas przejmowania: **${stats.errorCount}**.`);
+    lines.push(`> \`⚠️\` × Bledy podczas zmiany widocznosci: **${stats.errorCount}**.`);
   }
-  if (stats.claimedChannels.length > 0) {
-    const preview = stats.claimedChannels.slice(0, 10).join(", ");
+  if (stats.changedChannels.length > 0) {
+    const preview = stats.changedChannels.slice(0, 10).join(", ");
     const more =
-      stats.claimedChannels.length > 10
-        ? ` (+${stats.claimedChannels.length - 10} wiecej)`
+      stats.changedChannels.length > 10
+        ? ` (+${stats.changedChannels.length - 10} wiecej)`
         : "";
-    lines.push(`> \`📌\` × Przejete kanaly: ${preview}${more}`);
+    lines.push(`> \`📌\` × Zmienione kanaly: ${preview}${more}`);
   }
   return lines.join("\n");
 }
@@ -5587,7 +5957,7 @@ async function maybeAutoPrzejmijNewTicket(guild, channelId) {
   }
 
   await runAutoPrzejmijSweep(guild, cfg.ownerId, ownerName, channelId).catch(
-    (err) => console.error("[autoprzejmij] Auto-claim nowego ticketa nieudany:", err),
+    (err) => console.error("[autoprzejmij] Zmiana widocznosci nowego ticketa nieudana:", err),
   );
 }
 
@@ -5613,10 +5983,23 @@ async function handleAutoPrzejmijCommand(interaction) {
   const guildId = guild.id;
 
   if (modeSel === "wylacz") {
+    const ownerName =
+      interaction.member?.displayName ||
+      interaction.user.globalName ||
+      interaction.user.username;
     autoPrzejmijSettings.delete(guildId);
     scheduleSavePersistentState();
+    const stats = await runAutoPrzejmijSweep(
+      guild,
+      interaction.user.id,
+      ownerName,
+      null,
+    );
     await interaction.reply({
-      content: "> `✅` × Autoprzejmowanie zostalo **wylaczone**.",
+      content: formatAutoPrzejmijSummary(
+        stats,
+        "> `✅` × Przywróciłem normalną widoczność ticketów zakupowych dla sprzedawców.",
+      ),
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -5649,7 +6032,7 @@ async function handleAutoPrzejmijCommand(interaction) {
 
   const modal = new ModalBuilder()
     .setCustomId(modalId)
-    .setTitle("Weryfikacja autoprzejmowania");
+    .setTitle("Weryfikacja trybu ticketów");
   const input = new TextInputBuilder()
     .setCustomId("autoprzejmij_answer")
     .setLabel(pick.q)
@@ -6632,9 +7015,9 @@ async function handleTicketCommand(interaction) {
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
-        label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
+        label: "ᴏᴅʙɪᴇʀᴢ ɴᴀɢʀᴏᴅᴇ",
         value: "odbior",
-        description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
+        description: "Kliknij, aby odebrać nagrodę, którą zdobyłeś!",
         emoji: { id: "1480590229697069210", name: "nagroda" },
       },
       {
@@ -6775,8 +7158,8 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
   },
   {
     value: "odbior",
-    label: "Nagroda za zaproszenia",
-    description: "Otwiera formularz odbioru nagrody",
+    label: "Odbierz nagrodę",
+    description: "Otwiera odbiór nagrody",
     emoji: "🎁",
   },
   {
@@ -7997,9 +8380,9 @@ const PANEL_CATEGORY_OPTIONS = [
     emoji: { id: "1480590181944791122", name: "autorynek" },
   },
   {
-    label: "ɴᴀɢʀᴏᴅᴀ ᴢᴀ ᴢᴀᴘʀᴏsᴢᴇɴɪᴀ",
+    label: "ᴏᴅʙɪᴇʀᴢ ɴᴀɢʀᴏᴅᴇ",
     value: "odbior",
-    description: "Kliknij, aby odebrać nagrodę za zaproszenia!",
+    description: "Kliknij, aby odebrać nagrodę, którą zdobyłeś!",
     emoji: { id: "1480590229697069210", name: "nagroda" },
   },
   {
@@ -8340,6 +8723,7 @@ async function handleCloseTicketCommand(interaction) {
     pendingTicketClose.delete(chId);
     // remove ticketOwners entry immediately
     const ticketMeta = ticketOwners.get(chId) || null;
+    await commitRewardTicketClaim(chId).catch(() => null);
     ticketOwners.delete(chId);
     scheduleSavePersistentState();
 
@@ -8615,6 +8999,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         ).catch((e) => console.error("archiveTicketOnClose error (reason):", e));
 
         await channel.delete(`Ticket zamknięty przez właściciela z powodem: ${powod}`);
+        await commitRewardTicketClaim(channel.id).catch(() => null);
         ticketOwners.delete(channel.id);
         pendingTicketClose.delete(channel.id);
         
@@ -9612,21 +9997,262 @@ async function showSprzedazModal(interaction) {
   await interaction.showModal(modal);
 }
 
+async function findExistingOpenTicketForUser(guild, userId) {
+  for (const [channelId, ticketData] of ticketOwners.entries()) {
+    if (ticketData?.userId !== userId) continue;
+    const existingChannel = await guild.channels.fetch(channelId).catch(() => null);
+    if (existingChannel) {
+      return channelId;
+    }
+    ticketOwners.delete(channelId);
+    rewardTicketClaims.delete(channelId);
+    scheduleSavePersistentState();
+  }
+  return null;
+}
+
+function buildRewardClaimSummary(availability) {
+  const rewardLines = [];
+
+  if (availability.inviteMilestones.length) {
+    for (const milestone of availability.inviteMilestones) {
+      rewardLines.push(
+        `> <a:arrowwhite:1469100658606211233> × **Zaproszenia:** \`${milestone.label}\` za próg \`${milestone.threshold}\` zaproszeń`,
+      );
+    }
+  }
+
+  if (availability.freeKasaCashToClaim > 0) {
+    rewardLines.push(
+      `> <a:arrowwhite:1469100658606211233> × **FREE KASA do odebrania teraz:** \`${formatRewardCashAmount(availability.freeKasaCashToClaim)}\``,
+    );
+  }
+
+  if (availability.freeKasaSwordCount > 0) {
+    rewardLines.push(
+      `> <a:arrowwhite:1469100658606211233> × **Przedmioty z FREE KASA:** \`${availability.freeKasaSwordCount}x Anarchiczny miecz\``,
+    );
+  }
+
+  const historyLines = buildFreeKasaHistoryLines(availability.userId, 6).map(
+    (line) => `> ${line}`,
+  );
+
+  const infoLines = [];
+  if (availability.freeKasaCashToClaim > 0 || availability.freeKasaSwordCount > 0) {
+    infoLines.push(
+      "> <a:arrowwhite:1469100658606211233> × **Wyślij screeny wiadomości z FREE KASA potwierdzające te wygrane.**",
+    );
+  }
+
+  return [
+    ...rewardLines,
+    "",
+    "### ・ `📚` × Historia FREE KASA:",
+    ...historyLines,
+    "",
+    ...infoLines,
+  ]
+    .filter((line) => line !== null && line !== undefined)
+    .join("\n");
+}
+
+async function openRewardClaimTicket(interaction) {
+  const guild = interaction.guild;
+  const user = interaction.user;
+  const categories = ticketCategories.get(guild.id) || {};
+
+  const existingTicketId = await findExistingOpenTicketForUser(guild, user.id);
+  if (existingTicketId) {
+    await interaction.reply({
+      content:
+        `> \`❌\` × **Masz już otwarty** ticket: <#${existingTicketId}>\n` +
+        "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const availability = getRewardClaimAvailability(guild.id, user.id);
+  availability.userId = user.id;
+
+  if (!availability.hasAnyClaim) {
+    const missingInviteLine = availability.nextInviteMilestone
+      ? `> \`📨\` × Do kolejnej nagrody z zaproszeń brakuje Ci \`${Math.max(
+          0,
+          availability.nextInviteMilestone.threshold - availability.displayedInvites,
+        )}\` zaproszeń.`
+      : "> `📨` × Wszystkie aktualne nagrody z zaproszeń masz już odebrane.";
+
+    await interaction.reply({
+      content:
+        "> `❌` × Nie masz jeszcze nic do odebrania.\n" +
+        `${missingInviteLine}\n` +
+        `> \`🎁\` × Jeśli wygrałeś nagrodę w FREE KASA, wpisz kod w formularzu tej kategorii.\n` +
+        `> \`📨\` × Nagrody z zaproszeń odbierzesz tutaj automatycznie po osiągnięciu progu.`,
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const ticketType = "odbior-nagrody";
+  const ticketTypeLabel = "NAGRODA";
+  const formInfo = buildRewardClaimSummary(availability);
+  let parentToUse = REWARDS_CATEGORY_ID || categories["odbior-nagrody"] || null;
+  if (!parentToUse) {
+    const foundCat = guild.channels.cache.find(
+      (c) =>
+        c.type === ChannelType.GuildCategory &&
+        c.name &&
+        c.name.toLowerCase().includes("odbior"),
+    );
+    if (foundCat) parentToUse = foundCat.id;
+  }
+
+  const createOptions = {
+    name: `ticket-${user.username}`,
+    type: ChannelType.GuildText,
+    permissionOverwrites: [
+      {
+        id: guild.id,
+        deny: [PermissionsBitField.Flags.ViewChannel],
+      },
+      {
+        id: user.id,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      },
+    ],
+  };
+  if (parentToUse) createOptions.parent = parentToUse;
+
+  const channel = await guild.channels.create(createOptions);
+
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+        `### ・ \`👤\` × Informacje o kliencie:\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
+        `### ・ \`📋\` × Informacje z formularza:\n` +
+        `${formInfo}`,
+    )
+    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
+    .setTimestamp();
+
+  const closeButton = new ButtonBuilder()
+    .setCustomId(`ticket_close_${channel.id}`)
+    .setLabel("Zamknij")
+    .setStyle(ButtonStyle.Secondary);
+  const settingsButton = new ButtonBuilder()
+    .setCustomId(`ticket_settings_${channel.id}`)
+    .setLabel("Ustawienia")
+    .setStyle(ButtonStyle.Secondary);
+  const claimButton = new ButtonBuilder()
+    .setCustomId(`ticket_claim_${channel.id}`)
+    .setLabel("Przejmij")
+    .setStyle(ButtonStyle.Secondary);
+  const unclaimButton = new ButtonBuilder()
+    .setCustomId(`ticket_unclaim_${channel.id}`)
+    .setLabel("Odprzejmij")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(true);
+
+  const buttonRow = new ActionRowBuilder().addComponents(
+    closeButton,
+    settingsButton,
+    claimButton,
+    unclaimButton,
+  );
+
+  const sentMsg = await channel.send({
+    content: `@everyone`,
+    embeds: [embed],
+    components: [buttonRow],
+  });
+
+  ticketOwners.set(channel.id, {
+    claimedBy: null,
+    userId: user.id,
+    ticketMessageId: sentMsg.id,
+    locked: false,
+    ticketTypeLabel,
+    formInfo,
+    openedAt: Date.now(),
+  });
+
+  rewardTicketClaims.set(channel.id, {
+    guildId: guild.id,
+    userId: user.id,
+    inviteMilestones: availability.inviteMilestones.map((milestone) => milestone.threshold),
+    freeKasaCashToClaim: availability.freeKasaCashToClaim,
+    freeKasaSwordCount: availability.freeKasaSwordCount,
+    createdAt: Date.now(),
+  });
+  scheduleSavePersistentState(true);
+
+  await logTicketCreation(guild, channel, {
+    openerId: user.id,
+    ticketTypeLabel,
+    formInfo,
+    ticketMessageId: sentMsg.id,
+  });
+
+  await interaction.reply({
+    content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
+async function commitRewardTicketClaim(channelId) {
+  const claimData = rewardTicketClaims.get(channelId);
+  if (!claimData) return;
+
+  try {
+    if (claimData.guildId && claimData.userId && Array.isArray(claimData.inviteMilestones)) {
+      const claimedLevels = getClaimedInviteRewardLevels(claimData.guildId, claimData.userId);
+      for (const milestone of claimData.inviteMilestones) {
+        claimedLevels.add(String(milestone));
+      }
+    }
+
+    if (claimData.userId) {
+      const state = getFreeKasaRewardProgress(claimData.userId);
+      state.cashBalance = Math.max(
+        0,
+        Number(state.cashBalance || 0) - Number(claimData.freeKasaCashToClaim || 0),
+      );
+      state.pendingSwords = Math.max(
+        0,
+        Number(state.pendingSwords || 0) - Number(claimData.freeKasaSwordCount || 0),
+      );
+      freeKasaRewardProgress.set(claimData.userId, state);
+    }
+  } finally {
+    rewardTicketClaims.delete(channelId);
+    scheduleSavePersistentState(true);
+  }
+}
+
 async function showOdbiorModal(interaction) {
   const modal = new ModalBuilder()
     .setCustomId("modal_odbior")
-    .setTitle("Nagroda za zaproszenia");
+    .setTitle("Odbierz nagrodę");
 
   const codeInput = new TextInputBuilder()
     .setCustomId("reward_code")
-    .setLabel("Wpisz kod aby odberać nagrode!")
+    .setLabel("Kod nagrody (opcjonalnie)")
     .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Tutaj wpisz kod który otrzymałeś na pv")
-    .setRequired(true)
-    .setMaxLength(64);
+    .setRequired(false)
+    .setMaxLength(64)
+    .setPlaceholder("Zostaw puste, jeśli odbierasz nagrodę za zaproszenia");
 
   modal.addComponents(new ActionRowBuilder().addComponents(codeInput));
-
   await interaction.showModal(modal);
 }
 
@@ -9999,7 +10625,7 @@ async function handleModalSubmit(interaction) {
     await interaction.reply({
       content: formatAutoPrzejmijSummary(
         stats,
-        "> `✅` × Autoprzejmowanie zostalo **wlaczone**.",
+        "> `✅` × Od teraz tylko właściciel widzi tickety zakupowe.",
       ),
       flags: [MessageFlags.Ephemeral],
     }).catch(() => null);
@@ -10338,7 +10964,7 @@ async function handleModalSubmit(interaction) {
     ) {
       await interaction.reply({
         content:
-          "❌ Ten kod odbierzesz tylko w kategorii 'Nagroda za zaproszenia' w TicketPanel.",
+          "❌ Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -10805,8 +11431,6 @@ async function handleModalSubmit(interaction) {
       ticketTypeLabel = "ZAKUP";
       ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      forceOwnerOnlyVisibility = true;
-
       const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
 
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
@@ -10833,8 +11457,6 @@ async function handleModalSubmit(interaction) {
       ticketTypeLabel = "ZAKUP AUTO RYNKU";
       ticketTopic = "Zakup AutoRynku";
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      forceOwnerOnlyVisibility = true;
-
       const paymentMethod = getShopPaymentLabel(paymentMethodRaw);
 
       formInfo = `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\``;
@@ -10898,10 +11520,7 @@ async function handleModalSubmit(interaction) {
       const enteredCode = enteredCodeRaw.trim().toUpperCase();
 
       if (!enteredCode) {
-        await interaction.reply({
-          content: "> `❌` × **Nie podałeś** kodu.",
-          flags: [MessageFlags.Ephemeral],
-        });
+        await openRewardClaimTicket(interaction);
         return;
       }
 
@@ -10970,10 +11589,7 @@ async function handleModalSubmit(interaction) {
       const user = interaction.user;
 
       const categoryId = REWARDS_CATEGORY_ID;
-      const ticketTypeLabel =
-        codeData.type === "free_kasa_reward"
-          ? "FREE KASA"
-          : "NAGRODA ZA ZAPROSZENIA";
+      const ticketTypeLabel = "NAGRODA";
 
       const expiryTs = codeData.expiresAt
         ? Math.floor(codeData.expiresAt / 1000)
@@ -11050,11 +11666,11 @@ async function handleModalSubmit(interaction) {
         const claimButton = new ButtonBuilder()
           .setCustomId(`ticket_claim_${channel.id}`)
           .setLabel("Przejmij")
-          .setStyle(ticketTypeLabel === "NAGRODA ZA ZAPROSZENIA" ? ButtonStyle.Secondary : ButtonStyle.Primary);
+          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
         const unclaimButton = new ButtonBuilder()
           .setCustomId(`ticket_unclaim_${channel.id}`)
           .setLabel("Odprzejmij")
-          .setStyle(ticketTypeLabel === "NAGRODA ZA ZAPROSZENIA" ? ButtonStyle.Secondary : ButtonStyle.Danger)
+          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
           .setDisabled(true);
 
         const buttonRow = new ActionRowBuilder().addComponents(
@@ -11303,12 +11919,12 @@ async function handleModalSubmit(interaction) {
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("Przejmij")
-      .setStyle(ticketTypeLabel === "NAGRODA ZA ZAPROSZENIA" ? ButtonStyle.Secondary : ButtonStyle.Secondary);
+          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary);
 
     const unclaimButton = new ButtonBuilder()
       .setCustomId(`ticket_unclaim_${channel.id}`)
       .setLabel("Odprzejmij")
-      .setStyle(ticketTypeLabel === "NAGRODA ZA ZAPROSZENIA" ? ButtonStyle.Secondary : ButtonStyle.Secondary)
+          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary)
       .setDisabled(true);
 
     buttons.push(claimButton, unclaimButton);
@@ -11829,6 +12445,7 @@ client.on(Events.MessageCreate, async (message) => {
                   ).catch((e) => console.error("archiveTicketOnClose error (+rep):", e));
                   await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
                   pendingTicketClose.delete(ticketChannelId);
+                  await commitRewardTicketClaim(ticketChannelId).catch(() => null);
                   ticketOwners.delete(ticketChannelId);
                   console.log(`Ticket ${ticketChannelId} został zamknięty po +rep`);
                 } catch (closeErr) {
@@ -12815,65 +13432,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const toGive = Math.max(0, eligibleRewards - alreadyGiven);
 
       if (toGive > 0) {
-        rewardsGivenMap.set(inviterId, alreadyGiven + toGive);
-        inviteRewardsGiven.set(member.guild.id, rewardsGivenMap);
-        scheduleSavePersistentState(true); // Natychmiastowy zapis
-
-        // Przygotuj kanał zaproszeń
-        const zapCh =
-          member.guild.channels.cache.find(
-            (c) =>
-              c.type === ChannelType.GuildText &&
-              (c.name === "📨-×┃zaproszenia" ||
-                c.name.toLowerCase().includes("zaproszen") ||
-                c.name.toLowerCase().includes("zaproszenia")),
-          ) || null;
-
-        // Dla każdej nagrody
-        for (let i = 0; i < toGive; i++) {
-          const rewardCode = generateCode();
-          const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 godziny
-          const expiryTs = Math.floor(expiresAt / 1000);
-
-          // Zapisz kod
-          activeCodes.set(rewardCode, {
-            oderId: inviterId,
-            rewardAmount: 70000,
-            rewardText: "70k$",
-            type: "invite_cash",
-            created: Date.now(),
-            expiresAt,
-          });
-          scheduleSavePersistentState();
-
-          // Wyślij DM
-          try {
-            const user = await client.users.fetch(inviterId);
-            const dmEmbed = new EmbedBuilder()
-              .setColor(0xd4af37)
-              .setDescription(
-                "```\n" +
-                "🎀 New Shop × NAGRODA\n" +
-                "```\n" +
-                `\`👤\` × **Użytkownik:** ${user}\n` +
-                `\`🎉\` × **Gratulacje! Otrzymałeś nagrodę za zaproszenia!**\n` +
-                `\`💸\` × **Kod nagrody:**\n` +
-                "```\n" +
-                rewardCode +
-                "\n```\n" +
-                `\`💰\` × **Wartość:** \`70k\$\`\n` +
-                `\`🕑\` × **Kod wygaśnie za:** <t:${expiryTs}:R>\n\n` +
-                `\`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
-                `\`Odbiór nagrody\` i w polu wpisz otrzymany kod.`
-              )
-              .setTimestamp();
-
-            await user.send({ embeds: [dmEmbed] });
-          } catch (e) {
-            console.error("Błąd wysyłania DM z nagrodą:", e);
-            // Fallback: wyślij na kanał zaproszeń
-          }
-        }
+        // Nagrody za zaproszenia są teraz odbierane bez kodów,
+        // dopiero przy wejściu w kategorię "Odbierz nagrodę".
       }
     }
 
@@ -13177,12 +13737,13 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   // Zaproszenia wyświetlane (z bonusem)
   const displayedInvites = validInvites + bonus;
   const inviteWord = getInviteWord(displayedInvites);
-
-  // Brakujące do nagrody
-  let missingToReward = INVITE_REWARD_THRESHOLD - (displayedInvites % INVITE_REWARD_THRESHOLD);
-  if (displayedInvites !== 0 && displayedInvites % INVITE_REWARD_THRESHOLD === 0) {
-    missingToReward = 0;
-  }
+  const availableInviteRewards = getAvailableInviteRewardMilestones(guildId, userId);
+  const nextInviteReward = getNextInviteRewardMilestone(guildId, userId);
+  const rewardStatusLine = availableInviteRewards.length
+    ? `> \`🎁\` × **Masz do odbioru:** \`${availableInviteRewards.map((reward) => reward.label).join(", ")}\`\n`
+    : nextInviteReward
+      ? `> \`💸\` × **Brakuje Ci do kolejnej nagrody:** \`${Math.max(0, nextInviteReward.threshold - displayedInvites)}\`\n`
+      : "> `🎁` × **Wszystkie obecne nagrody z zaproszeń masz już odebrane.**\n";
 
   // Embed
   const embed = new EmbedBuilder()
@@ -13192,7 +13753,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
           "📩 New Shop × ZAPROSZENIA\n" +
           "```\n" +
       `> \`👤\` × <@${userId}> **posiada:** \`${displayedInvites}\` **${inviteWord}**!\n` +
-      `> \`💸\` × **Brakuje ci zaproszeń do nagrody:** \`${missingToReward}\`\n\n` +
+      `${rewardStatusLine}\n` +
       `> \`👥\` × **Prawdziwe osoby które dołączyły:** \`${displayedInvites}\`\n` +
       `> \`🚶\` × **Osoby które opuściły serwer:** \`${left}\`\n` +
       `> \`⚠️\` × **Niespełniające kryteriów (< konto 2 mies.):** \`${fake}\`\n` +
@@ -13363,113 +13924,8 @@ async function handleZaprosieniaStatsCommand(interaction) {
     return;
   }
 
-  // BEFORE saving: jeśli edytujemy "prawdziwe", sprawdź czy osiągnięto próg i przyznaj nagrody
-  if (category === "prawdziwe") {
-    // Inicjalizacja mapy reward levels dla tego guilda
-    if (!inviteRewardLevels.has(guildId)) {
-      inviteRewardLevels.set(guildId, new Map());
-    }
-    const rewardLevelsMap = inviteRewardLevels.get(guildId);
-    
-    // Inicjalizacja setu dla tego użytkownika
-    if (!rewardLevelsMap.has(user.id)) {
-      rewardLevelsMap.set(user.id, new Set());
-    }
-    const userRewardLevels = rewardLevelsMap.get(user.id);
-    
-    // Sprawdź jakie progi zostały osiągnięte (5, 10, 15, 20...)
-    const achievedLevels = [];
-    for (let level = 5; level <= newVal; level += 5) {
-      if (newVal >= level && !userRewardLevels.has(level.toString())) {
-        achievedLevels.push(level);
-      }
-    }
-    
-    // Przyznaj nagrody za nowe progi
-    if (achievedLevels.length > 0) {
-      const rMap = inviteRewards.get(guildId) || new Map();
-      inviteRewards.set(guildId, rMap);
-
-      const generatedCodes = [];
-
-      for (const level of achievedLevels) {
-        const rewardCode = generateCode();
-        const CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
-        const expiresAt = Date.now() + CODE_EXPIRES_MS;
-
-        activeCodes.set(rewardCode, {
-          oderId: user.id,
-          discount: 0,
-          expiresAt,
-          used: false,
-          reward: INVITE_REWARD_TEXT,
-          type: "invite_reward",
-        });
-
-        // Zapisz do Supabase
-        await db.saveActiveCode(rewardCode, {
-          oderId: user.id,
-          discount: 0,
-          expiresAt,
-          used: false,
-          reward: INVITE_REWARD_TEXT,
-          type: "invite_reward"
-        });
-
-        generatedCodes.push(rewardCode);
-        // Oznacz ten próg jako odebrany
-        userRewardLevels.add(level.toString());
-        console.log(`[rewards] Użytkownik ${user.id} otrzymał nagrodę za próg ${level} zaproszeń`);
-      }
-
-      // Zaktualizuj liczbę przyznanych nagród (stary system dla kompatybilności)
-      const rewardsGivenMap = inviteRewardsGiven.get(guildId) || new Map();
-      const alreadyGiven = rewardsGivenMap.get(user.id) || 0;
-      rewardsGivenMap.set(user.id, alreadyGiven + achievedLevels.length);
-      inviteRewardsGiven.set(guildId, rewardsGivenMap);
-
-      // Przygotuj kanał zaproszeń
-      const zapCh =
-        interaction.guild.channels.cache.find(
-          (c) =>
-            c.type === ChannelType.GuildText &&
-            (c.name === "📨-×┃zaproszenia" ||
-              c.name.toLowerCase().includes("zaproszen") ||
-              c.name.toLowerCase().includes("zaproszenia")),
-        ) || null;
-
-      // Wyślij DM z kodami
-      try {
-        const u = await client.users.fetch(user.id);
-        const codesList = generatedCodes.join("\n");
-        const expiresAtSeconds = Math.floor(
-          (Date.now() + 24 * 60 * 60 * 1000) / 1000,
-        );
-
-        const dmEmbed = new EmbedBuilder()
-          .setColor(0xd4af37)
-          .setTitle("\`🔑\` Twój kod za zaproszenia")
-          .setDescription(
-            "```\n" +
-            codesList +
-            "\n```\n" +
-            `> \`🕑\` × **Kod wygaśnie za:** <t:${expiresAtSeconds}:R> \n\n` +
-            `> \`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
-            `> \`Odbiór nagrody\` i w polu wpisz otrzymany kod.`,
-          )
-          .setTimestamp();
-
-        await u.send({ embeds: [dmEmbed] }).catch(async () => {
-          // Jeśli DM się nie udało, nie wysyłamy kodów na kanał
-          console.error("Nie udało się wysłać DM z nagrodą do użytkownika", user.id);
-        });
-
-        // Powiadomienie publiczne
-      } catch (e) {
-        console.error("Błąd wysyłania DM z nagrodą:", e);
-      }
-    }
-  }
+  // Nagrody za zaproszenia są teraz odbierane bez kodów,
+  // dopiero przy wejściu w kategorię "Odbierz nagrodę".
 
   // finally set the (possibly adjusted) value
   targetMap.set(user.id, newVal);
@@ -14639,7 +15095,7 @@ function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
   if (!ticketChannel?.guild) return "brak";
 
   if (ticketChannel.parentId && String(ticketChannel.parentId) === String(REWARDS_CATEGORY_ID)) {
-    return "NAGRODA ZA ZAPROSZENIA";
+    return "NAGRODA";
   }
 
   const cats = ticketCategories.get(ticketChannel.guild.id) || {};
@@ -14655,7 +15111,7 @@ function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
   }
   if (ticketChannel.parentId === cats["sprzedaz"]) return "SPRZEDAŻ";
   if (ticketChannel.parentId === cats["inne"]) return "PYTANIE / POMOC";
-  if (ticketChannel.parentId === cats["odbior-nagrody"]) return "NAGRODA ZA ZAPROSZENIA";
+  if (ticketChannel.parentId === cats["odbior-nagrody"]) return "NAGRODA";
 
   return "TICKET";
 }
