@@ -11495,6 +11495,7 @@ async function handleModalSubmit(interaction) {
       }
 
       ticketTypeLabel = "ZAKUP";
+      forceOwnerOnlyVisibility = true;
       ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
@@ -11521,6 +11522,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["zakup-20-50"];
       ticketType = "zakup-20-50";
       ticketTypeLabel = "ZAKUP AUTO RYNKU";
+      forceOwnerOnlyVisibility = true;
       ticketTopic = "Zakup AutoRynku";
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       const paymentMethod = getShopPaymentLabel(paymentMethodRaw);
