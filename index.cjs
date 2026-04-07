@@ -14233,6 +14233,7 @@ async function handleZaprosieniaStatsCommand(interaction) {
       prettyName = category;
   }
 
+  const previousDisplayedInvites = getInviteDisplayCount(guildId, user.id);
   const prev = targetMap.get(user.id) || 0;
   let newVal = prev;
 
@@ -14258,10 +14259,49 @@ async function handleZaprosieniaStatsCommand(interaction) {
 
   // finally set the (possibly adjusted) value
   targetMap.set(user.id, newVal);
-  scheduleSavePersistentState();
+  scheduleSavePersistentState(true);
+
+  const newDisplayedInvites = getInviteDisplayCount(guildId, user.id);
+  const crossedInviteRewardThresholdByEdit = INVITE_REWARD_MILESTONES.some(
+    (milestone) =>
+      previousDisplayedInvites < milestone.threshold &&
+      newDisplayedInvites >= milestone.threshold,
+  );
+
+  let pendingInviteRewardDelivery = {
+    deliveredCount: 0,
+    deliveredLabels: [],
+    blocked: false,
+  };
+
+  if (
+    ["prawdziwe", "dodatkowe"].includes(category) &&
+    newDisplayedInvites > previousDisplayedInvites &&
+    newDisplayedInvites >= INVITE_REWARD_THRESHOLD
+  ) {
+    pendingInviteRewardDelivery = await deliverPendingInviteRewardCodes(
+      interaction.guild,
+      user.id,
+    ).catch((error) => {
+      console.error("[invites] Błąd wysyłania kodu po /zaproszeniastats edytuj:", error);
+      return { deliveredCount: 0, deliveredLabels: [], blocked: false };
+    });
+
+    if (crossedInviteRewardThresholdByEdit) {
+      queueInviteRewardDeliveryRetryBurst(guildId, user.id);
+    }
+  }
 
   await interaction.reply({
-    content: `✅ Zaktualizowano **${prettyName}** dla <@${user.id}>: \`${prev}\` → \`${newVal}\`.`,
+    content:
+      `✅ Zaktualizowano **${prettyName}** dla <@${user.id}>: \`${prev}\` → \`${newVal}\`.` +
+      (
+        pendingInviteRewardDelivery.deliveredCount > 0
+          ? `\n> \`📩\` × Wysłałem na PV kod za nagrodę: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
+          : pendingInviteRewardDelivery.blocked
+            ? "\n> `❌` × Nie udało się wysłać kodu na PV. Niech użytkownik włączy wiadomości prywatne."
+            : ""
+      ),
     flags: [MessageFlags.Ephemeral],
   });
 }
