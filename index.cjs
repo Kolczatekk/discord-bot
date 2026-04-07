@@ -1007,6 +1007,66 @@ async function sendInviteRewardCodeDm(user, milestone, rewardCodeData) {
   await user.send({ embeds: [dmEmbed] });
 }
 
+async function deliverPendingInviteRewardCodes(guild, userId) {
+  if (!guild || !userId) {
+    return { deliveredCount: 0, deliveredLabels: [], blocked: false };
+  }
+
+  if (!inviteRewardsGiven.has(guild.id)) {
+    inviteRewardsGiven.set(guild.id, new Map());
+  }
+
+  const rewardsGivenMap = inviteRewardsGiven.get(guild.id);
+  const displayedInvites = getInviteDisplayCount(guild.id, userId);
+  const eligibleMilestones = INVITE_REWARD_MILESTONES.filter(
+    (milestone) => displayedInvites >= milestone.threshold,
+  );
+  const alreadyGiven = Math.max(0, Number(rewardsGivenMap.get(userId) || 0));
+  const milestonesToGive = eligibleMilestones.slice(alreadyGiven);
+
+  if (!milestonesToGive.length) {
+    return { deliveredCount: 0, deliveredLabels: [], blocked: false };
+  }
+
+  const targetUser = await client.users.fetch(userId).catch(() => null);
+  if (!targetUser) {
+    console.warn(`[invites] Nie udało się pobrać użytkownika ${userId} do wysłania kodu nagrody.`);
+    return { deliveredCount: 0, deliveredLabels: [], blocked: true };
+  }
+
+  let deliveredCount = 0;
+  const deliveredLabels = [];
+  let blocked = false;
+
+  for (const milestone of milestonesToGive) {
+    let rewardCodeData = null;
+    try {
+      rewardCodeData = await createInviteRewardCode(userId, milestone);
+      await sendInviteRewardCodeDm(targetUser, milestone, rewardCodeData);
+      deliveredCount += 1;
+      deliveredLabels.push(milestone.label);
+    } catch (error) {
+      blocked = true;
+      if (rewardCodeData?.code) {
+        activeCodes.delete(rewardCodeData.code);
+        await db.deleteActiveCode(rewardCodeData.code).catch(() => null);
+      }
+      console.error(
+        `[invites] Nie udało się wysłać kodu nagrody za próg ${milestone.threshold} do ${userId}:`,
+        error,
+      );
+    }
+  }
+
+  if (deliveredCount > 0) {
+    rewardsGivenMap.set(userId, alreadyGiven + deliveredCount);
+    inviteRewardsGiven.set(guild.id, rewardsGivenMap);
+    scheduleSavePersistentState(true);
+  }
+
+  return { deliveredCount, deliveredLabels, blocked };
+}
+
 function getInviteDisplayCount(guildId, userId) {
   const valid = inviteCounts.get(guildId)?.get(userId) || 0;
   const bonus = inviteBonusInvites.get(guildId)?.get(userId) || 0;
@@ -2246,6 +2306,51 @@ function generateCode() {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
+}
+
+function normalizeCodeInput(input) {
+  return String(input || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+async function getActiveCodeData(codeInput) {
+  const normalizedCode = normalizeCodeInput(codeInput);
+  if (!normalizedCode) return { code: "", codeData: null };
+
+  const cached = activeCodes.get(normalizedCode);
+  if (cached) {
+    return { code: normalizedCode, codeData: cached };
+  }
+
+  try {
+    const codes = await db.getActiveCodes();
+    const found = codes.find(
+      (entry) => String(entry?.code || "").toUpperCase() === normalizedCode,
+    );
+
+    if (!found) {
+      return { code: normalizedCode, codeData: null };
+    }
+
+    const hydrated = {
+      oderId: found.user_id,
+      discount: found.discount,
+      expiresAt: found.expires_at ? new Date(found.expires_at).getTime() : 0,
+      used: found.used,
+      reward: found.reward,
+      rewardAmount: found.reward_amount,
+      rewardText: found.reward_text,
+      type: found.type,
+    };
+
+    activeCodes.set(normalizedCode, hydrated);
+    return { code: normalizedCode, codeData: hydrated };
+  } catch (error) {
+    console.error("Błąd pobierania kodu z bazy:", error);
+    return { code: normalizedCode, codeData: null };
+  }
 }
 
 function getNextTicketNumber(guildId) {
@@ -4122,10 +4227,9 @@ async function handleModalSubmit(interaction) {
 
   // redeem code modal handling (used in tickets)
   if (interaction.customId.startsWith("modal_redeem_code_")) {
-    const enteredCode = interaction.fields
-      .getTextInputValue("discount_code")
-      .toUpperCase();
-    const codeData = activeCodes.get(enteredCode);
+    const { code: enteredCode, codeData } = await getActiveCodeData(
+      interaction.fields.getTextInputValue("discount_code"),
+    );
 
     if (!codeData) {
       await interaction.reply({
@@ -4388,7 +4492,8 @@ async function handleModalSubmit(interaction) {
     case "modal_odbior": {
       const enteredCodeRaw =
         interaction.fields.getTextInputValue("reward_code") || "";
-      const enteredCode = enteredCodeRaw.trim().toUpperCase();
+      const { code: enteredCode, codeData } =
+        await getActiveCodeData(enteredCodeRaw);
 
       if (!enteredCode) {
         await interaction.reply({
@@ -4397,8 +4502,6 @@ async function handleModalSubmit(interaction) {
         });
         return;
       }
-
-      const codeData = activeCodes.get(enteredCode);
 
       if (!codeData) {
         await interaction.reply({
@@ -11009,10 +11112,9 @@ async function handleModalSubmit(interaction) {
 
   // redeem code modal handling (used in tickets)
   if (interaction.customId.startsWith("modal_redeem_code_")) {
-    const enteredCode = interaction.fields
-      .getTextInputValue("discount_code")
-      .toUpperCase();
-    const codeData = activeCodes.get(enteredCode);
+    const { code: enteredCode, codeData } = await getActiveCodeData(
+      interaction.fields.getTextInputValue("discount_code"),
+    );
 
     if (!codeData) {
       await interaction.reply({
@@ -11586,7 +11688,8 @@ async function handleModalSubmit(interaction) {
     case "modal_odbior": {
       const enteredCodeRaw =
         interaction.fields.getTextInputValue("reward_code") || "";
-      const enteredCode = enteredCodeRaw.trim().toUpperCase();
+      const { code: enteredCode, codeData } =
+        await getActiveCodeData(enteredCodeRaw);
 
       if (!enteredCode) {
         await interaction.reply({
@@ -11595,8 +11698,6 @@ async function handleModalSubmit(interaction) {
         });
         return;
       }
-
-      const codeData = activeCodes.get(enteredCode);
 
       if (!codeData) {
         await interaction.reply({
@@ -13487,63 +13588,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
       }
 
       // --- Nagrody za zaproszenia ---
-      let rewardsGivenMap = inviteRewardsGiven.get(member.guild.id);
-      if (!rewardsGivenMap) {
-        rewardsGivenMap = new Map();
-        inviteRewardsGiven.set(member.guild.id, rewardsGivenMap);
-      }
-
-      const alreadyGiven = rewardsGivenMap.get(inviterId) || 0;
-      const currentCount = gMap.get(inviterId) || 0;
-
-      const eligibleMilestones = INVITE_REWARD_MILESTONES.filter(
-        (milestone) => currentCount >= milestone.threshold,
+      await deliverPendingInviteRewardCodes(member.guild, inviterId).catch((error) =>
+        console.error("[invites] Błąd wysyłania zaległych kodów za zaproszenia:", error),
       );
-      const milestonesToGive = eligibleMilestones.slice(alreadyGiven);
-
-      if (milestonesToGive.length > 0) {
-        const inviterUser = await client.users.fetch(inviterId).catch(() => null);
-
-        if (!inviterUser) {
-          console.warn(
-            `[invites] Nie udało się pobrać użytkownika ${inviterId} do wysłania kodu nagrody.`,
-          );
-        } else {
-          let deliveredCount = 0;
-
-          for (const milestone of milestonesToGive) {
-            let rewardCodeData = null;
-            try {
-              rewardCodeData = await createInviteRewardCode(
-                inviterId,
-                milestone,
-              );
-
-              await sendInviteRewardCodeDm(
-                inviterUser,
-                milestone,
-                rewardCodeData,
-              );
-              deliveredCount += 1;
-            } catch (error) {
-              if (rewardCodeData?.code) {
-                activeCodes.delete(rewardCodeData.code);
-                await db.deleteActiveCode(rewardCodeData.code).catch(() => null);
-              }
-              console.error(
-                `[invites] Nie udało się wysłać kodu nagrody za próg ${milestone.threshold} do ${inviterId}:`,
-                error,
-              );
-            }
-          }
-
-          if (deliveredCount > 0) {
-            rewardsGivenMap.set(inviterId, alreadyGiven + deliveredCount);
-            inviteRewardsGiven.set(member.guild.id, rewardsGivenMap);
-            scheduleSavePersistentState(true);
-          }
-        }
-      }
     }
 
     // Jeśli konto jest fake (< 4 mies.), dodajemy tylko do licznika fake
@@ -13843,6 +13890,14 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   const fake = fakeMap.get(userId) || 0;
   const bonus = bonusMap.get(userId) || 0;
 
+  const pendingInviteRewardDelivery = await deliverPendingInviteRewardCodes(
+    interaction.guild,
+    userId,
+  ).catch((error) => {
+    console.error("[invites] Błąd dosyłania kodu przy /sprawdz-zaproszenia:", error);
+    return { deliveredCount: 0, deliveredLabels: [], blocked: false };
+  });
+
   // Zaproszenia wyświetlane (z bonusem)
   const displayedInvites = validInvites + bonus;
   const inviteWord = getInviteWord(displayedInvites);
@@ -13904,7 +13959,12 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     }
 
     await interaction.editReply({
-      content: "> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane."
+      content:
+        pendingInviteRewardDelivery.deliveredCount > 0
+          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane.\n> \`📩\` × Wysłałem Ci na PV kod za nagrodę: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
+          : pendingInviteRewardDelivery.blocked
+            ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
+            : "> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane."
     });
 
   } catch (err) {
