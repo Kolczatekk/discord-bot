@@ -202,7 +202,7 @@ const FREE_KASA_REQUIRED_STATUS_ALIASES = [
 const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
-const FREE_KASA_REWARD_CODE_EXPIRES_MS = 90 * 24 * 60 * 60 * 1000;
+const FREE_KASA_REWARD_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
 const PURCHASE_CODE_USAGE_TEXT =
   "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i kliknij przycisk **Kod rabatowy**.";
 const REWARD_CODE_USAGE_TEXT =
@@ -388,7 +388,7 @@ client.on("inviteDelete", (invite) => {
 });
 // Invite rate-limit settings (zapobiega nadużyciom liczenia zaproszeń)
 const INVITER_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 godzina
-const INVITER_RATE_LIMIT_MAX = 10; // maksymalnie 10 zaproszeń w oknie (zmień wedle potrzeby)
+const INVITER_RATE_LIMIT_MAX = 999999; // praktycznie wyłączony limit, żeby nie ucinało zaproszeń przy większym ruchu
 // track how many people left per inviter (for /sprawdz-zaproszenia)
 const inviteLeaves = new Map(); // guildId -> Map<inviterId, leftCount>
 // -----------------------------------------------------
@@ -931,7 +931,7 @@ async function createTimedRewardCode({
   type,
   expiresMs = FREE_KASA_REWARD_CODE_EXPIRES_MS,
 }) {
-  const code = generateCode();
+  const code = normalizeCodeInput(generateCode());
   const expiresAt = Date.now() + expiresMs;
   const payload = {
     oderId: userId,
@@ -944,7 +944,7 @@ async function createTimedRewardCode({
   };
 
   activeCodes.set(code, payload);
-  await db.saveActiveCode(code, payload);
+  await persistActiveCodeAndVerify(code, payload);
   scheduleSavePersistentState(true);
 
   setTimeout(() => {
@@ -1079,6 +1079,12 @@ function queueInviteRewardDeliveryRetry(guildId, userId, delayMs = 5000) {
       console.error("[invites] Błąd retry wysyłki kodu za zaproszenia:", error);
     }
   }, delayMs);
+}
+
+function queueInviteRewardDeliveryRetryBurst(guildId, userId) {
+  [3000, 10000, 30000].forEach((delayMs) => {
+    queueInviteRewardDeliveryRetry(guildId, userId, delayMs);
+  });
 }
 
 function getInviteDisplayCount(guildId, userId) {
@@ -1874,6 +1880,22 @@ async function loadPersistentState() {
         }
       }
     }
+
+    if (botStateData.activeCodes && typeof botStateData.activeCodes === "object") {
+      for (const [storedCode, storedData] of Object.entries(botStateData.activeCodes)) {
+        if (!storedData || typeof storedData !== "object") continue;
+        const normalizedCode = normalizeCodeInput(storedCode);
+        if (!normalizedCode) continue;
+        activeCodes.set(normalizedCode, {
+          ...storedData,
+          expiresAt: Number(storedData.expiresAt || 0),
+          used: !!storedData.used,
+          rewardAmount: Number(storedData.rewardAmount || 0),
+        });
+      }
+      console.log(`[state] Wczytano activeCodes ze stanu: ${activeCodes.size} kodów`);
+    }
+
     if (
       botStateData.fourMonthBlockList &&
       typeof botStateData.fourMonthBlockList === "object"
@@ -2045,6 +2067,8 @@ async function loadPersistentState() {
     try {
       const codes = await db.getActiveCodes();
       codes.forEach(({ code, ...codeData }) => {
+        const normalizedCode = normalizeCodeInput(code);
+        if (!normalizedCode) return;
         // Konwertuj nazwy pól na format używany w bocie
         const botCodeData = {
           oderId: codeData.user_id,
@@ -2056,7 +2080,7 @@ async function loadPersistentState() {
           rewardText: codeData.reward_text,
           type: codeData.type
         };
-        activeCodes.set(code, botCodeData);
+        activeCodes.set(normalizedCode, botCodeData);
       });
       console.log(`[Supabase] Wczytano activeCodes: ${codes.length} kodów`);
     } catch (error) {
@@ -2346,10 +2370,16 @@ async function getActiveCodeData(codeInput) {
   }
 
   try {
-    const codes = await db.getActiveCodes();
-    const found = codes.find(
-      (entry) => normalizeCodeInput(entry?.code) === normalizedCode,
-    );
+    let found = null;
+    if (typeof db.getActiveCode === "function") {
+      found = await db.getActiveCode(normalizedCode);
+    }
+    if (!found) {
+      const codes = await db.getActiveCodes();
+      found = codes.find(
+        (entry) => normalizeCodeInput(entry?.code) === normalizedCode,
+      );
+    }
 
     if (!found) {
       return { code: normalizedCode, codeData: null };
@@ -2371,6 +2401,35 @@ async function getActiveCodeData(codeInput) {
   } catch (error) {
     console.error("Błąd pobierania kodu z bazy:", error);
     return { code: normalizedCode, codeData: null };
+  }
+}
+
+async function persistActiveCodeAndVerify(code, payload) {
+  const normalizedCode = normalizeCodeInput(code);
+  await db.saveActiveCode(normalizedCode, payload);
+
+  let verified = null;
+  if (typeof db.getActiveCode === "function") {
+    verified = await db.getActiveCode(normalizedCode).catch(() => null);
+  }
+
+  if (!verified) {
+    const codes = await db.getActiveCodes().catch(() => []);
+    verified = Array.isArray(codes)
+      ? codes.find((entry) => normalizeCodeInput(entry?.code) === normalizedCode)
+      : null;
+  }
+
+  if (!verified) {
+    await db.saveActiveCode(normalizedCode, payload);
+    verified =
+      (typeof db.getActiveCode === "function"
+        ? await db.getActiveCode(normalizedCode).catch(() => null)
+        : null) || verified;
+  }
+
+  if (!verified) {
+    console.warn(`[codes] Nie udało się zweryfikować zapisu kodu ${normalizedCode} w bazie.`);
   }
 }
 
@@ -13615,10 +13674,14 @@ client.on(Events.GuildMemberAdd, async (member) => {
       scheduleSavePersistentState();
 
       // Liczymy zaproszenia tylko jeśli nie jest właścicielem
+      let previousValidInvites = gMap.get(inviterId) || 0;
+      let currentValidInvites = previousValidInvites;
       if (countThisInvite && inviterId !== ownerId) {
         if (!isFakeAccount) {
           const prev = gMap.get(inviterId) || 0;
-          gMap.set(inviterId, prev + 1);
+          previousValidInvites = prev;
+          currentValidInvites = prev + 1;
+          gMap.set(inviterId, currentValidInvites);
           inviteCounts.set(member.guild.id, gMap);
           scheduleSavePersistentState(true); // Natychmiastowy zapis
         }
@@ -13628,8 +13691,16 @@ client.on(Events.GuildMemberAdd, async (member) => {
       await deliverPendingInviteRewardCodes(member.guild, inviterId).catch((error) =>
         console.error("[invites] Błąd wysyłania zaległych kodów za zaproszenia:", error),
       );
-      if ((gMap.get(inviterId) || 0) >= INVITE_REWARD_THRESHOLD) {
-        queueInviteRewardDeliveryRetry(member.guild.id, inviterId);
+      const crossedInviteRewardThreshold = INVITE_REWARD_MILESTONES.some(
+        (milestone) =>
+          previousValidInvites < milestone.threshold &&
+          currentValidInvites >= milestone.threshold,
+      );
+      if (
+        crossedInviteRewardThreshold ||
+        (countThisInvite && !isFakeAccount && currentValidInvites >= INVITE_REWARD_THRESHOLD)
+      ) {
+        queueInviteRewardDeliveryRetryBurst(member.guild.id, inviterId);
       }
     }
 
