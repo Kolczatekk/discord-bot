@@ -1139,8 +1139,6 @@ function buildFreeKasaInstructionPayload() {
         `\`🎮\` × **Użyj komendy:** ${FREE_KASA_COMMAND_MENTION}`,
         "`⏰` × **Masz 1 próbę co 12 godzin**",
         "",
-        "`🖼️` × **Na obrazku poniżej masz pokazane, gdzie ustawić status.**",
-        "",
         "`🎁` × **Do wygrania:**",
         "• 10k$ na anarchia.gg",
         "• 20k$ na anarchia.gg",
@@ -2244,7 +2242,7 @@ async function loadPersistentState() {
 function generateCode() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 12; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
@@ -4393,7 +4391,10 @@ async function handleModalSubmit(interaction) {
       const enteredCode = enteredCodeRaw.trim().toUpperCase();
 
       if (!enteredCode) {
-        await openRewardClaimTicket(interaction);
+        await interaction.reply({
+          content: "> `❌` × Wpisz kod nagrody przed wysłaniem formularza.",
+          flags: [MessageFlags.Ephemeral],
+        });
         return;
       }
 
@@ -4401,7 +4402,7 @@ async function handleModalSubmit(interaction) {
 
       if (!codeData) {
         await interaction.reply({
-          content: "> `❌` × **Nieprawidłowy** kod!",
+          content: "> `❌` × Ten kod jest nieprawidłowy.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -4414,7 +4415,7 @@ async function handleModalSubmit(interaction) {
       ) {
         await interaction.reply({
           content:
-            "❌ Ten kod nie jest kodem nagrody do odbioru w tej kategorii.",
+            "> `❌` × Ten kod nie jest kodem nagrody do odbioru w tej kategorii.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -4422,7 +4423,7 @@ async function handleModalSubmit(interaction) {
 
       if (codeData.used) {
         await interaction.reply({
-          content: "> `❌` × **Kod** został już wykorzystany!",
+          content: "> `❌` × Ten kod został już wykorzystany.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -4432,7 +4433,7 @@ async function handleModalSubmit(interaction) {
         activeCodes.delete(enteredCode);
         scheduleSavePersistentState();
         await interaction.reply({
-          content: "> `❌` × **Kod** wygasł!",
+          content: "> `❌` × Ten kod wygasł.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -10312,11 +10313,11 @@ async function showOdbiorModal(interaction) {
 
   const codeInput = new TextInputBuilder()
     .setCustomId("reward_code")
-    .setLabel("Kod nagrody (opcjonalnie)")
+    .setLabel("Kod nagrody")
     .setStyle(TextInputStyle.Short)
-    .setRequired(false)
+    .setRequired(true)
     .setMaxLength(64)
-    .setPlaceholder("Zostaw puste, jeśli odbierasz nagrodę za zaproszenia");
+    .setPlaceholder("123XYZABCQWERTY");
 
   modal.addComponents(new ActionRowBuilder().addComponents(codeInput));
   await interaction.showModal(modal);
@@ -11588,7 +11589,10 @@ async function handleModalSubmit(interaction) {
       const enteredCode = enteredCodeRaw.trim().toUpperCase();
 
       if (!enteredCode) {
-        await openRewardClaimTicket(interaction);
+        await interaction.reply({
+          content: "> `❌` × Wpisz kod nagrody przed wysłaniem formularza.",
+          flags: [MessageFlags.Ephemeral],
+        });
         return;
       }
 
@@ -11596,8 +11600,7 @@ async function handleModalSubmit(interaction) {
 
       if (!codeData) {
         await interaction.reply({
-          content:
-            "> \`❌\` **Nieprawidłowy kod!**",
+          content: "> `❌` × Ten kod jest nieprawidłowy.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -11611,7 +11614,7 @@ async function handleModalSubmit(interaction) {
       ) {
         await interaction.reply({
           content:
-            "❌ Ten kod nie jest kodem nagrody do odebrania w tej kategorii.",
+            "> `❌` × Ten kod nie jest kodem nagrody do odbioru w tej kategorii.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -11619,7 +11622,7 @@ async function handleModalSubmit(interaction) {
 
       if (codeData.used) {
         await interaction.reply({
-          content: "> `❌` × **Ten kod** został już użyty.",
+          content: "> `❌` × Ten kod został już wykorzystany.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -11629,7 +11632,7 @@ async function handleModalSubmit(interaction) {
         activeCodes.delete(enteredCode);
         scheduleSavePersistentState();
         await interaction.reply({
-          content: "> `❌` × **Ten kod** wygasł.",
+          content: "> `❌` × Ten kod wygasł.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -11639,7 +11642,7 @@ async function handleModalSubmit(interaction) {
       if (String(codeData.oderId) !== String(interaction.user.id)) {
         await interaction.reply({
           content:
-            "❌ Ten kod nie należy do Ciebie — zrealizować może tylko właściciel kodu (ten, który otrzymał go w DM).",
+            "> `❌` × Ten kod nie należy do Ciebie. Może go odebrać tylko osoba, która dostała go na PV.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
