@@ -881,6 +881,22 @@ async function cleanupFreeKasaMemberOverwrites(channel) {
   }
 }
 
+async function cleanupFreeKasaRoleOverwrites(guild, channel, accessRole) {
+  if (!guild || !channel?.permissionOverwrites?.cache || !accessRole) return;
+
+  const botRoleIds = new Set(guild.members.me?.roles?.cache?.keys() || []);
+  const protectedRoleIds = new Set([guild.id, accessRole.id, ...botRoleIds]);
+
+  const roleOverwrites = channel.permissionOverwrites.cache.filter(
+    (overwrite) =>
+      overwrite.type === OverwriteType.Role && !protectedRoleIds.has(overwrite.id),
+  );
+
+  for (const overwrite of roleOverwrites.values()) {
+    await channel.permissionOverwrites.delete(overwrite.id).catch(() => null);
+  }
+}
+
 async function getOrCreateFreeKasaAccessRole(guild) {
   if (!guild) return null;
 
@@ -923,16 +939,31 @@ async function ensureFreeKasaChannelRoleSetup(guild, channel, role, options = {}
     const lastSetupAt = freeKasaChannelSetupAt.get(setupKey) || 0;
     const everyoneOverwrite = channel.permissionOverwrites.cache.get(guild.id) || null;
     const accessOverwrite = channel.permissionOverwrites.cache.get(role.id) || null;
+    const botRoleIds = new Set(guild.members.me?.roles?.cache?.keys() || []);
+    const hasMemberOverwrites = channel.permissionOverwrites.cache.some(
+      (overwrite) => overwrite.type === OverwriteType.Member,
+    );
+    const hasExtraRoleOverwrites = channel.permissionOverwrites.cache.some(
+      (overwrite) =>
+        overwrite.type === OverwriteType.Role &&
+        ![guild.id, role.id, ...botRoleIds].includes(overwrite.id),
+    );
     const baseConfigured =
       everyoneOverwrite?.deny?.has?.(PermissionFlagsBits.SendMessages) &&
       accessOverwrite?.allow?.has?.(PermissionFlagsBits.SendMessages);
 
-    if (!force && baseConfigured && Date.now() - lastSetupAt < FREE_KASA_SETUP_CACHE_MS) {
+    if (
+      !force &&
+      baseConfigured &&
+      !hasMemberOverwrites &&
+      !hasExtraRoleOverwrites &&
+      Date.now() - lastSetupAt < FREE_KASA_SETUP_CACHE_MS
+    ) {
       return true;
     }
 
-    const botRoleIds = new Set(guild.members.me?.roles?.cache?.keys() || []);
-    const protectedRoleIds = new Set([guild.id, role.id, ...botRoleIds]);
+    await cleanupFreeKasaMemberOverwrites(channel);
+    await cleanupFreeKasaRoleOverwrites(guild, channel, role);
 
     await channel.permissionOverwrites
       .edit(guild.id, { SendMessages: false })
@@ -945,31 +976,6 @@ async function ensureFreeKasaChannelRoleSetup(guild, channel, role, options = {}
       .catch((error) => {
         console.error("[free-kasa] Nie udało się ustawić allow dla roli access:", error);
       });
-
-    for (const guildRole of guild.roles.cache.values()) {
-      if (protectedRoleIds.has(guildRole.id)) continue;
-
-      const roleCanSend =
-        channel.permissionsFor(guildRole)?.has(PermissionFlagsBits.SendMessages) || false;
-      const roleOverwrite = channel.permissionOverwrites.cache.get(guildRole.id) || null;
-      const alreadyDenied =
-        roleOverwrite?.deny?.has?.(PermissionFlagsBits.SendMessages) || false;
-
-      if (!roleCanSend && !alreadyDenied) {
-        continue;
-      }
-
-      await channel.permissionOverwrites
-        .edit(guildRole.id, { SendMessages: false })
-        .catch((error) => {
-          console.error(
-            `[free-kasa] Nie udało się ustawić deny dla roli ${guildRole.name} (${guildRole.id}):`,
-            error,
-          );
-        });
-    }
-
-    await cleanupFreeKasaMemberOverwrites(channel);
     freeKasaChannelSetupAt.set(setupKey, Date.now());
 
     return true;
