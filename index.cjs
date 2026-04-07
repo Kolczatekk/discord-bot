@@ -192,6 +192,10 @@ const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FREE_KASA_CHANNEL_ID = "1470103962245005454";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
+const FREE_KASA_REQUIRED_STATUS_ALIASES = [
+  FREE_KASA_REQUIRED_STATUS,
+  "discord.gg/newshop",
+];
 const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
@@ -752,18 +756,18 @@ function pickFreeKasaReward() {
 
 function buildFreeKasaInstructionEmbed() {
   return new EmbedBuilder()
-    .setColor(0x7b5cff)
+    .setColor(COLOR_BLUE)
     .setDescription(
       [
-        "**NEW SHOP × FREE KASA**",
+        "```NEW SHOP × FREE KASA```",
         "",
         "Spróbuj swojego szczęścia i zgarnij darmowe nagrody.",
         "",
         "**Zasady:**",
-        "1. Miej `.gg/newshop` w statusie Discord.",
-        "2. Użyj komendy `/free-kasa`, aby zagrać.",
-        "3. Masz **1 próbę co 12 godzin**.",
-        "4. Nagrody mają **bardzo małą szansę**.",
+        "• Miej `.gg/newshop` lub `discord.gg/newshop` w statusie.",
+        "• Użyj komendy `/free-kasa`, aby zagrać.",
+        "• Masz **1 próbę co 12 godzin**.",
+        "• Nagrody mają **bardzo małą szansę**.",
         "",
         "**Do wygrania:**",
         "• 10k$ na anarchia.gg",
@@ -774,7 +778,6 @@ function buildFreeKasaInstructionEmbed() {
         "• Anarchiczny miecz",
         "",
         "Pamiętaj: Bot działa automatycznie. Próby obchodzenia systemu kończą się blokadą.",
-        "Oczekiwanie na graczy...",
       ].join("\n"),
     );
 }
@@ -820,7 +823,9 @@ function resolveFreeKasaStatusText(member, statusTextOverride = "") {
 
 function freeKasaStatusTextMatches(statusText = "") {
   const normalized = normalizeFreeKasaStatusText(statusText);
-  return normalized.includes(FREE_KASA_REQUIRED_STATUS);
+  return FREE_KASA_REQUIRED_STATUS_ALIASES.some((alias) =>
+    normalized.includes(normalizeFreeKasaStatusText(alias)),
+  );
 }
 
 function formatFreeKasaStatusDebug(member, statusTextOverride = "") {
@@ -895,6 +900,58 @@ async function cleanupFreeKasaRoleOverwrites(guild, channel, accessRole) {
   for (const overwrite of roleOverwrites.values()) {
     await channel.permissionOverwrites.delete(overwrite.id).catch(() => null);
   }
+}
+
+function isFreeKasaInstructionMessage(message) {
+  if (!message || message.author?.id !== client.user?.id) return false;
+
+  return message.embeds.some((embed) => {
+    const description = embed?.description || "";
+    return (
+      description.includes("NEW SHOP × FREE KASA") &&
+      description.includes("Spróbuj swojego szczęścia i zgarnij darmowe nagrody.")
+    );
+  });
+}
+
+async function cleanupFreeKasaPermissionArtifacts(guild) {
+  if (!guild) return;
+
+  const channel = await getFreeKasaChannel(guild);
+  if (!channel) return;
+
+  await cleanupFreeKasaMemberOverwrites(channel);
+
+  const botRoleIds = new Set(guild.members.me?.roles?.cache?.keys() || []);
+  const roleOverwrites = channel.permissionOverwrites.cache.filter(
+    (overwrite) =>
+      overwrite.type === OverwriteType.Role && !botRoleIds.has(overwrite.id),
+  );
+
+  for (const overwrite of roleOverwrites.values()) {
+    await channel.permissionOverwrites.delete(overwrite.id).catch(() => null);
+  }
+
+  await channel.permissionOverwrites
+    .edit(guild.id, {
+      SendMessages: true,
+      ViewChannel: null,
+      ReadMessageHistory: null,
+    })
+    .catch(() => null);
+
+  const accessRole =
+    guild.roles.cache.find(
+      (item) => item.name?.toLowerCase() === FREE_KASA_ACCESS_ROLE_NAME,
+    ) || null;
+
+  if (accessRole) {
+    await accessRole.delete("Usunięcie starego systemu dostępu free-kasa").catch(
+      () => null,
+    );
+  }
+
+  freeKasaAccessRoleIds.delete(guild.id);
 }
 
 async function getOrCreateFreeKasaAccessRole(guild) {
@@ -986,129 +1043,26 @@ async function ensureFreeKasaChannelRoleSetup(guild, channel, role, options = {}
 }
 
 async function syncFreeKasaChannelAccess(member, options = {}) {
-  const { statusTextOverride = "" } = options;
-  if (!member?.guild || member.user?.bot) return;
-
-  const guild = member.guild;
-  const syncKey = `${guild.id}:${member.id}`;
-  if (freeKasaAccessSyncInFlight.has(syncKey)) return;
-  freeKasaAccessSyncInFlight.add(syncKey);
-
-  try {
-    const channel =
-      guild.channels.cache.get(FREE_KASA_CHANNEL_ID) ||
-      (await guild.channels.fetch(FREE_KASA_CHANNEL_ID).catch(() => null));
-
-    if (!channel || channel.type !== ChannelType.GuildText) {
-      return;
-    }
-
-    if (guild.presences.cache.size === 0) {
-      await guild.members.fetch({ withPresences: true }).catch(() => null);
-    }
-
-    const accessRole = await getOrCreateFreeKasaAccessRole(guild);
-    if (!accessRole) return;
-
-    await ensureFreeKasaChannelRoleSetup(guild, channel, accessRole);
-
-    const hasRequiredStatus = memberHasFreeKasaStatus(member, statusTextOverride);
-    const hasAccessRole = member.roles?.cache?.has(accessRole.id) || false;
-
-    const overwrite = channel.permissionOverwrites.cache.get(member.id) || null;
-    if (overwrite) {
-      await channel.permissionOverwrites.delete(member.id).catch(() =>
-        channel.permissionOverwrites
-          .edit(member.id, {
-            SendMessages: null,
-            ViewChannel: null,
-            ReadMessageHistory: null,
-          })
-          .catch(() => null),
-      );
-    }
-
-    if (hasRequiredStatus) {
-      if (!hasAccessRole) {
-        await member.roles.add(accessRole, "Dostęp do free-kasa po statusie").catch((error) => {
-          console.error(
-            `[free-kasa] Nie udało się dodać roli access dla ${member.user?.tag || member.id}:`,
-            error,
-          );
-        });
-      }
-      return;
-    }
-
-    if (hasAccessRole) {
-      await member.roles
-        .remove(accessRole, "Brak wymaganego statusu do free-kasa")
-        .catch((error) => {
-          console.error(
-            `[free-kasa] Nie udało się zabrać roli access dla ${member.user?.tag || member.id}:`,
-            error,
-          );
-        });
-    }
-  } finally {
-    freeKasaAccessSyncInFlight.delete(syncKey);
-  }
+  return;
 }
 
 async function syncTrackedFreeKasaMembers(guild) {
-  if (!guild) return;
-
-  try {
-    const channel =
-      guild.channels.cache.get(FREE_KASA_CHANNEL_ID) ||
-      (await guild.channels.fetch(FREE_KASA_CHANNEL_ID).catch(() => null));
-
-    if (!channel || channel.type !== ChannelType.GuildText) {
-      return;
-    }
-
-    const accessRole = await getOrCreateFreeKasaAccessRole(guild);
-    if (!accessRole) return;
-
-    await ensureFreeKasaChannelRoleSetup(guild, channel, accessRole, { force: true });
-
-    const memberIdsToSync = new Set();
-
-    for (const member of accessRole.members.values()) {
-      if (!member.user?.bot) {
-        memberIdsToSync.add(member.id);
-      }
-    }
-
-    for (const presence of guild.presences.cache.values()) {
-      if (presence?.userId) {
-        memberIdsToSync.add(presence.userId);
-      }
-    }
-
-    for (const memberId of memberIdsToSync) {
-      const member =
-        guild.members.cache.get(memberId) ||
-        (await fetchMemberWithPresence(guild, memberId).catch(() => null));
-      if (!member) continue;
-      await syncFreeKasaChannelAccess(member);
-    }
-  } catch (error) {
-    console.error("Błąd synchronizacji accessu free-kasa:", error);
-  }
+  await cleanupFreeKasaPermissionArtifacts(guild).catch((error) =>
+    console.error("Błąd czyszczenia uprawnień free-kasa:", error),
+  );
 }
 
 async function refreshFreeKasaInstruction(channel) {
   if (!channel?.isTextBased?.()) return;
 
   try {
-    const previousId = lastFreeKasaInstruction.get(channel.id);
-    if (previousId) {
-      const previousMessage = await channel.messages.fetch(previousId).catch(() => null);
-      if (previousMessage?.deletable) {
-        await previousMessage.delete().catch(() => null);
+    const recentMessages = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+    if (recentMessages?.size) {
+      for (const message of recentMessages.values()) {
+        if (isFreeKasaInstructionMessage(message) && message.deletable) {
+          await message.delete().catch(() => null);
+        }
       }
-      lastFreeKasaInstruction.delete(channel.id);
     }
 
     const sent = await channel.send({ embeds: [buildFreeKasaInstructionEmbed()] });
@@ -1121,7 +1075,7 @@ async function refreshFreeKasaInstruction(channel) {
 async function handleFreeKasaCommand(interaction) {
   const user = interaction.user;
   const guildId = interaction.guildId;
-  let member =
+  const member =
     (await fetchMemberWithPresence(interaction.guild, user.id)) ||
     interaction.member;
 
@@ -1142,36 +1096,16 @@ async function handleFreeKasaCommand(interaction) {
     return;
   }
 
+  const channel = interaction.channel;
+  await cleanupFreeKasaPermissionArtifacts(interaction.guild).catch(() => null);
+
   if (!memberHasFreeKasaStatus(member)) {
-    await syncFreeKasaChannelAccess(member);
     await interaction.reply({
       content:
-        `> \`❌\` × Aby pisać na tym kanale musisz mieć \`${FREE_KASA_REQUIRED_STATUS}\` w statusie.\n` +
-        `> \`👀\` × Bot widzi teraz: ${formatFreeKasaStatusDebug(member)}\n` +
-        "> `ℹ️` × Gdy dodasz status, bot odblokuje Ci kanał automatycznie.",
+        "> `❌` × Aby użyć tej komendy, musisz mieć `.gg/newshop` lub `discord.gg/newshop` w statusie.",
       flags: [MessageFlags.Ephemeral],
     });
-    return;
-  }
-
-  await syncFreeKasaChannelAccess(member).catch(() => null);
-  member = (await fetchMemberWithPresence(interaction.guild, user.id)) || member;
-
-  if (!(await memberCanSendFreeKasa(member))) {
-    await syncFreeKasaChannelAccess(member, {
-      statusTextOverride: resolveFreeKasaStatusText(member),
-    }).catch(() => null);
-    member = (await fetchMemberWithPresence(interaction.guild, user.id)) || member;
-  }
-
-  if (!(await memberCanSendFreeKasa(member))) {
-    await interaction.reply({
-      content:
-        `> \`❌\` × Wykryłem poprawny status, ale Discord nadal nie dał Ci dostępu do pisania.\n` +
-        `> \`👀\` × Bot widzi teraz: ${formatFreeKasaStatusDebug(member)}\n` +
-        "> `🛠️` × Sprawdź, czy rola bota ma uprawnienie `Zarządzanie rolami` i jest wyżej niż `free-kasa-access`.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    await refreshFreeKasaInstruction(channel);
     return;
   }
 
@@ -1183,6 +1117,7 @@ async function handleFreeKasaCommand(interaction) {
       content: `> \`❌\` × Możesz użyć komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
+    await refreshFreeKasaInstruction(channel);
     return;
   }
 
@@ -1190,7 +1125,6 @@ async function handleFreeKasaCommand(interaction) {
   scheduleSavePersistentState();
 
   const reward = pickFreeKasaReward();
-  const channel = interaction.channel;
 
   if (!reward) {
     const loseEmbed = new EmbedBuilder()
@@ -11433,35 +11367,8 @@ client.on(Events.MessageCreate, async (message) => {
     message.channel?.id === FREE_KASA_CHANNEL_ID &&
     !message.interactionMetadata
   ) {
-    let member =
-      (await fetchMemberWithPresence(message.guild, message.author.id)) ||
-      message.member ||
-      null;
-
-    if (member && !memberHasFreeKasaStatus(member)) {
-      await syncFreeKasaChannelAccess(member);
-      await message.delete().catch(() => null);
-
-      const warn = await message.channel
-        .send({
-          content:
-            `> \`❌\` × <@${message.author.id}> aby pisać tutaj musisz mieć \`${FREE_KASA_REQUIRED_STATUS}\` w statusie.\n` +
-            `> \`👀\` × Bot widzi teraz: ${formatFreeKasaStatusDebug(member)}\n` +
-            "> `ℹ️` × Gdy dodasz status, kanał odblokuje się automatycznie.",
-          allowedMentions: { users: [message.author.id] },
-        })
-        .catch(() => null);
-
-      if (warn) {
-        setTimeout(() => warn.delete().catch(() => null), 8_000);
-      }
-      return;
-    }
-
-    if (member) {
-      await syncFreeKasaChannelAccess(member).catch(() => null);
-      member = (await fetchMemberWithPresence(message.guild, message.author.id)) || member;
-    }
+    await message.delete().catch(() => null);
+    return;
   }
 
   if (message.guild) {
