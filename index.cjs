@@ -203,10 +203,15 @@ const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
 const FREE_KASA_REWARD_CODE_EXPIRES_MS = 90 * 24 * 60 * 60 * 1000;
+const PURCHASE_CODE_USAGE_TEXT =
+  "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i kliknij przycisk **Kod rabatowy**.";
+const REWARD_CODE_USAGE_TEXT =
+  "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ODBIERZ NAGRODĘ**.";
 const INVITE_REWARD_MILESTONES = [
   { threshold: 5, amount: 70_000, label: "70k$" },
   { threshold: 10, amount: 160_000, label: "160k$" },
 ];
+const BASE_SELLER_ROLE_ID = "1350786945944391733";
 const PURCHASE_STAFF_ROLE_IDS = [
   "1449448705563557918",
   "1449448702925209651",
@@ -908,14 +913,32 @@ function registerFreeKasaRewardWin(userId, reward) {
 }
 
 async function createFreeKasaRewardCode(userId, reward) {
-  const code = generateCode();
-  const expiresAt = Date.now() + FREE_KASA_REWARD_CODE_EXPIRES_MS;
-  const payload = {
-    oderId: userId,
+  return createTimedRewardCode({
+    userId,
     rewardText: reward?.rewardText || "Nagroda",
     rewardAmount: Number(reward?.rewardAmount || 0),
     rewardItem: reward?.rewardItem || null,
     type: "free_kasa_reward",
+    expiresMs: FREE_KASA_REWARD_CODE_EXPIRES_MS,
+  });
+}
+
+async function createTimedRewardCode({
+  userId,
+  rewardText,
+  rewardAmount = 0,
+  rewardItem = null,
+  type,
+  expiresMs = FREE_KASA_REWARD_CODE_EXPIRES_MS,
+}) {
+  const code = generateCode();
+  const expiresAt = Date.now() + expiresMs;
+  const payload = {
+    oderId: userId,
+    rewardText: rewardText || "Nagroda",
+    rewardAmount: Number(rewardAmount || 0),
+    rewardItem: rewardItem || null,
+    type,
     expiresAt,
     created: Date.now(),
   };
@@ -928,7 +951,7 @@ async function createFreeKasaRewardCode(userId, reward) {
     activeCodes.delete(code);
     db.deleteActiveCode(code).catch(() => null);
     scheduleSavePersistentState();
-  }, FREE_KASA_REWARD_CODE_EXPIRES_MS);
+  }, expiresMs);
 
   return {
     code,
@@ -936,6 +959,52 @@ async function createFreeKasaRewardCode(userId, reward) {
     expiryTimestamp: Math.floor(expiresAt / 1000),
     payload,
   };
+}
+
+async function createInviteRewardCode(userId, milestone) {
+  return createTimedRewardCode({
+    userId,
+    rewardText: `${milestone?.label || INVITE_REWARD_TEXT} na anarchia.gg`,
+    rewardAmount: Number(milestone?.amount || 0),
+    type: "invite_cash",
+    expiresMs: FREE_KASA_REWARD_CODE_EXPIRES_MS,
+  });
+}
+
+function buildCodeDeliveryDmEmbed({
+  title,
+  code,
+  rewardLine,
+  expiryTimestamp,
+  instructionText,
+}) {
+  return new EmbedBuilder()
+    .setColor(0xd4af37)
+    .setTitle(title)
+    .setDescription(
+      [
+        "```",
+        code,
+        "```",
+        rewardLine,
+        `> \`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
+        "",
+        instructionText,
+      ].join("\n"),
+    )
+    .setTimestamp();
+}
+
+async function sendInviteRewardCodeDm(user, milestone, rewardCodeData) {
+  const dmEmbed = buildCodeDeliveryDmEmbed({
+    title: "🎁 Twój kod nagrody",
+    code: rewardCodeData.code,
+    rewardLine: `> \`🏆\` × **Otrzymałeś:** \`${milestone.label} na anarchia.gg\``,
+    expiryTimestamp: rewardCodeData.expiryTimestamp,
+    instructionText: REWARD_CODE_USAGE_TEXT,
+  });
+
+  await user.send({ embeds: [dmEmbed] });
 }
 
 function getInviteDisplayCount(guildId, userId) {
@@ -958,24 +1027,41 @@ function getClaimedInviteRewardLevels(guildId, userId) {
 function getAvailableInviteRewardMilestones(guildId, userId) {
   const displayedInvites = getInviteDisplayCount(guildId, userId);
   const claimedLevels = getClaimedInviteRewardLevels(guildId, userId);
+  const issuedLevels = getIssuedInviteRewardLevels(guildId, userId);
 
   return INVITE_REWARD_MILESTONES.filter(
     (milestone) =>
       displayedInvites >= milestone.threshold &&
-      !claimedLevels.has(String(milestone.threshold)),
+      !claimedLevels.has(String(milestone.threshold)) &&
+      !issuedLevels.has(String(milestone.threshold)),
   );
 }
 
 function getNextInviteRewardMilestone(guildId, userId) {
   const displayedInvites = getInviteDisplayCount(guildId, userId);
   const claimedLevels = getClaimedInviteRewardLevels(guildId, userId);
+  const issuedLevels = getIssuedInviteRewardLevels(guildId, userId);
 
   return (
     INVITE_REWARD_MILESTONES.find(
       (milestone) =>
         !claimedLevels.has(String(milestone.threshold)) &&
+        !issuedLevels.has(String(milestone.threshold)) &&
         displayedInvites < milestone.threshold,
     ) || null
+  );
+}
+
+function getIssuedInviteRewardLevels(guildId, userId) {
+  const givenCount = Math.max(
+    0,
+    Number(inviteRewardsGiven.get(guildId)?.get(userId) || 0),
+  );
+
+  return new Set(
+    INVITE_REWARD_MILESTONES.slice(0, givenCount).map((milestone) =>
+      String(milestone.threshold),
+    ),
   );
 }
 
@@ -1461,24 +1547,13 @@ async function handleFreeKasaCommand(interaction) {
 
     let dmDelivered = true;
     try {
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xd4af37)
-        .setDescription(
-          [
-            "```",
-            "🔑 Twój kod rabatowy",
-            "```",
-            "```",
-            code,
-            "```",
-            `> \`💸\` × **Otrzymałeś:** \`-${reward.discount}%\``,
-            `> \`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
-            "",
-            "> `🎟️` × Aby użyć kodu, otwórz ticket zakupu i wpisz go w polu na kod rabatowy.",
-          ].join("\n"),
-        )
-        .setTimestamp();
-
+      const dmEmbed = buildCodeDeliveryDmEmbed({
+        title: "🔑 Twój kod rabatowy",
+        code,
+        rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${reward.discount}%\``,
+        expiryTimestamp,
+        instructionText: PURCHASE_CODE_USAGE_TEXT,
+      });
       await user.send({ embeds: [dmEmbed] });
     } catch (_error) {
       dmDelivered = false;
@@ -1522,24 +1597,13 @@ async function handleFreeKasaCommand(interaction) {
 
   let dmDelivered = true;
   try {
-    const dmEmbed = new EmbedBuilder()
-      .setColor(0xd4af37)
-      .setDescription(
-        [
-          "```",
-          "🎁 Twoja nagroda z FREE KASA",
-          "```",
-          "```",
-          rewardCodeData.code,
-          "```",
-          `> \`🏆\` × **Wygrałeś:** \`${reward.rewardText}\``,
-          `> \`🕑\` × **Kod wygaśnie za:** <t:${rewardCodeData.expiryTimestamp}:R>`,
-          "",
-          "> `🎟️` × Aby odebrać nagrodę, otwórz kategorię `Odbierz nagrodę` i wpisz ten kod.",
-        ].join("\n"),
-      )
-      .setTimestamp();
-
+    const dmEmbed = buildCodeDeliveryDmEmbed({
+      title: "🎁 Twój kod nagrody",
+      code: rewardCodeData.code,
+      rewardLine: `> \`🏆\` × **Wygrałeś:** \`${reward.rewardText}\``,
+      expiryTimestamp: rewardCodeData.expiryTimestamp,
+      instructionText: REWARD_CODE_USAGE_TEXT,
+    });
     await user.send({ embeds: [dmEmbed] });
   } catch (_error) {
     dmDelivered = false;
@@ -5810,7 +5874,10 @@ async function syncPurchaseTicketSellerVisibility(
   if (!guild || !channel || channel.type !== ChannelType.GuildText) return false;
 
   const allowedRoleIds = getPurchaseStaffRoleIdsForCategory(channel.parentId);
-  if (!allowedRoleIds.length) return false;
+  const hiddenRoleIds = Array.from(
+    new Set([BASE_SELLER_ROLE_ID, ...PURCHASE_STAFF_ROLE_IDS]),
+  );
+  if (!hiddenRoleIds.length) return false;
 
   if (ownerId) {
     await channel.permissionOverwrites.edit(ownerId, {
@@ -5820,7 +5887,7 @@ async function syncPurchaseTicketSellerVisibility(
     }).catch(() => null);
   }
 
-  for (const roleId of PURCHASE_STAFF_ROLE_IDS) {
+  for (const roleId of hiddenRoleIds) {
     if (hideStaff) {
       await channel.permissionOverwrites.edit(roleId, {
         ViewChannel: false,
@@ -6773,15 +6840,14 @@ async function handleDropCommand(interaction) {
 
     const dmEmbed = new EmbedBuilder()
       .setColor(0xd4af37)
-      .setTitle("\`🔑\` Twój kod rabatowy")
+      .setTitle("🔑 Twój kod rabatowy")
       .setDescription(
         "```\n" +
         code +
         "\n```\n" +
         `> \`💸\` × **Otrzymałeś:** \`-${result.discount}%\`\n` +
         `> \`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R> \n\n` +
-        `> \`❔\` × Aby zrealizować kod utwórz nowy ticket, wybierz kategorię\n` +
-        `> \`Zakup\` i kliknij przycisk \`Kod rabatowy\``,
+        `${PURCHASE_CODE_USAGE_TEXT}`,
       )
       .setTimestamp();
 
@@ -11543,7 +11609,7 @@ async function handleModalSubmit(interaction) {
       ) {
         await interaction.reply({
           content:
-            "❌ Ten kod nie jest kodem nagrody za zaproszenia. Użyj go w odpowiedniej kategorii.",
+            "❌ Ten kod nie jest kodem nagrody do odebrania w tej kategorii.",
           flags: [MessageFlags.Ephemeral],
         });
         return;
@@ -13425,15 +13491,53 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const alreadyGiven = rewardsGivenMap.get(inviterId) || 0;
       const currentCount = gMap.get(inviterId) || 0;
 
-      // ile nagród powinno być przyznanych
-      const eligibleRewards = Math.floor(
-        currentCount / INVITE_REWARD_THRESHOLD,
+      const eligibleMilestones = INVITE_REWARD_MILESTONES.filter(
+        (milestone) => currentCount >= milestone.threshold,
       );
-      const toGive = Math.max(0, eligibleRewards - alreadyGiven);
+      const milestonesToGive = eligibleMilestones.slice(alreadyGiven);
 
-      if (toGive > 0) {
-        // Nagrody za zaproszenia są teraz odbierane bez kodów,
-        // dopiero przy wejściu w kategorię "Odbierz nagrodę".
+      if (milestonesToGive.length > 0) {
+        const inviterUser = await client.users.fetch(inviterId).catch(() => null);
+
+        if (!inviterUser) {
+          console.warn(
+            `[invites] Nie udało się pobrać użytkownika ${inviterId} do wysłania kodu nagrody.`,
+          );
+        } else {
+          let deliveredCount = 0;
+
+          for (const milestone of milestonesToGive) {
+            let rewardCodeData = null;
+            try {
+              rewardCodeData = await createInviteRewardCode(
+                inviterId,
+                milestone,
+              );
+
+              await sendInviteRewardCodeDm(
+                inviterUser,
+                milestone,
+                rewardCodeData,
+              );
+              deliveredCount += 1;
+            } catch (error) {
+              if (rewardCodeData?.code) {
+                activeCodes.delete(rewardCodeData.code);
+                await db.deleteActiveCode(rewardCodeData.code).catch(() => null);
+              }
+              console.error(
+                `[invites] Nie udało się wysłać kodu nagrody za próg ${milestone.threshold} do ${inviterId}:`,
+                error,
+              );
+            }
+          }
+
+          if (deliveredCount > 0) {
+            rewardsGivenMap.set(inviterId, alreadyGiven + deliveredCount);
+            inviteRewardsGiven.set(member.guild.id, rewardsGivenMap);
+            scheduleSavePersistentState(true);
+          }
+        }
       }
     }
 
