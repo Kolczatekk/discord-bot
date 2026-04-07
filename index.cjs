@@ -1548,7 +1548,7 @@ async function handleFreeKasaCommand(interaction) {
     let dmDelivered = true;
     try {
       const dmEmbed = buildCodeDeliveryDmEmbed({
-        title: "🔑 Twój kod rabatowy",
+        title: "`🔑` Twój kod rabatowy",
         code,
         rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${reward.discount}%\``,
         expiryTimestamp,
@@ -6840,7 +6840,7 @@ async function handleDropCommand(interaction) {
 
     const dmEmbed = new EmbedBuilder()
       .setColor(0xd4af37)
-      .setTitle("🔑 Twój kod rabatowy")
+      .setTitle("`🔑` Twój kod rabatowy")
       .setDescription(
         "```\n" +
         code +
