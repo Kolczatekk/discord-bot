@@ -191,6 +191,7 @@ const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FREE_KASA_CHANNEL_ID = "1470103962245005454";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
+const FREE_KASA_COMMAND_MENTION = "</free-kasa:1491005286859800646>";
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
 const FREE_KASA_REQUIRED_STATUS_ALIASES = [
   FREE_KASA_REQUIRED_STATUS,
@@ -776,9 +777,8 @@ function buildFreeKasaInstructionPayload() {
       [
         "**ZASADY**",
         "• Miej `.gg/newshop` w statusie.",
-        "• Użyj komendy `/free-kasa`, aby zagrać.",
+        `• Użyj komendy ${FREE_KASA_COMMAND_MENTION}, aby zagrać.`,
         "• Masz **1 próbę co 12 godzin**.",
-        "• Nagrody mają **bardzo małą szansę**.",
       ].join("\n"),
     ),
   );
@@ -1121,7 +1121,7 @@ async function handleFreeKasaCommand(interaction) {
   if (now - last < FREE_KASA_COOLDOWN_MS) {
     const remaining = FREE_KASA_COOLDOWN_MS - (now - last);
     await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
+      content: `> \`❌\` × Możesz użyć komendy ${FREE_KASA_COMMAND_MENTION} ponownie za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -13492,7 +13492,7 @@ async function handleHelpCommand(interaction) {
         [
           "**`Komendy ogólne:`**",
           "> \`🎁\` × </drop:1464015494876102748> Wylosuj zniżke na zakupy!",
-          "> \`💸\` × `/free-kasa` Spróbuj wygrać darmową nagrodę",
+          `> \`💸\` × ${FREE_KASA_COMMAND_MENTION} Spróbuj wygrać darmową nagrodę`,
           "> \`📩\` × </sprawdz-zaproszenia:1464015495932940398> Sprawdź swoje zaproszenia",
           "> \`⭐\` × </opinia:1464015495392133321> Podziel się opinią o naszym sklepie",
           "> \`📋\` × </help:1464015495392133316> — Pokaż tę wiadomość",
