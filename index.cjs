@@ -2534,43 +2534,59 @@ const commands = [
     .setName("zaproszeniastats")
     .setDescription("Edytuj statystyki zaproszeń")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .addStringOption((o) =>
-      o
-        .setName("kategoria")
-        .setDescription(
-          "Wybierz kategorię: prawdziwe / opuszczone / mniej4mies / dodatkowe",
+    .addSubcommand((sub) =>
+      sub
+        .setName("edytuj")
+        .setDescription("Edytuj liczniki zaproszeń")
+        .addStringOption((o) =>
+          o
+            .setName("kategoria")
+            .setDescription(
+              "Wybierz kategorię: prawdziwe / opuszczone / mniej4mies / dodatkowe",
+            )
+            .setRequired(true)
+            .addChoices(
+              { name: "prawdziwe", value: "prawdziwe" },
+              { name: "opuszczone", value: "opuszczone" },
+              { name: "mniej4mies", value: "mniej4mies" },
+              { name: "dodatkowe", value: "dodatkowe" },
+            ),
         )
-        .setRequired(true)
-        .addChoices(
-          { name: "prawdziwe", value: "prawdziwe" },
-          { name: "opuszczone", value: "opuszczone" },
-          { name: "mniej4mies", value: "mniej4mies" },
-          { name: "dodatkowe", value: "dodatkowe" },
+        .addStringOption((o) =>
+          o
+            .setName("akcja")
+            .setDescription("dodaj / odejmij / ustaw / wyczysc")
+            .setRequired(true)
+            .addChoices(
+              { name: "dodaj", value: "dodaj" },
+              { name: "odejmij", value: "odejmij" },
+              { name: "ustaw", value: "ustaw" },
+              { name: "wyczysc", value: "wyczysc" },
+            ),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("liczba")
+            .setDescription("Ilość (opcjonalnie)")
+            .setRequired(false),
+        )
+        .addUserOption((o) =>
+          o
+            .setName("komu")
+            .setDescription("Dla kogo (opcjonalnie)")
+            .setRequired(false),
         ),
     )
-    .addStringOption((o) =>
-      o
-        .setName("akcja")
-        .setDescription("dodaj / odejmij / ustaw / wyczysc")
-        .setRequired(true)
-        .addChoices(
-          { name: "dodaj", value: "dodaj" },
-          { name: "odejmij", value: "odejmij" },
-          { name: "ustaw", value: "ustaw" },
-          { name: "wyczysc", value: "wyczysc" },
+    .addSubcommand((sub) =>
+      sub
+        .setName("usunblokade")
+        .setDescription("Resetuj blokadę nagród za zaproszenia dla użytkownika")
+        .addUserOption((o) =>
+          o
+            .setName("kto")
+            .setDescription("Komu usunąć blokadę nagród")
+            .setRequired(true),
         ),
-    )
-    .addIntegerOption((o) =>
-      o
-        .setName("liczba")
-        .setDescription("Ilość (opcjonalnie)")
-        .setRequired(false),
-    )
-    .addUserOption((o) =>
-      o
-        .setName("komu")
-        .setDescription("Dla kogo (opcjonalnie)")
-        .setRequired(false),
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -14023,13 +14039,62 @@ async function handleZaprosieniaStatsCommand(interaction) {
     return;
   }
 
+  const guildId = interaction.guild.id;
+  let subcommand = null;
+
+  try {
+    subcommand = interaction.options.getSubcommand(false);
+  } catch {
+    subcommand = null;
+  }
+
+  if (subcommand === "usunblokade") {
+    const targetUser = interaction.options.getUser("kto", true);
+
+    if (!inviteRewardsGiven.has(guildId)) inviteRewardsGiven.set(guildId, new Map());
+    if (!claimedInviteRewardMilestones.has(guildId)) {
+      claimedInviteRewardMilestones.set(guildId, new Map());
+    }
+    if (!inviteRewardLevels.has(guildId)) {
+      inviteRewardLevels.set(guildId, new Map());
+    }
+
+    inviteRewardsGiven.get(guildId).delete(targetUser.id);
+    claimedInviteRewardMilestones.get(guildId).delete(targetUser.id);
+    inviteRewardLevels.get(guildId).delete(targetUser.id);
+
+    const codesToDelete = [];
+    for (const [code, codeData] of activeCodes.entries()) {
+      if (
+        String(codeData?.oderId || "") === String(targetUser.id) &&
+        (codeData?.type === "invite_cash" || codeData?.type === "invite_reward")
+      ) {
+        codesToDelete.push(code);
+      }
+    }
+
+    for (const code of codesToDelete) {
+      activeCodes.delete(code);
+      await db.deleteActiveCode(code).catch(() => null);
+    }
+
+    scheduleSavePersistentState(true);
+
+    await interaction.reply({
+      content:
+        `> \`✅\` × Usunąłem blokadę nagród za zaproszenia dla <@${targetUser.id}>.\n` +
+        "> `🎁` × Ta osoba może ponownie odebrać nagrody za próg `5` i `10` zaproszeń.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
   const categoryRaw = (
     interaction.options.getString("kategoria") || ""
   ).toLowerCase();
   const action = (interaction.options.getString("akcja") || "").toLowerCase();
   const number = Math.max(0, interaction.options.getInteger("liczba") || 0);
   const user = interaction.options.getUser("komu") || interaction.user;
-  const guildId = interaction.guild.id;
 
   // normalize category aliases
   let category = null;
