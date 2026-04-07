@@ -961,43 +961,7 @@ function isFreeKasaInstructionMessage(message) {
 }
 
 async function cleanupFreeKasaPermissionArtifacts(guild) {
-  if (!guild) return;
-
-  const channel = await getFreeKasaChannel(guild);
-  if (!channel) return;
-
-  await cleanupFreeKasaMemberOverwrites(channel);
-
-  const botRoleIds = new Set(guild.members.me?.roles?.cache?.keys() || []);
-  const roleOverwrites = channel.permissionOverwrites.cache.filter(
-    (overwrite) =>
-      overwrite.type === OverwriteType.Role && !botRoleIds.has(overwrite.id),
-  );
-
-  for (const overwrite of roleOverwrites.values()) {
-    await channel.permissionOverwrites.delete(overwrite.id).catch(() => null);
-  }
-
-  await channel.permissionOverwrites
-    .edit(guild.id, {
-      SendMessages: true,
-      ViewChannel: null,
-      ReadMessageHistory: null,
-    })
-    .catch(() => null);
-
-  const accessRole =
-    guild.roles.cache.find(
-      (item) => item.name?.toLowerCase() === FREE_KASA_ACCESS_ROLE_NAME,
-    ) || null;
-
-  if (accessRole) {
-    await accessRole.delete("Usunięcie starego systemu dostępu free-kasa").catch(
-      () => null,
-    );
-  }
-
-  freeKasaAccessRoleIds.delete(guild.id);
+  return;
 }
 
 async function getOrCreateFreeKasaAccessRole(guild) {
@@ -1093,9 +1057,7 @@ async function syncFreeKasaChannelAccess(member, options = {}) {
 }
 
 async function syncTrackedFreeKasaMembers(guild) {
-  await cleanupFreeKasaPermissionArtifacts(guild).catch((error) =>
-    console.error("Błąd czyszczenia uprawnień free-kasa:", error),
-  );
+  return;
 }
 
 async function refreshFreeKasaInstruction(channel) {
@@ -1190,6 +1152,7 @@ async function handleFreeKasaCommand(interaction) {
       allowedMentions: { users: [user.id] },
       embeds: [loseEmbed],
     });
+    await refreshFreeKasaInstruction(channel);
     return;
   }
 
@@ -1282,6 +1245,7 @@ async function handleFreeKasaCommand(interaction) {
     allowedMentions: { users: [user.id] },
     embeds: [winEmbed],
   });
+  await refreshFreeKasaInstruction(channel);
 
   if (!dmDelivered) {
     await interaction.followUp({
