@@ -754,32 +754,61 @@ function pickFreeKasaReward() {
   return null;
 }
 
-function buildFreeKasaInstructionEmbed() {
-  return new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
+function buildFreeKasaInstructionPayload() {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent("```NEW SHOP × FREE KASA```"),
+  );
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
       [
-        "```NEW SHOP × FREE KASA```",
-        "",
-        "Spróbuj swojego szczęścia i zgarnij darmowe nagrody.",
-        "",
-        "**Zasady:**",
-        "• Miej `.gg/newshop` lub `discord.gg/newshop` w statusie.",
+        "**DARMOWE NAGRODY**",
+        "-# Spróbuj swojego szczęścia i zgarnij darmowe nagrody.",
+      ].join("\n"),
+    ),
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      [
+        "**ZASADY**",
+        "• Miej `.gg/newshop` w statusie.",
         "• Użyj komendy `/free-kasa`, aby zagrać.",
         "• Masz **1 próbę co 12 godzin**.",
         "• Nagrody mają **bardzo małą szansę**.",
-        "",
-        "**Do wygrania:**",
+      ].join("\n"),
+    ),
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      [
+        "**DO WYGRANIA**",
         "• 10k$ na anarchia.gg",
         "• 20k$ na anarchia.gg",
         "• 50k$ na anarchia.gg",
         "• Zniżka -5% na zakupy",
         "• Zniżka -10% na zakupy",
         "• Anarchiczny miecz",
-        "",
-        "Pamiętaj: Bot działa automatycznie. Próby obchodzenia systemu kończą się blokadą.",
       ].join("\n"),
-    );
+    ),
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# Bot działa automatycznie. Próby obchodzenia systemu kończą się blokadą.",
+    ),
+  );
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
 }
 
 function normalizeFreeKasaStatusText(value = "") {
@@ -905,13 +934,30 @@ async function cleanupFreeKasaRoleOverwrites(guild, channel, accessRole) {
 function isFreeKasaInstructionMessage(message) {
   if (!message || message.author?.id !== client.user?.id) return false;
 
-  return message.embeds.some((embed) => {
+  const embedMatch = message.embeds.some((embed) => {
     const description = embed?.description || "";
     return (
       description.includes("NEW SHOP × FREE KASA") &&
       description.includes("Spróbuj swojego szczęścia i zgarnij darmowe nagrody.")
     );
   });
+
+  if (embedMatch) return true;
+
+  try {
+    const componentDump = JSON.stringify(
+      message.components.map((component) =>
+        typeof component?.toJSON === "function" ? component.toJSON() : component,
+      ),
+    );
+
+    return (
+      componentDump.includes("NEW SHOP × FREE KASA") &&
+      componentDump.includes("Spróbuj swojego szczęścia i zgarnij darmowe nagrody.")
+    );
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function cleanupFreeKasaPermissionArtifacts(guild) {
@@ -1065,7 +1111,7 @@ async function refreshFreeKasaInstruction(channel) {
       }
     }
 
-    const sent = await channel.send({ embeds: [buildFreeKasaInstructionEmbed()] });
+    const sent = await channel.send(buildFreeKasaInstructionPayload());
     lastFreeKasaInstruction.set(channel.id, sent.id);
   } catch (error) {
     console.error("Błąd odświeżania instrukcji free-kasa:", error);
@@ -1102,10 +1148,9 @@ async function handleFreeKasaCommand(interaction) {
   if (!memberHasFreeKasaStatus(member)) {
     await interaction.reply({
       content:
-        "> `❌` × Aby użyć tej komendy, musisz mieć `.gg/newshop` lub `discord.gg/newshop` w statusie.",
+        "> `❌` × Aby użyć tej komendy, musisz mieć `.gg/newshop` w statusie.",
       flags: [MessageFlags.Ephemeral],
     });
-    await refreshFreeKasaInstruction(channel);
     return;
   }
 
@@ -1117,7 +1162,6 @@ async function handleFreeKasaCommand(interaction) {
       content: `> \`❌\` × Możesz użyć komendy /free-kasa ponownie za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
-    await refreshFreeKasaInstruction(channel);
     return;
   }
 
@@ -1146,7 +1190,6 @@ async function handleFreeKasaCommand(interaction) {
       allowedMentions: { users: [user.id] },
       embeds: [loseEmbed],
     });
-    await refreshFreeKasaInstruction(channel);
     return;
   }
 
@@ -1250,7 +1293,6 @@ async function handleFreeKasaCommand(interaction) {
     }).catch(() => null);
   }
 
-  await refreshFreeKasaInstruction(channel);
 }
 
 // Handler dla komendy /wezwij
@@ -2120,7 +2162,7 @@ const commands = [
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
   new SlashCommandBuilder()
     .setName("zco")
-    .setDescription("Zresetuj czas oczekiwania (/drop /opinia /sprawdz-zaproszenia /+rep)")
+    .setDescription("Zresetuj czas oczekiwania (/drop /opinia /sprawdz-zaproszenia /+rep /free-kasa)")
     .addStringOption((option) =>
       option
         .setName("co")
@@ -2131,6 +2173,7 @@ const commands = [
           { name: "/opinia", value: "opinia" },
           { name: "/sprawdz-zaproszenia", value: "zaproszenia" },
           { name: "+rep", value: "rep" },
+          { name: "/free-kasa", value: "free-kasa" },
           { name: "wszystko", value: "all" }
         ),
     )
@@ -11368,6 +11411,7 @@ client.on(Events.MessageCreate, async (message) => {
     !message.interactionMetadata
   ) {
     await message.delete().catch(() => null);
+    await refreshFreeKasaInstruction(message.channel).catch(() => null);
     return;
   }
 
@@ -12524,6 +12568,10 @@ async function handleZresetujCzasCommand(interaction) {
     if (what === "rep" || what === "all") {
       targets.push("+rep");
       legitRepCooldown.delete(targetId);
+    }
+    if (what === "free-kasa" || what === "all") {
+      targets.push("/free-kasa");
+      freeKasaCooldowns.delete(targetId);
     }
 
     infoCooldowns.delete(targetId); // reset internal info cooldown for target
