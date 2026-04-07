@@ -1067,6 +1067,20 @@ async function deliverPendingInviteRewardCodes(guild, userId) {
   return { deliveredCount, deliveredLabels, blocked };
 }
 
+function queueInviteRewardDeliveryRetry(guildId, userId, delayMs = 5000) {
+  setTimeout(async () => {
+    try {
+      const guild =
+        client.guilds.cache.get(guildId) ||
+        (await client.guilds.fetch(guildId).catch(() => null));
+      if (!guild) return;
+      await deliverPendingInviteRewardCodes(guild, userId);
+    } catch (error) {
+      console.error("[invites] Błąd retry wysyłki kodu za zaproszenia:", error);
+    }
+  }, delayMs);
+}
+
 function getInviteDisplayCount(guildId, userId) {
   const valid = inviteCounts.get(guildId)?.get(userId) || 0;
   const bonus = inviteBonusInvites.get(guildId)?.get(userId) || 0;
@@ -2319,15 +2333,22 @@ async function getActiveCodeData(codeInput) {
   const normalizedCode = normalizeCodeInput(codeInput);
   if (!normalizedCode) return { code: "", codeData: null };
 
-  const cached = activeCodes.get(normalizedCode);
-  if (cached) {
-    return { code: normalizedCode, codeData: cached };
+  const directCached = activeCodes.get(normalizedCode);
+  if (directCached) {
+    return { code: normalizedCode, codeData: directCached };
+  }
+
+  for (const [storedCode, storedData] of activeCodes.entries()) {
+    if (normalizeCodeInput(storedCode) === normalizedCode) {
+      activeCodes.set(normalizedCode, storedData);
+      return { code: normalizedCode, codeData: storedData };
+    }
   }
 
   try {
     const codes = await db.getActiveCodes();
     const found = codes.find(
-      (entry) => String(entry?.code || "").toUpperCase() === normalizedCode,
+      (entry) => normalizeCodeInput(entry?.code) === normalizedCode,
     );
 
     if (!found) {
@@ -13591,6 +13612,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
       await deliverPendingInviteRewardCodes(member.guild, inviterId).catch((error) =>
         console.error("[invites] Błąd wysyłania zaległych kodów za zaproszenia:", error),
       );
+      if ((gMap.get(inviterId) || 0) >= INVITE_REWARD_THRESHOLD) {
+        queueInviteRewardDeliveryRetry(member.guild.id, inviterId);
+      }
     }
 
     // Jeśli konto jest fake (< 4 mies.), dodajemy tylko do licznika fake
