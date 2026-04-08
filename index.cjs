@@ -913,7 +913,12 @@ function buildFreeKasaRewardLine(reward) {
   return `${getFreeKasaRewardEmoji(reward)} \`${reward?.rewardText || "Nagroda"}\``;
 }
 
-function buildFreeKasaResultEmbed({ user, reward = null, loss = false }) {
+function buildFreeKasaResultEmbed({
+  user,
+  reward = null,
+  loss = false,
+  retryTimestamp = null,
+}) {
   const description = [
     "```",
     "🎀 New Shop × FREE KASA",
@@ -923,8 +928,10 @@ function buildFreeKasaResultEmbed({ user, reward = null, loss = false }) {
 
   if (loss) {
     description.push(
-      "`😢` × **Tym razem skrzynka była pusta.**",
-      "`⏰` × **Spróbuj ponownie za 12 godzin.**",
+      "`😢` × **Niestety, tym razem nie udało się.**",
+      retryTimestamp
+        ? `\`⏰\` × **Spróbuj ponownie za:** <t:${retryTimestamp}:R>`
+        : "`⏰` × **Spróbuj ponownie później.**",
     );
   } else if (reward?.kind === "discount") {
     description.push(
@@ -1325,8 +1332,22 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     .setColor(COLOR_YELLOW)
     .setDescription(description);
 
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("free_kasa_roll")
+      .setLabel("Losuj nagrodę")
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji("🎰"),
+    new ButtonBuilder()
+      .setCustomId("free_kasa_claim")
+      .setLabel("Odbierz nagrodę")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("🎁"),
+  );
+
   return {
     embeds: [embed],
+    components: [row],
   };
 }
 
@@ -1587,7 +1608,7 @@ async function refreshFreeKasaInstruction(channel) {
 
   try {
     if (channel.guild?.id) {
-      await ensureEmbedTestEmojiCacheReady(channel.guild.id);
+      await ensureEmbedTestEmojiCache(channel.guild.id);
     }
 
     const recentMessages = await channel.messages.fetch({ limit: 30 }).catch(() => null);
@@ -1658,12 +1679,13 @@ async function handleFreeKasaCommand(interaction) {
   scheduleSavePersistentState(true);
 
   const reward = pickFreeKasaReward();
+  const retryTimestamp = Math.floor((now + FREE_KASA_COOLDOWN_MS) / 1000);
 
   if (!reward) {
     await interaction.reply({
       content: `<@${user.id}>`,
       allowedMentions: { users: [user.id] },
-      embeds: [buildFreeKasaResultEmbed({ user, loss: true })],
+      embeds: [buildFreeKasaResultEmbed({ user, loss: true, retryTimestamp })],
     });
     await refreshFreeKasaInstruction(channel);
     return;
@@ -4997,6 +5019,16 @@ async function handleKalkulatorSubmit(interaction, typ) {
 async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
+
+  if (customId === "free_kasa_roll") {
+    await handleFreeKasaCommand(interaction);
+    return;
+  }
+
+  if (customId === "free_kasa_claim") {
+    await showOdbiorModal(interaction);
+    return;
+  }
 
   // KONKURSY: obsługa przycisków konkursowych
   if (customId.startsWith("konkurs_join_")) {
