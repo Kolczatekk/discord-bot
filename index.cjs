@@ -191,7 +191,6 @@ const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FREE_KASA_CHANNEL_ID = "1470103962245005454";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
-const FREE_KASA_COMMAND_MENTION = "</free-kasa:1491005286859800646>";
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
 const FREE_KASA_CASH_CLAIM_THRESHOLD = 50_000;
 const FREE_KASA_HISTORY_LIMIT = 20;
@@ -851,7 +850,7 @@ async function saveStateToSupabase(data) {
   }
 }
 
-// ----------------- /free-kasa command -----------------
+// ----------------- FREE KASA -----------------
 function pickFreeKasaReward() {
   const currentWinChance = Math.min(
     FREE_KASA_PITY_CAP,
@@ -930,7 +929,7 @@ function buildFreeKasaResultEmbed({
     description.push(
       "`😢` × **Niestety, tym razem nie udało się.**",
       retryTimestamp
-        ? `\`⏰\` × **Spróbuj ponownie za:** <t:${retryTimestamp}:R>`
+        ? `\`⏰\` × **Spróbuj ponownie:** <t:${retryTimestamp}:R>`
         : "`⏰` × **Spróbuj ponownie później.**",
     );
   } else if (reward?.kind === "discount") {
@@ -1311,7 +1310,6 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     "💰 NEW SHOP × free kasa",
     "```",
     "### `📌` × Ustaw w statusie `.gg/newshop`",
-    `\`🎮\` × Użyj komendy: ${FREE_KASA_COMMAND_MENTION}`,
     "`⏰` × Masz **1** próbę co **12** godzin",
     "",
     "🎁 × **Nagrody do wygrania:**",
@@ -1668,7 +1666,7 @@ async function handleFreeKasaCommand(interaction) {
   if (now - last < FREE_KASA_COOLDOWN_MS) {
     const remaining = FREE_KASA_COOLDOWN_MS - (now - last);
     await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy ${FREE_KASA_COMMAND_MENTION} ponownie za \`${humanizeMs(remaining)}\``,
+      content: `> \`❌\` × Możesz losować ponownie za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -2586,11 +2584,6 @@ const commands = [
     .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("free-kasa")
-    .setDescription("Spróbuj szczęścia i wygraj darmową nagrodę")
-    .setDefaultMemberPermissions(null)
-    .toJSON(),
-  new SlashCommandBuilder()
     .setName("panelkalkulator")
     .setDescription("Wyślij panel kalkulatora waluty na kanał")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -2831,7 +2824,7 @@ const commands = [
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
   new SlashCommandBuilder()
     .setName("zco")
-    .setDescription("Zresetuj czas oczekiwania (/drop /opinia /sprawdz-zaproszenia /+rep /free-kasa)")
+    .setDescription("Zresetuj czas oczekiwania (drop / opinia / zaproszenia / +rep / free-kasa)")
     .addStringOption((option) =>
       option
         .setName("co")
@@ -2842,7 +2835,7 @@ const commands = [
           { name: "/opinia", value: "opinia" },
           { name: "/sprawdz-zaproszenia", value: "zaproszenia" },
           { name: "+rep", value: "rep" },
-          { name: "/free-kasa", value: "free-kasa" },
+          { name: "FREE KASA", value: "free-kasa" },
           { name: "wszystko", value: "all" }
         ),
     )
@@ -5658,7 +5651,7 @@ async function handleSlashCommand(interaction) {
   switch (commandName) {
     default: {
       // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-      const publicCommands = new Set(["drop", "free-kasa", "opinia", "help", "sprawdz-zaproszenia"]);
+      const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
       // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
       const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
       const SELLER_ROLE_ID = "1350786945944391733";
@@ -5675,9 +5668,6 @@ async function handleSlashCommand(interaction) {
     }
     case "drop":
       await handleDropCommand(interaction);
-      break;
-    case "free-kasa":
-      await handleFreeKasaCommand(interaction);
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
@@ -14593,7 +14583,6 @@ async function handleHelpCommand(interaction) {
         [
           "**`Komendy ogólne:`**",
           "> \`🎁\` × </drop:1464015494876102748> Wylosuj zniżke na zakupy!",
-          `> \`💸\` × ${FREE_KASA_COMMAND_MENTION} Spróbuj wygrać darmową nagrodę`,
           "> \`📩\` × </sprawdz-zaproszenia:1464015495932940398> Sprawdź swoje zaproszenia",
           "> \`⭐\` × </opinia:1464015495392133321> Podziel się opinią o naszym sklepie",
           "> \`📋\` × </help:1464015495392133316> — Pokaż tę wiadomość",
