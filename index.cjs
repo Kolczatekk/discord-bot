@@ -13830,6 +13830,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
     // If we detected an inviter (even if not counted due to rate-limit, inviterId may be present)
     let fakeMap = null;
     const ownerId = member.guild.ownerId;
+    const countOwnerInvites = isOwnerInviteCountingEnabled(member.guild.id);
 
     if (inviterId) {
       // Ensure all maps exist
@@ -13858,7 +13859,6 @@ client.on(Events.GuildMemberAdd, async (member) => {
       inviteTotalJoined.set(member.guild.id, totalMap);
       scheduleSavePersistentState();
 
-      const countOwnerInvites = isOwnerInviteCountingEnabled(member.guild.id);
       // Liczymy zaproszenia tylko jeśli nie jest właścicielem, chyba że właściciel włączył tę opcję
       let previousValidInvites = gMap.get(inviterId) || 0;
       let currentValidInvites = previousValidInvites;
