@@ -218,6 +218,8 @@ const PURCHASE_STAFF_ROLE_IDS = [
   "1449448686156255333",
   "1449448860517798061",
 ];
+const PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID = "1491435227866857483";
+const ownerInviteCountingSettings = new Map(); // guildId -> boolean
 
 const dropCooldowns = new Map(); // userId -> timestamp (ms)
 const freeKasaCooldowns = new Map(); // userId -> timestamp (ms)
@@ -793,6 +795,7 @@ function buildPersistentStateData() {
     pendingTicketClose: pendingTicketCloseObj,
     opinieChannels: opinieChannelsObj,
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
+    ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
   };
 
   return data;
@@ -2314,6 +2317,15 @@ async function loadPersistentState() {
       }
     }
 
+    if (
+      botStateData.ownerInviteCountingSettings &&
+      typeof botStateData.ownerInviteCountingSettings === "object"
+    ) {
+      for (const [guildId, enabled] of Object.entries(botStateData.ownerInviteCountingSettings)) {
+        ownerInviteCountingSettings.set(guildId, !!enabled);
+      }
+    }
+
     try {
       let fakeGuilds = 0;
       let fakeEntries = 0;
@@ -2536,7 +2548,7 @@ const commands = [
       option
         .setName("serwer")
         .setDescription("Wybierz serwer")
-        .setRequired(true)
+        .setRequired(false)
         .addChoices(
           { name: "Anarchia LF", value: "Anarchia LF" },
           { name: "Anarchia BoxPvP", value: "Anarchia BoxPvP" },
@@ -2788,6 +2800,21 @@ const commands = [
         .addChoices(
           { name: "WLACZ", value: "wlacz" },
           { name: "WYLACZ", value: "wylacz" }
+        )
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("zacznijliczycwlasicicielowi")
+    .setDescription("Włącz lub wyłącz liczenie zaproszeń właścicielowi")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption((option) =>
+      option
+        .setName("status")
+        .setDescription("Włącz lub wyłącz liczenie")
+        .setRequired(true)
+        .addChoices(
+          { name: "ON", value: "on" },
+          { name: "OFF", value: "off" },
         )
     )
     .toJSON(),
@@ -5616,6 +5643,9 @@ async function handleSlashCommand(interaction) {
     case "autoprzejmij":
       await handleAutoPrzejmijCommand(interaction);
       break;
+    case "zacznijliczycwlasicicielowi":
+      await handleOwnerInviteCountingCommand(interaction);
+      break;
     case "embed":
       await handleSendMessageCommand(interaction);
       break;
@@ -6046,7 +6076,30 @@ function getPurchaseTicketCategoryIdsForGuild(guild) {
 
 function isPurchaseTicketLabel(label = "") {
   const normalized = String(label || "").toUpperCase();
-  return normalized === "ZAKUP" || normalized === "ZAKUP AUTO RYNKU";
+  return normalized === "ZAKUP";
+}
+
+function isOwnerInviteCountingEnabled(guildId) {
+  return ownerInviteCountingSettings.get(String(guildId)) === true;
+}
+
+function isOwnerOnlyPurchaseTicket(channel, ticketMeta = null) {
+  if (ticketMeta?.ownerOnlyPurchase) return true;
+
+  const label = String(ticketMeta?.ticketTypeLabel || "").toUpperCase();
+  if (
+    ["ZAKUP AUTORYNKU", "ZAKUP AUTO RYNKU", "ZAKUP MODÓW", "ZAKUP MODA"].includes(label)
+  ) {
+    return true;
+  }
+
+  const topic = String(channel?.topic || "").toLowerCase();
+  if (topic.includes("zakup autorynku") || topic.includes("zakup moda")) {
+    return true;
+  }
+
+  const normalizedName = String(channel?.name || "").toLowerCase();
+  return /-(autorynek|mod|mody)$/.test(normalizedName);
 }
 
 function getPurchaseStaffRoleIdsForCategory(categoryId) {
@@ -6151,6 +6204,10 @@ async function runAutoPrzejmijSweep(guild, ownerId, ownerName, targetChannelId =
     const parentId = channel.parentId ? String(channel.parentId) : "";
     const ticketMeta = ticketOwners.get(channel.id) || null;
     const ticketLabel = guessTicketTypeLabel(channel, ticketMeta);
+    if (isOwnerOnlyPurchaseTicket(channel, ticketMeta)) {
+      stats.skippedNonPurchase += 1;
+      continue;
+    }
     if (!purchaseCategoryIds.has(parentId) || !isPurchaseTicketLabel(ticketLabel)) {
       stats.skippedNonPurchase += 1;
       continue;
@@ -8494,6 +8551,32 @@ const TEST_PANEL_CATEGORY_OPTIONS = [
   },
 ];
 
+const TICKET_OTHER_OPTION_EMOJI = {
+  id: "1491446746239336448",
+  name: "question",
+};
+
+const TICKET_OTHER_SERVER_OPTION = {
+  label: toPanelFont("INNE"),
+  value: "inne",
+  description: "Inny serwer",
+  emoji: TICKET_OTHER_OPTION_EMOJI,
+};
+
+const TICKET_OTHER_PAYMENT_OPTION = {
+  label: toPanelFont("INNE"),
+  value: "inne",
+  description: "Inna forma płatności",
+  emoji: TICKET_OTHER_OPTION_EMOJI,
+};
+
+const TICKET_OTHER_PAYOUT_OPTION = {
+  label: toPanelFont("INNE"),
+  value: "inne",
+  description: "Inna forma wypłaty",
+  emoji: TICKET_OTHER_OPTION_EMOJI,
+};
+
 const SHOP_SERVER_OPTION_DEFS = [
   {
     label: "Anarchia LF",
@@ -8666,19 +8749,25 @@ function toPanelFont(text = "") {
   return String(text);
 }
 
-const TEST_PANEL_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: option.description,
-  emoji: option.emoji,
-}));
+const TEST_PANEL_SERVER_OPTIONS = [
+  ...SHOP_SERVER_OPTION_DEFS.map((option) => ({
+    label: toPanelFont(option.label),
+    value: option.testValue,
+    description: option.description,
+    emoji: option.emoji,
+  })),
+  TICKET_OTHER_SERVER_OPTION,
+];
 
-const TEST_PANEL_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: option.description,
-  emoji: option.emoji,
-}));
+const TEST_PANEL_PAYMENT_OPTIONS = [
+  ...SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
+    label: toPanelFont(option.label),
+    value: option.testValue,
+    description: option.description,
+    emoji: option.emoji,
+  })),
+  TICKET_OTHER_PAYMENT_OPTION,
+];
 
 const KALKULATOR_SERVER_OPTIONS = SHOP_SERVER_OPTION_DEFS.map((option) => ({
   label: toPanelFont(option.label),
@@ -8694,12 +8783,15 @@ const KALKULATOR_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
   emoji: option.emoji,
 }));
 
-const SIMPLE_PAYMENT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: `Płatność ${option.label}`,
-  emoji: option.emoji,
-}));
+const SIMPLE_PAYMENT_OPTIONS = [
+  ...SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
+    label: toPanelFont(option.label),
+    value: option.testValue,
+    description: `Płatność ${option.label}`,
+    emoji: option.emoji,
+  })),
+  TICKET_OTHER_PAYMENT_OPTION,
+];
 
 const AUTORYNEK_PAYMENT_OPTIONS = [
   ...SIMPLE_PAYMENT_OPTIONS,
@@ -8711,12 +8803,15 @@ const AUTORYNEK_PAYMENT_OPTIONS = [
   })),
 ];
 
-const PAYOUT_OPTIONS = SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
-  label: toPanelFont(option.label),
-  value: option.testValue,
-  description: `Wypłata ${option.label}`,
-  emoji: option.emoji,
-}));
+const PAYOUT_OPTIONS = [
+  ...SHOP_PAYMENT_OPTION_DEFS.map((option) => ({
+    label: toPanelFont(option.label),
+    value: option.testValue,
+    description: `Wypłata ${option.label}`,
+    emoji: option.emoji,
+  })),
+  TICKET_OTHER_PAYOUT_OPTION,
+];
 
 const MOD_COUNT_OPTIONS = [
   { label: "1 mod", value: "1", description: "Kupisz 1 mod" },
@@ -8732,6 +8827,16 @@ function getTestPanelOptionLabel(options, value) {
 }
 
 function getShopServerOptionDef(value) {
+  if (String(value || "").toLowerCase() === "inne") {
+    return {
+      label: "INNE",
+      testValue: "inne",
+      calcValue: "INNE",
+      description: "Inny serwer",
+      channelSlug: "inne",
+      emoji: TICKET_OTHER_OPTION_EMOJI,
+    };
+  }
   return (
     SHOP_SERVER_OPTION_DEFS.find(
       (option) => option.testValue === value || option.calcValue === value,
@@ -8740,6 +8845,16 @@ function getShopServerOptionDef(value) {
 }
 
 function getShopPaymentOptionDef(value) {
+  if (String(value || "").toLowerCase() === "inne") {
+    return {
+      label: "INNE",
+      testValue: "inne",
+      calcValue: "INNE",
+      description: "Inna forma płatności",
+      channelSlug: "inne",
+      emoji: TICKET_OTHER_OPTION_EMOJI,
+    };
+  }
   return (
     SHOP_PAYMENT_OPTION_DEFS.find(
       (option) => option.testValue === value || option.calcValue === value,
@@ -8780,6 +8895,12 @@ function sanitizeTicketChannelNamePart(value) {
   );
 }
 
+function getTicketBuyerSlug(member, user) {
+  return sanitizeTicketChannelNamePart(
+    member?.displayName || user?.globalName || user?.username || "ticket",
+  );
+}
+
 function formatTicketAmountPart(amount) {
   const parsed = Number(amount);
   if (!Number.isFinite(parsed) || parsed <= 0) return "0zl";
@@ -8791,14 +8912,19 @@ function formatTicketAmountPart(amount) {
   return `${normalized}zl`;
 }
 
-function buildPurchaseTicketChannelName(serverValue, paymentValue) {
-  const serverDef = getShopServerOptionDef(serverValue);
-  const serverSlug = serverDef?.channelSlug || sanitizeTicketChannelNamePart(serverValue);
+function buildPurchaseTicketChannelName(member, user, paymentValue) {
+  const buyerSlug = getTicketBuyerSlug(member, user);
   const paymentDef = getShopPaymentOptionDef(paymentValue);
   const paymentSlug =
     paymentDef?.channelSlug || sanitizeTicketChannelNamePart(paymentValue);
 
-  return `${serverSlug}-${paymentSlug}`.slice(0, 100);
+  return `${buyerSlug}-${paymentSlug}`.slice(0, 100);
+}
+
+function buildSpecialPurchaseTicketChannelName(member, user, suffix) {
+  const buyerSlug = getTicketBuyerSlug(member, user);
+  const normalizedSuffix = sanitizeTicketChannelNamePart(suffix);
+  return `${buyerSlug}-${normalizedSuffix}`.slice(0, 100);
 }
 
 function isModernPurchaseTicketChannelName(name) {
@@ -8813,6 +8939,25 @@ function isModernPurchaseTicketChannelName(name) {
   );
 
   if (isPaymentName) return true;
+
+  const allPaymentSlugs = [
+    ...SHOP_PAYMENT_OPTION_DEFS.map((option) => option.channelSlug),
+    ...AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS.map((option) => option.channelSlug),
+  ];
+
+  if (
+    allPaymentSlugs.some(
+      (paymentSlug) =>
+        normalized.endsWith(`-${paymentSlug}`) &&
+        normalized.length > paymentSlug.length + 1,
+    )
+  ) {
+    return true;
+  }
+
+  if (/(?:^|.*-)(autorynek|mod|mody)$/.test(normalized)) {
+    return true;
+  }
 
   return SHOP_SERVER_OPTION_DEFS.some((serverOption) => {
     if (!normalized.startsWith(`${serverOption.channelSlug}-`)) return false;
@@ -8919,6 +9064,37 @@ async function showZakupModalV2(interaction) {
     );
 
   await interaction.showModal(modal);
+}
+
+async function handleOwnerInviteCountingCommand(interaction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    await interaction.reply({
+      content: "> `❌` × Ta komenda działa tylko na serwerze.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== guild.ownerId) {
+    await interaction.reply({
+      content: "> `❌` × Tej komendy może użyć tylko właściciel serwera.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const status = interaction.options.getString("status", true);
+  const enabled = status === "on";
+  ownerInviteCountingSettings.set(guild.id, enabled);
+  scheduleSavePersistentState(true);
+
+  await interaction.reply({
+    content: enabled
+      ? "> `✅` × Od teraz zaproszenia właściciela są liczone jak u zwykłego użytkownika."
+      : "> `✅` × Wyłączyłem liczenie zaproszeń właścicielowi.",
+    flags: [MessageFlags.Ephemeral],
+  });
 }
 
 async function handleTestPanelCommand(interaction) {
@@ -9060,7 +9236,7 @@ async function handleTicketZakonczCommand(interaction) {
   const co =
     interaction.options.getString("co") ||
     interaction.options.getString("ile");
-  const serwer = interaction.options.getString("serwer");
+  const serwer = (interaction.options.getString("serwer") || "").trim();
 
   // Pobierz właściciela ticketu
   const ticketData = ticketOwners.get(channel.id);
@@ -9087,7 +9263,7 @@ async function handleTicketZakonczCommand(interaction) {
     repVerb = "wręczył nagrodę";
   }
 
-  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${co} ${serwer}`;
+  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${co}${serwer ? ` ${serwer}` : ""}`;
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
@@ -11623,7 +11799,8 @@ async function handleModalSubmit(interaction) {
       ticketTopic = `Zakup itemów na serwerze: ${serverLabel} (${kwotaNum}zł)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       preferredChannelName = buildPurchaseTicketChannelName(
-        selectedServer,
+        interaction.member,
+        user,
         selectedPayment,
       );
 
@@ -11679,22 +11856,19 @@ async function handleModalSubmit(interaction) {
       }
 
       const totalPrice = modsCount * 20;
-      if (totalPrice <= 20) {
-        categoryId = categories["zakup-0-20"];
-        ticketType = "zakup-0-20";
-      } else if (totalPrice <= 50) {
-        categoryId = categories["zakup-20-50"];
-        ticketType = "zakup-20-50";
-      } else if (totalPrice <= 100) {
-        categoryId = categories["zakup-50-100"];
-        ticketType = "zakup-50-100";
-      } else {
-        categoryId = categories["zakup-100-200"];
-        ticketType = "zakup-100-200";
-      }
+      categoryId =
+        interaction.guild.channels.cache.has(PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID)
+          ? PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID
+          : categories["zakup-20-50"];
+      ticketType = "zakup-mody";
 
-      ticketTypeLabel = "ZAKUP";
+      ticketTypeLabel = "ZAKUP MODÓW";
       forceOwnerOnlyVisibility = true;
+      preferredChannelName = buildSpecialPurchaseTicketChannelName(
+        interaction.member,
+        user,
+        modsCount > 1 ? "mody" : "mod",
+      );
       ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
@@ -11718,15 +11892,25 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      categoryId = categories["zakup-20-50"];
-      ticketType = "zakup-20-50";
-      ticketTypeLabel = "ZAKUP AUTO RYNKU";
+      categoryId =
+        interaction.guild.channels.cache.has(PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID)
+          ? PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID
+          : categories["zakup-20-50"];
+      ticketType = "zakup-autorynku";
+      ticketTypeLabel = "ZAKUP AUTORYNKU";
       forceOwnerOnlyVisibility = true;
-      ticketTopic = "Zakup AutoRynku";
+      preferredChannelName = buildSpecialPurchaseTicketChannelName(
+        interaction.member,
+        user,
+        "autorynek",
+      );
+      ticketTopic = "Zakup AutoRynku (20zł)";
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      const paymentMethod = getShopPaymentLabel(paymentMethodRaw);
+      const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
 
-      formInfo = `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\``;
+      formInfo =
+        `> <a:arrowwhite:1469100658606211233> × **Cena:** \`20zł\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\``;
       break;
     }
     case "modal_sprzedaz": {
@@ -12175,7 +12359,7 @@ async function handleModalSubmit(interaction) {
 
     const buttons = [closeButton, settingsButton];
 
-    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
+    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTORYNKU") {
       buttons.push(
         new ButtonBuilder()
           .setCustomId(`ticket_code_${channel.id}_${user.id}`)
@@ -12212,6 +12396,7 @@ async function handleModalSubmit(interaction) {
       ticketMessageId: sentMsg.id,
       locked: false,
       ticketTypeLabel,
+      ownerOnlyPurchase: forceOwnerOnlyVisibility,
       formInfo,
       openedAt: Date.now(),
     });
@@ -12235,7 +12420,7 @@ async function handleModalSubmit(interaction) {
       flags: [MessageFlags.Ephemeral],
     });
 
-    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTO RYNKU") {
+    if (ticketTypeLabel === "ZAKUP" && !forceOwnerOnlyVisibility) {
       await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
         console.error("[autoprzejmij] Auto-claim po utworzeniu ticketa nieudany:", err),
       );
@@ -13673,10 +13858,11 @@ client.on(Events.GuildMemberAdd, async (member) => {
       inviteTotalJoined.set(member.guild.id, totalMap);
       scheduleSavePersistentState();
 
-      // Liczymy zaproszenia tylko jeśli nie jest właścicielem
+      const countOwnerInvites = isOwnerInviteCountingEnabled(member.guild.id);
+      // Liczymy zaproszenia tylko jeśli nie jest właścicielem, chyba że właściciel włączył tę opcję
       let previousValidInvites = gMap.get(inviterId) || 0;
       let currentValidInvites = previousValidInvites;
-      if (countThisInvite && inviterId !== ownerId) {
+      if (countThisInvite && (inviterId !== ownerId || countOwnerInvites)) {
         if (!isFakeAccount) {
           const prev = gMap.get(inviterId) || 0;
           previousValidInvites = prev;
@@ -13717,17 +13903,17 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
     // store who invited this member (and whether it was counted)
     const memberKey = `${member.guild.id}:${member.id}`;
-    inviterOfMember.set(memberKey, {
-      inviterId,
-      counted: !!(
-        inviterId &&
-        countThisInvite &&
-        !isFakeAccount &&
-        inviterId !== ownerId
-      ),
-      isFake: !!isFakeAccount,
-      isVanity: !!usedVanityCode,
-      vanityCode: usedVanityCode || null,
+      inviterOfMember.set(memberKey, {
+        inviterId,
+        counted: !!(
+          inviterId &&
+          countThisInvite &&
+          !isFakeAccount &&
+          (inviterId !== ownerId || countOwnerInvites)
+        ),
+        isFake: !!isFakeAccount,
+        isVanity: !!usedVanityCode,
+        vanityCode: usedVanityCode || null,
     });
 
     // persist join/invite state
@@ -13754,7 +13940,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
           message = `> \`✉️\` × <@${member.id}> dołączył swoim własnym linkiem. Zaproszenie nie zostało zaliczone.`;
         } else if (invalidInviterDetected || !hasValidInviterId) {
           message = `> \`✉️\` × <@${member.id}> dołączył, ale nie udało się poprawnie wykryć użytego linku zaproszenia.`;
-        } else if (inviterId === ownerId) {
+        } else if (inviterId === ownerId && !countOwnerInvites) {
           // Zaproszenie przez właściciela - nie liczymy zaproszeń
           message = `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> (został zaproszony przez właściciela)`;
         } else {
@@ -13848,9 +14034,10 @@ client.on(Events.GuildMemberRemove, async (member) => {
       inviteCounts.set(member.guild.id, new Map());
     const gMap = inviteCounts.get(member.guild.id);
     const ownerId = member.guild.ownerId;
+    const countOwnerInvites = isOwnerInviteCountingEnabled(member.guild.id);
     
-    // Odejmujemy zaproszenia tylko jeśli nie jest właścicielem
-    if (counted && inviterId && inviterId !== ownerId) {
+    // Odejmujemy zaproszenia tylko jeśli nie jest właścicielem, chyba że opcja liczenia właścicielowi jest włączona
+    if (counted && inviterId && (inviterId !== ownerId || countOwnerInvites)) {
       const prev = gMap.get(inviterId) || 0;
       const newCount = Math.max(0, prev - 1);
       gMap.set(inviterId, newCount);
@@ -13912,7 +14099,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
         let message;
         if (vanityCode) {
           message = `> \`🚪\` × <@${member.id}> opuścił serwer. Dołączył używając linku **${vanityCode}**.`;
-        } else if (inviterId === ownerId) {
+        } else if (inviterId === ownerId && !countOwnerInvites) {
           // Opuszczenie przez zaproszenie właściciela - nie odejmowaliśmy zaproszeń
           message = `> \`🚪\` × <@${member.id}> opuścił serwer. (Był zaproszony przez właściciela)`;
         } else {
@@ -15465,6 +15652,21 @@ function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
 
   if (ticketChannel.parentId && String(ticketChannel.parentId) === String(REWARDS_CATEGORY_ID)) {
     return "NAGRODA";
+  }
+
+  if (ticketChannel.parentId && String(ticketChannel.parentId) === String(PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID)) {
+    const normalizedName = String(ticketChannel.name || "").toLowerCase();
+    const normalizedTopic = String(ticketChannel.topic || "").toLowerCase();
+    if (normalizedName.endsWith("-autorynek") || normalizedTopic.includes("zakup autorynku")) {
+      return "ZAKUP AUTORYNKU";
+    }
+    if (
+      normalizedName.endsWith("-mod") ||
+      normalizedName.endsWith("-mody") ||
+      normalizedTopic.includes("zakup moda")
+    ) {
+      return "ZAKUP MODÓW";
+    }
   }
 
   const cats = ticketCategories.get(ticketChannel.guild.id) || {};
