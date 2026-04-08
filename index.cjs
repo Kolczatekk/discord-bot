@@ -935,12 +935,12 @@ function buildFreeKasaResultEmbed({
   } else if (reward?.kind === "discount") {
     description.push(
       `\`🎉\` × **Wygrałeś:** ${buildFreeKasaRewardLine(reward)}`,
-      "`📩` × **Kod rabatowy wysłałem Ci na prywatne wiadomości.**",
+      "`📩` × **Kod rabatowy został wysłany na PV.**",
     );
   } else {
     description.push(
       `\`🎉\` × **Wygrałeś:** ${buildFreeKasaRewardLine(reward)}`,
-      "`📩` × **Kod odbioru wysłałem Ci na prywatne wiadomości.**",
+      "`📩` × **Kod odbioru został wysłany na PV.**",
     );
   }
 
@@ -1741,6 +1741,19 @@ function buildFreeKasaResultEmbed({
     .setTimestamp();
 }
 
+async function sendFreeKasaPublicResult(interaction, payload) {
+  if (interaction?.deferred || interaction?.replied) {
+    return interaction.followUp(payload);
+  }
+
+  if (typeof interaction?.isMessageComponent === "function" && interaction.isMessageComponent()) {
+    await interaction.deferUpdate();
+    return interaction.channel?.send(payload);
+  }
+
+  return interaction.reply(payload);
+}
+
 async function handleFreeKasaCommand(interaction) {
   const user = interaction.user;
   const guildId = interaction.guildId;
@@ -1794,7 +1807,7 @@ async function handleFreeKasaCommand(interaction) {
   const retryTimestamp = Math.floor((now + FREE_KASA_COOLDOWN_MS) / 1000);
 
   if (!reward) {
-    await interaction.reply({
+    await sendFreeKasaPublicResult(interaction, {
       content: `<@${user.id}>`,
       allowedMentions: { users: [user.id] },
       embeds: [buildFreeKasaResultEmbed({ user, loss: true, retryTimestamp })],
@@ -1839,7 +1852,7 @@ async function handleFreeKasaCommand(interaction) {
       dmDelivered = false;
     }
 
-    await interaction.reply({
+    await sendFreeKasaPublicResult(interaction, {
       content: `<@${user.id}>`,
       allowedMentions: { users: [user.id] },
       embeds: [buildFreeKasaResultEmbed({ user, reward })],
@@ -1875,7 +1888,7 @@ async function handleFreeKasaCommand(interaction) {
     dmDelivered = false;
   }
 
-  await interaction.reply({
+  await sendFreeKasaPublicResult(interaction, {
     content: `<@${user.id}>`,
     allowedMentions: { users: [user.id] },
     embeds: [buildFreeKasaResultEmbed({ user, reward })],
@@ -14742,7 +14755,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     await interaction.editReply({
       content:
         pendingInviteRewardDelivery.deliveredCount > 0
-          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane.\n> \`📩\` × Wysłałem Ci na PV kod za nagrodę: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
+        ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
           : pendingInviteRewardDelivery.blocked
             ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
             : "> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane."
