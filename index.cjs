@@ -1626,6 +1626,121 @@ async function refreshFreeKasaInstruction(channel) {
   }
 }
 
+function buildFreeKasaInstructionPayload(guildId = null) {
+  const rawDescription = [
+    "```",
+    "💰 NewShop × Wylosuj nagrodę",
+    "```",
+    "### `📌` × Ustaw w statusie `.gg/newshop`",
+    "`⏰` × Masz **1** próbę co **12** godzin",
+    "",
+    "🎁 × **Nagrody do wygrania:**",
+    ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
+    ":arrowwhite: :jump_dirt: Zniżka -5% na zakupy",
+    ":arrowwhite: :jump_dirt: Zniżka -10% na zakupy",
+    ":arrowwhite: :ana_miecz: Anarchiczny miecz",
+    ":arrowwhite: :ana_kilof: Anarchiczny kilof",
+    ":arrowwhite: :elytra: Elytra",
+  ].join("\n");
+
+  const description = guildId
+    ? replaceNamedGuildEmojis(replaceEmbedAliasTokens(rawDescription), guildId)
+    : replaceEmbedAliasTokens(rawDescription);
+
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_YELLOW)
+    .setDescription(description);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("free_kasa_roll")
+      .setLabel("Losuj nagrodę")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("🎰"),
+    new ButtonBuilder()
+      .setCustomId("free_kasa_claim")
+      .setLabel("Odbierz nagrodę")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("🎁"),
+  );
+
+  return {
+    embeds: [embed],
+    components: [row],
+  };
+}
+
+function isFreeKasaInstructionMessage(message) {
+  if (!message || message.author?.id !== client.user?.id) return false;
+
+  const matchesDescription = (text) => {
+    const normalized = String(text || "").toLowerCase();
+    const hasHeader =
+      normalized.includes("newshop × wylosuj nagrodę") ||
+      normalized.includes("new shop × free kasa");
+    const hasBody =
+      normalized.includes(".gg/newshop") &&
+      (normalized.includes("nagrody do wygrania") ||
+        normalized.includes("wylosuj nagrodę") ||
+        normalized.includes("free kasa"));
+    return hasHeader && hasBody;
+  };
+
+  const embedMatch = message.embeds.some((embed) =>
+    matchesDescription(`${embed?.title || ""}\n${embed?.description || ""}`),
+  );
+  if (embedMatch) return true;
+
+  try {
+    const componentDump = JSON.stringify(
+      message.components.map((component) =>
+        typeof component?.toJSON === "function" ? component.toJSON() : component,
+      ),
+    );
+    return matchesDescription(componentDump);
+  } catch (_error) {
+    return false;
+  }
+}
+
+function buildFreeKasaResultEmbed({
+  user,
+  reward = null,
+  loss = false,
+  retryTimestamp = null,
+}) {
+  const description = [
+    "```",
+    "🎀 NewShop × Wylosuj nagrodę",
+    "```",
+    `\`👤\` × **Użytkownik:** ${user}`,
+  ];
+
+  if (loss) {
+    description.push(
+      "`😢` × **Niestety, tym razem nie udało się.**",
+      retryTimestamp
+        ? `\`⏰\` × **Spróbuj ponownie:** <t:${retryTimestamp}:R>`
+        : "`⏰` × **Spróbuj ponownie później.**",
+    );
+  } else if (reward?.kind === "discount") {
+    description.push(
+      `\`🎉\` × **Wygrałeś:** ${buildFreeKasaRewardLine(reward)}`,
+      "`📩` × **Kod rabatowy wysłałem Ci na prywatne wiadomości.**",
+    );
+  } else {
+    description.push(
+      `\`🎉\` × **Wygrałeś:** ${buildFreeKasaRewardLine(reward)}`,
+      "`📩` × **Kod odbioru wysłałem Ci na prywatne wiadomości.**",
+    );
+  }
+
+  return new EmbedBuilder()
+    .setColor(loss ? COLOR_GRAY : COLOR_YELLOW)
+    .setDescription(description.join("\n"))
+    .setTimestamp();
+}
+
 async function handleFreeKasaCommand(interaction) {
   const user = interaction.user;
   const guildId = interaction.guildId;
@@ -2579,11 +2694,6 @@ const DEFAULT_NAMES = {
 
 const commands = [
   new SlashCommandBuilder()
-    .setName("drop")
-    .setDescription("Wylosuj zniżkę na zakupy w sklepie!")
-    .setDefaultMemberPermissions(null)
-    .toJSON(),
-  new SlashCommandBuilder()
     .setName("panelkalkulator")
     .setDescription("Wyślij panel kalkulatora waluty na kanał")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -2821,21 +2931,20 @@ const commands = [
     .setDescription("Reset liczby legitchecków do zera")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
-  // NEW: /zresetujczasoczekiwania command - clear cooldowns for drop/opinia/info
+  // NEW: /zresetujczasoczekiwania command - clear cooldowns for core public actions
   new SlashCommandBuilder()
     .setName("zco")
-    .setDescription("Zresetuj czas oczekiwania (drop / opinia / zaproszenia / +rep / free-kasa)")
+    .setDescription("Zresetuj czas oczekiwania (opinia / zaproszenia / +rep / wylosuj nagrodę)")
     .addStringOption((option) =>
       option
         .setName("co")
         .setDescription("Co zresetować")
         .setRequired(true)
         .addChoices(
-          { name: "/drop", value: "drop" },
           { name: "/opinia", value: "opinia" },
           { name: "/sprawdz-zaproszenia", value: "zaproszenia" },
           { name: "+rep", value: "rep" },
-          { name: "FREE KASA", value: "free-kasa" },
+          { name: "Wylosuj nagrodę", value: "free-kasa" },
           { name: "wszystko", value: "all" }
         ),
     )
@@ -2941,6 +3050,20 @@ const commands = [
         .setName("filmik")
         .setDescription("Opcjonalny filmik, gif albo obraz do osadzenia w karcie")
         .setRequired(false),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("sprawdzembedtest")
+    .setDescription("Podepnij istniejący embed testowy na kanale i edytuj go dalej")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addChannelOption((o) =>
+      o
+        .setName("kanal")
+        .setDescription(
+          "Kanał z istniejącym embedem testowym. Jeśli nie podasz, użyty zostanie aktualny kanał.",
+        )
+        .setRequired(false)
+        .addChannelTypes(ChannelType.GuildText),
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -3756,18 +3879,6 @@ async function applyDefaultsForGuild(guildId) {
       console.log(`Ustawiono domyślny kanał opinii: ${opinie.id}`);
     }
 
-    // find drop channel by name
-    const drop = guild.channels.cache.find(
-      (c) =>
-        c.type === ChannelType.GuildText &&
-        (c.name === DEFAULT_NAMES.dropChannelName ||
-          normalize(c.name) === normalize(DEFAULT_NAMES.dropChannelName)),
-    );
-    if (drop) {
-      dropChannels.set(guildId, drop.id);
-      console.log(`Ustawiono domyślny kanał drop: ${drop.id}`);
-    }
-
     // find verification role by exact name OR fallback to searching for "klient"
     let role =
       guild.roles.cache.find(
@@ -3908,31 +4019,6 @@ client.once(Events.ClientReady, async (c) => {
               lastOpinionInstruction.set(ch.id, found.id);
               console.log(
                 `[ready] Znalazłem istniejącą instrukcję opinii: ${found.id} w kanale ${ch.id}`,
-              );
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      // Try to find previously sent drop instruction messages
-      const dropId = dropChannels.get(g.id);
-      if (dropId) {
-        try {
-          const chd = await client.channels.fetch(dropId).catch(() => null);
-          if (chd) {
-            const foundDrop = await findBotMessageWithEmbed(
-              chd,
-              (emb) =>
-                typeof emb.description === "string" &&
-                emb.description.includes("Użyj **komendy** </drop:1464015494876102748>"),
-            );
-            if (foundDrop) {
-              lastDropInstruction.set(chd.id, foundDrop.id);
-              scheduleSavePersistentState();
-              console.log(
-                `[ready] Znalazłem istniejącą instrukcję drop: ${foundDrop.id} w kanale ${chd.id}`,
               );
             }
           }
@@ -5560,12 +5646,12 @@ const nickInput = new TextInputBuilder()
 
     const codeInput = new TextInputBuilder()
       .setCustomId("discount_code")
-      .setLabel("Wpisz kod który wygrałeś w /drop")
+      .setLabel("Wpisz kod który wygrałeś w Wylosuj nagrodę")
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder("np. ABC123XYZ0")
+      .setPlaceholder("np. ABC123XYZ0Q")
       .setRequired(true)
       .setMinLength(10)
-      .setMaxLength(10);
+      .setMaxLength(12);
 
     modal.addComponents(new ActionRowBuilder().addComponents(codeInput));
     await interaction.showModal(modal);
@@ -5651,7 +5737,7 @@ async function handleSlashCommand(interaction) {
   switch (commandName) {
     default: {
       // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-      const publicCommands = new Set(["drop", "opinia", "help", "sprawdz-zaproszenia"]);
+      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia"]);
       // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
       const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
       const SELLER_ROLE_ID = "1350786945944391733";
@@ -5667,7 +5753,12 @@ async function handleSlashCommand(interaction) {
       break;
     }
     case "drop":
-      await handleDropCommand(interaction);
+      await interaction.reply({
+        content:
+          `> \`ℹ️\` × Ta komenda została wyłączona.\n` +
+          `> \`🎁\` × Wejdź na kanał <#${FREE_KASA_CHANNEL_ID}> i kliknij przycisk \`Losuj nagrodę\`.`,
+        flags: [MessageFlags.Ephemeral],
+      });
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
@@ -5728,6 +5819,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "embedtest":
       await handleEmbedTestCommand(interaction);
+      break;
+    case "sprawdzembedtest":
+      await handleSprawdzEmbedTestCommand(interaction);
       break;
     case "mody":
       await handleModyCommand(interaction);
@@ -8620,6 +8714,337 @@ async function handleEmbedTestCommand(interaction) {
       flags: [MessageFlags.Ephemeral],
     });
   }
+}
+
+function getSerializableMessageComponent(component) {
+  if (!component) return null;
+  return typeof component.toJSON === "function" ? component.toJSON() : component;
+}
+
+function collectEmbedTestMessageData(node, collector) {
+  if (!node || typeof node !== "object") return;
+
+  if (
+    collector.accentColor === null &&
+    typeof node.accent_color === "number"
+  ) {
+    collector.accentColor = node.accent_color;
+  }
+
+  if (typeof node.content === "string" && node.content.trim()) {
+    collector.texts.push(node.content);
+  }
+
+  if (typeof node.label === "string" && (node.custom_id || node.url)) {
+    collector.buttons.push({
+      label: node.label,
+      customId: node.custom_id || "",
+      url: node.url || "",
+      emoji: node.emoji || null,
+    });
+  }
+
+  if (Array.isArray(node.items)) {
+    for (const item of node.items) {
+      const media = item?.media || item;
+      const url = media?.url || item?.url || null;
+      if (url) {
+        collector.mediaUrls.push(url);
+      }
+    }
+  }
+
+  if (Array.isArray(node.components)) {
+    for (const child of node.components) {
+      collectEmbedTestMessageData(child, collector);
+    }
+  }
+}
+
+function formatEmbedTestButtonEmojiValue(emojiData) {
+  if (!emojiData) return "";
+  if (emojiData.id && emojiData.name) {
+    return `<${emojiData.animated ? "a" : ""}:${emojiData.name}:${emojiData.id}>`;
+  }
+  return emojiData.name || "";
+}
+
+function resolveEmbedTestColorKeyFromValue(colorValue) {
+  if (!Number.isFinite(Number(colorValue))) {
+    return EMBED_TEST_COLOR_OPTIONS[0].value;
+  }
+
+  const numericColor = Number(colorValue);
+  const exactMatch = EMBED_TEST_COLOR_OPTIONS.find(
+    (option) => option.color === numericColor,
+  );
+  if (exactMatch) return exactMatch.value;
+
+  let bestOption = EMBED_TEST_COLOR_OPTIONS[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const option of EMBED_TEST_COLOR_OPTIONS) {
+    const distance = Math.abs(option.color - numericColor);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestOption = option;
+    }
+  }
+
+  return bestOption.value;
+}
+
+function splitEmbedTestHeadingParts(content = "") {
+  const lines = String(content || "").split(/\r?\n/);
+  const headingLine = (lines.shift() || "").replace(/^##\s*/, "").trim();
+  const headerNote = lines.join("\n").trim();
+
+  let headerBadge = "";
+  let title = headingLine;
+
+  const markupMatch = headingLine.match(/^(<a?:[A-Za-z0-9_]+:\d+>)\s+(.+)$/);
+  if (markupMatch) {
+    headerBadge = markupMatch[1];
+    title = markupMatch[2];
+    return { headerBadge, title, headerNote };
+  }
+
+  const shortcodeMatch = headingLine.match(/^(:[A-Za-z0-9_]+:)\s+(.+)$/);
+  if (shortcodeMatch) {
+    headerBadge = shortcodeMatch[1];
+    title = shortcodeMatch[2];
+  }
+
+  return { headerBadge, title, headerNote };
+}
+
+function reconstructEmbedTestStateFromMessage(message, ownerId) {
+  if (!message?.guild || !message.channel) return null;
+
+  const collector = {
+    accentColor: null,
+    texts: [],
+    buttons: [],
+    mediaUrls: [],
+  };
+
+  const componentJson = Array.isArray(message.components)
+    ? message.components.map(getSerializableMessageComponent).filter(Boolean)
+    : [];
+
+  for (const item of componentJson) {
+    collectEmbedTestMessageData(item, collector);
+  }
+
+  const state = createDefaultEmbedTestState(
+    message.guild,
+    message.channel,
+    ownerId,
+    null,
+  );
+
+  state.messageId = message.id;
+  state.ownerId = ownerId;
+  state.guildId = message.guild.id;
+  state.channelId = message.channel.id;
+
+  if (collector.accentColor !== null) {
+    const accentColorKey = resolveEmbedTestColorKeyFromValue(collector.accentColor);
+    const colorDef = getEmbedTestColorDef(accentColorKey);
+    state.accentColorKey = accentColorKey;
+    state.accentColor = colorDef.color;
+  }
+
+  if (collector.mediaUrls.length) {
+    state.mediaUrls = [...new Set(collector.mediaUrls)];
+  }
+
+  const textBlocks = collector.texts.slice();
+  if (textBlocks.length && textBlocks[0].trim().startsWith("## ")) {
+    const heading = splitEmbedTestHeadingParts(textBlocks.shift());
+    state.headerBadge = heading.headerBadge;
+    state.title = heading.title || state.title;
+    state.headerNote = heading.headerNote;
+  }
+
+  const sections = [];
+  let currentSection = null;
+
+  const pushCurrentSection = () => {
+    if (!currentSection) return;
+    currentSection.body = currentSection.bodyParts.join("\n\n").trim();
+    delete currentSection.bodyParts;
+    sections.push(currentSection);
+    currentSection = null;
+  };
+
+  for (const block of textBlocks) {
+    const trimmed = String(block || "").trim();
+    if (!trimmed) continue;
+
+    const titleMatch =
+      trimmed.match(/^\*\*(.+?)\*\*$/s) &&
+      !trimmed.includes("\n")
+        ? trimmed.match(/^\*\*(.+?)\*\*$/s)
+        : null;
+
+    if (titleMatch) {
+      pushCurrentSection();
+      currentSection = {
+        title: titleMatch[1],
+        bodyParts: [],
+      };
+      continue;
+    }
+
+    if (!currentSection) {
+      currentSection = {
+        title: "",
+        bodyParts: [],
+      };
+    }
+
+    currentSection.bodyParts.push(block);
+  }
+
+  pushCurrentSection();
+
+  const [cashSection, itemsSection, extraSection, extraSectionTwo] = sections;
+
+  if (cashSection) {
+    state.cashSectionTitle = cashSection.title || "";
+    state.cashBody = cashSection.body || "";
+  }
+  if (itemsSection) {
+    state.itemsSectionTitle = itemsSection.title || "";
+    state.itemsBody = itemsSection.body || "";
+  }
+  if (extraSection) {
+    state.extraSectionTitle = extraSection.title || "";
+    state.extraSectionBody = extraSection.body || "";
+  }
+  if (extraSectionTwo) {
+    state.extraSectionTwoTitle = extraSectionTwo.title || "";
+    state.extraSectionTwoBody = extraSectionTwo.body || "";
+  }
+
+  const primaryButton = collector.buttons.find((button) =>
+    String(button.customId || "").startsWith("embedtest_buy_open_"),
+  );
+  if (primaryButton) {
+    state.buttonOneLabel = primaryButton.label || state.buttonOneLabel;
+    state.buttonOneEmoji = formatEmbedTestButtonEmojiValue(primaryButton.emoji);
+    const actionMatch = String(primaryButton.customId).match(
+      /^embedtest_buy_open(?:_(.+))?$/,
+    );
+    state.buttonOneAction = actionMatch?.[1] || "zakup";
+  }
+
+  const secondaryButton = collector.buttons.find(
+    (button) => button.url && button.label !== state.buttonOneLabel,
+  );
+  if (secondaryButton) {
+    state.buttonTwoLabel = secondaryButton.label || state.buttonTwoLabel;
+    state.buttonTwoEmoji = formatEmbedTestButtonEmojiValue(secondaryButton.emoji);
+    state.buttonTwoUrl = secondaryButton.url || state.buttonTwoUrl;
+  }
+
+  return state;
+}
+
+async function findLatestEmbedTestMessage(channel) {
+  if (!channel?.isTextBased?.()) return null;
+
+  try {
+    const fetched = await channel.messages.fetch({ limit: 50 });
+    for (const message of fetched.values()) {
+      if (message.author?.id !== client.user?.id) continue;
+
+      const componentJson = Array.isArray(message.components)
+        ? message.components.map(getSerializableMessageComponent).filter(Boolean)
+        : [];
+      const componentDump = JSON.stringify(componentJson);
+
+      if (
+        componentDump.includes("embedtest_buy_open_") ||
+        componentDump.includes("\"Kup teraz\"") ||
+        componentDump.includes("\"Płatności\"")
+      ) {
+        return message;
+      }
+    }
+  } catch (_error) {
+    return null;
+  }
+
+  return null;
+}
+
+async function handleSprawdzEmbedTestCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetChannel =
+    interaction.options.getChannel("kanal") || interaction.channel;
+
+  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+    await interaction.reply({
+      content: "> `❌` × **Wybierz** poprawny kanał tekstowy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const foundMessage = await findLatestEmbedTestMessage(targetChannel);
+
+  if (!foundMessage) {
+    await interaction.reply({
+      content:
+        "> `❌` × Nie znalazłem na tym kanale żadnego aktywnego embeda testowego od bota.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const existingState =
+    embedTestStates.get(foundMessage.id) ||
+    reconstructEmbedTestStateFromMessage(foundMessage, interaction.user.id);
+
+  if (!existingState) {
+    await interaction.reply({
+      content:
+        "> `❌` × Znalazłem wiadomość, ale nie udało mi się podpiąć jej pod edytor.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  existingState.messageId = foundMessage.id;
+  existingState.ownerId = interaction.user.id;
+  existingState.guildId = interaction.guild.id;
+  existingState.channelId = targetChannel.id;
+  embedTestStates.set(foundMessage.id, existingState);
+
+  await interaction.reply({
+    ...buildEmbedTestControlPayload(
+      existingState,
+      `Podpiąłem istniejący embed testowy z <#${targetChannel.id}>`,
+    ),
+    flags: [MessageFlags.Ephemeral],
+  });
 }
 
 const TEST_PANEL_CATEGORY_OPTIONS = [
@@ -12773,26 +13198,9 @@ client.on(Events.MessageCreate, async (message) => {
       `• \`❗\` __**Na tym kanale można wystawiać tylko opinie!**__`,
     );
 
-  const dropInvalidEmbed = new EmbedBuilder()
-    .setColor(COLOR_RED)
-    .setDescription(
-      `• \`❗\` __**Na tym kanale można losować tylko zniżki!**__`,
-    );
-
   try {
     const guildId = message.guildId;
     if (guildId) {
-      const content = (message.content || "").trim();
-
-      const dropChannelId = dropChannels.get(guildId);
-      if (dropChannelId && message.channel.id === dropChannelId) {
-        // Usuń każdą wiadomość użytkownika (także wpisane "/drop"), zostaw tylko slash-command
-        if (!message.author.bot) {
-          await message.delete().catch(() => null);
-          return;
-        }
-      }
-
       const opinieChannelId = opinieChannels.get(guildId);
       if (opinieChannelId && message.channel.id === opinieChannelId) {
         if (!message.author.bot) {
@@ -12819,7 +13227,7 @@ client.on(Events.MessageCreate, async (message) => {
       }
     }
   } catch (e) {
-    console.error("Błąd przy egzekwowaniu reguł kanałów drop/opinia/zaproszenia:", e);
+    console.error("Błąd przy egzekwowaniu reguł kanałów opinia/zaproszenia:", e);
   }
 
   // Enforce zaproszenia-check-only channel rule:
@@ -13666,10 +14074,6 @@ async function handleZresetujCzasCommand(interaction) {
     const targetUser = interaction.options.getUser("kto") || interaction.user;
     const targetId = targetUser.id;
     const targets = [];
-    if (what === "drop" || what === "all") {
-      targets.push("/drop");
-      dropCooldowns.delete(targetId);
-    }
     if (what === "opinia" || what === "all") {
       targets.push("/opinia");
       opinionCooldowns.delete(targetId);
@@ -13683,7 +14087,7 @@ async function handleZresetujCzasCommand(interaction) {
       legitRepCooldown.delete(targetId);
     }
     if (what === "free-kasa" || what === "all") {
-      targets.push("/free-kasa");
+      targets.push("Wylosuj nagrodę");
       freeKasaCooldowns.delete(targetId);
     }
 
@@ -14599,6 +15003,35 @@ async function handleHelpCommand(interaction) {
         flags: [MessageFlags.Ephemeral],
       });
     } catch (e) { }
+  }
+}
+
+async function handleHelpCommand(interaction) {
+  try {
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setTitle("`📋` × Spis komend")
+      .setDescription(
+        [
+          "**`Komendy ogólne:`**",
+          "> `📩` × </sprawdz-zaproszenia:1464015495932940398> Sprawdź swoje zaproszenia",
+          "> `⭐` × </opinia:1464015495392133321> Podziel się opinią o naszym sklepie",
+          "> `📋` × </help:1464015495392133316> — Pokaż tę wiadomość",
+        ].join("\n"),
+      );
+
+    await interaction.reply({
+      embeds: [embed],
+      flags: [MessageFlags.Ephemeral],
+    });
+  } catch (err) {
+    console.error("handleHelpCommand error:", err);
+    try {
+      await interaction.reply({
+        content: "> `❌` × **Błąd** podczas wyświetlania **pomocy**.",
+        flags: [MessageFlags.Ephemeral],
+      });
+    } catch (_error) {}
   }
 }
 
