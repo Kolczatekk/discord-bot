@@ -1310,8 +1310,8 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     "💰 NEW SHOP × free kasa",
     "```",
     "### `📌` × Ustaw w statusie `.gg/newshop`",
-    "-# Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.",
     "`⏰` × Masz **1** próbę co **12** godzin",
+    "-# Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.",
     "",
     "🎁 × **Nagrody do wygrania:**",
     ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
@@ -1630,11 +1630,11 @@ async function refreshFreeKasaInstruction(channel) {
 function buildFreeKasaInstructionPayload(guildId = null) {
   const rawDescription = [
     "```",
-    "💰 NewShop × Wylosuj nagrodę",
+    "💰 New Shop × Wylosuj nagrodę",
     "```",
     "### `📌` × Ustaw w statusie `.gg/newshop`",
-    "-# Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.",
     "`⏰` × Masz **1** próbę co **12** godzin",
+    "-# Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.",
     "",
     "🎁 × **Nagrody do wygrania:**",
     ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
@@ -1678,7 +1678,7 @@ function isFreeKasaInstructionMessage(message) {
   const matchesDescription = (text) => {
     const normalized = String(text || "").toLowerCase();
     const hasHeader =
-      normalized.includes("newshop × wylosuj nagrodę") ||
+      normalized.includes("new shop × wylosuj nagrodę") ||
       normalized.includes("new shop × free kasa");
     const hasBody =
       normalized.includes(".gg/newshop") &&
@@ -1713,7 +1713,7 @@ function buildFreeKasaResultEmbed({
 }) {
   const description = [
     "```",
-    "🎀 NewShop × Wylosuj nagrodę",
+    "🎀 New Shop × Wylosuj nagrodę",
     "```",
     `\`👤\` × **Użytkownik:** ${user}`,
   ];
