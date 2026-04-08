@@ -1310,7 +1310,6 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     "```",
     "💰 NEW SHOP × free kasa",
     "```",
-    "",
     "### `📌` × Ustaw w statusie `.gg/newshop`",
     `\`🎮\` × Użyj komendy: ${FREE_KASA_COMMAND_MENTION}`,
     "`⏰` × Masz **1** próbę co **12** godzin",
@@ -1336,7 +1335,7 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     new ButtonBuilder()
       .setCustomId("free_kasa_roll")
       .setLabel("Losuj nagrodę")
-      .setStyle(ButtonStyle.Primary)
+      .setStyle(ButtonStyle.Secondary)
       .setEmoji("🎰"),
     new ButtonBuilder()
       .setCustomId("free_kasa_claim")
@@ -1658,7 +1657,7 @@ async function handleFreeKasaCommand(interaction) {
   if (!memberHasFreeKasaStatus(member)) {
     await interaction.reply({
       content:
-        "> `❌` × Aby użyć tej komendy, musisz mieć `.gg/newshop` w statusie.",
+        "> `❌` × Aby wylosować nagrodę musisz mieć `.gg/newshop` w statusie.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
