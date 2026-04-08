@@ -203,6 +203,15 @@ const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
 const FREE_KASA_REWARD_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
+const FREE_KASA_CASH_EMOJI = "<:kasa_2:1476700165082710178>";
+const FREE_KASA_SWORD_EMOJI = "<:ana_miecz:1476679184813260822>";
+const FREE_KASA_PICKAXE_EMOJI = "<:ana_kilof:1476679224331862169>";
+const FREE_KASA_ELYTRA_EMOJI = "<:elytra:1476679447846588416>";
+const FREE_KASA_BASE_WIN_CHANCE = 5.5;
+const FREE_KASA_PITY_START = 7;
+const FREE_KASA_PITY_STEP = 1.6;
+const FREE_KASA_PITY_CAP = 26;
+const FREE_KASA_PITY_GUARANTEE_AFTER = 18;
 const PURCHASE_CODE_USAGE_TEXT =
   "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i kliknij przycisk **Kod rabatowy**.";
 const REWARD_CODE_USAGE_TEXT =
@@ -230,6 +239,7 @@ const freeKasaChannelSetupAt = new Map();
 const freeKasaRewardProgress = new Map(); // userId -> { cashBalance, totalWonCash, pendingSwords, history[] }
 const rewardTicketClaims = new Map(); // channelId -> { userId, inviteMilestones, freeKasaCashToClaim, freeKasaSwordCount, createdAt }
 const claimedInviteRewardMilestones = new Map(); // guildId -> Map<userId, Set<milestone>>
+let freeKasaLossStreak = 0;
 
 // Colors
 const COLOR_BLUE = 0x00aaff;
@@ -244,63 +254,76 @@ const FREE_KASA_REWARD_POOL = [
     kind: "reward",
     rewardText: "50k$ na anarchia.gg",
     rewardAmount: 50000,
-    weight: 1,
+    weight: 4,
   },
   {
     key: "cash_40k",
     kind: "reward",
     rewardText: "40k$ na anarchia.gg",
     rewardAmount: 40000,
-    weight: 1,
+    weight: 7,
   },
   {
     key: "cash_30k",
     kind: "reward",
     rewardText: "30k$ na anarchia.gg",
     rewardAmount: 30000,
-    weight: 2,
+    weight: 12,
   },
   {
     key: "cash_20k",
     kind: "reward",
     rewardText: "20k$ na anarchia.gg",
     rewardAmount: 20000,
-    weight: 4,
+    weight: 18,
   },
   {
     key: "cash_10k",
     kind: "reward",
     rewardText: "10k$ na anarchia.gg",
     rewardAmount: 10000,
-    weight: 9,
+    weight: 26,
   },
   {
     key: "discount_10",
     kind: "discount",
     rewardText: "Zniżka -10% na zakupy",
     discount: 10,
-    weight: 14,
+    weight: 32,
   },
   {
     key: "discount_5",
     kind: "discount",
     rewardText: "Zniżka -5% na zakupy",
     discount: 5,
-    weight: 36,
+    weight: 60,
   },
   {
     key: "item_sword",
     kind: "reward",
     rewardText: "Anarchiczny miecz",
     rewardItem: "Anarchiczny miecz",
-    weight: 2,
+    weight: 12,
+  },
+  {
+    key: "item_pickaxe",
+    kind: "reward",
+    rewardText: "Anarchiczny kilof",
+    rewardItem: "Anarchiczny kilof",
+    weight: 7,
+  },
+  {
+    key: "item_elytra",
+    kind: "reward",
+    rewardText: "ELYTRA",
+    rewardItem: "ELYTRA",
+    weight: 1,
   },
 ];
 const FREE_KASA_TOTAL_WEIGHT = FREE_KASA_REWARD_POOL.reduce(
   (sum, reward) => sum + reward.weight,
   0,
 );
-const FREE_KASA_WIN_THRESHOLD = 7;
 
 // New maps for ticket close confirmation
 const pendingTicketClose = new Map(); // channelId -> { userId, ts }
@@ -790,6 +813,7 @@ function buildPersistentStateData() {
     dropCooldowns: dropCooldownsObj,
     freeKasaCooldowns: freeKasaCooldownsObj,
     freeKasaRewardProgress: freeKasaRewardProgressObj,
+    freeKasaLossStreak: Number(freeKasaLossStreak || 0),
     opinionCooldowns: opinionCooldownsObj,
     rewardTicketClaims: rewardTicketClaimsObj,
     pendingTicketClose: pendingTicketCloseObj,
@@ -829,11 +853,32 @@ async function saveStateToSupabase(data) {
 
 // ----------------- /free-kasa command -----------------
 function pickFreeKasaReward() {
+  const currentWinChance = Math.min(
+    FREE_KASA_PITY_CAP,
+    FREE_KASA_BASE_WIN_CHANCE +
+      Math.max(0, freeKasaLossStreak - FREE_KASA_PITY_START + 1) *
+        FREE_KASA_PITY_STEP,
+  );
+
+  if (freeKasaLossStreak >= FREE_KASA_PITY_GUARANTEE_AFTER) {
+    freeKasaLossStreak = 0;
+    scheduleSavePersistentState(true);
+    return rollFreeKasaRewardFromPool();
+  }
+
   const losingRoll = Math.random() * 100;
-  if (losingRoll >= FREE_KASA_WIN_THRESHOLD) {
+  if (losingRoll >= currentWinChance) {
+    freeKasaLossStreak += 1;
+    scheduleSavePersistentState(true);
     return null;
   }
 
+  freeKasaLossStreak = 0;
+  scheduleSavePersistentState(true);
+  return rollFreeKasaRewardFromPool();
+}
+
+function rollFreeKasaRewardFromPool() {
   let roll = Math.floor(Math.random() * FREE_KASA_TOTAL_WEIGHT) + 1;
   for (const reward of FREE_KASA_REWARD_POOL) {
     roll -= reward.weight;
@@ -843,6 +888,60 @@ function pickFreeKasaReward() {
   }
 
   return null;
+}
+
+function getFreeKasaRewardEmoji(reward) {
+  switch (reward?.key) {
+    case "cash_10k":
+    case "cash_20k":
+    case "cash_30k":
+    case "cash_40k":
+    case "cash_50k":
+      return FREE_KASA_CASH_EMOJI;
+    case "item_sword":
+      return FREE_KASA_SWORD_EMOJI;
+    case "item_pickaxe":
+      return FREE_KASA_PICKAXE_EMOJI;
+    case "item_elytra":
+      return FREE_KASA_ELYTRA_EMOJI;
+    default:
+      return reward?.kind === "discount" ? "🎟️" : "🎁";
+  }
+}
+
+function buildFreeKasaRewardLine(reward) {
+  return `${getFreeKasaRewardEmoji(reward)} \`${reward?.rewardText || "Nagroda"}\``;
+}
+
+function buildFreeKasaResultEmbed({ user, reward = null, loss = false }) {
+  const description = [
+    "```",
+    "🎀 New Shop × FREE KASA",
+    "```",
+    `\`👤\` × **Użytkownik:** ${user}`,
+  ];
+
+  if (loss) {
+    description.push(
+      "`😢` × **Tym razem skrzynka była pusta.**",
+      "`⏰` × **Spróbuj ponownie za 12 godzin.**",
+    );
+  } else if (reward?.kind === "discount") {
+    description.push(
+      `\`🎉\` × **Wygrałeś:** ${buildFreeKasaRewardLine(reward)}`,
+      "`📩` × **Kod rabatowy wysłałem Ci na prywatne wiadomości.**",
+    );
+  } else {
+    description.push(
+      `\`🎉\` × **Wygrałeś:** ${buildFreeKasaRewardLine(reward)}`,
+      "`📩` × **Kod odbioru wysłałem Ci na prywatne wiadomości.**",
+    );
+  }
+
+  return new EmbedBuilder()
+    .setColor(loss ? COLOR_GRAY : COLOR_YELLOW)
+    .setDescription(description.join("\n"))
+    .setTimestamp();
 }
 
 function formatRewardCashAmount(amount = 0) {
@@ -1210,27 +1309,29 @@ function buildFreeKasaInstructionPayload() {
     ? new AttachmentBuilder(attachmentPath, { name: attachmentName })
     : null;
   const embed = new EmbedBuilder()
-    .setColor(COLOR_YELLOW)
+    .setColor(COLOR_BLUE)
     .setDescription(
       [
         "```",
         "🎀 New Shop × FREE KASA",
         "```",
-        "> `🎯` × **Spróbuj swojego szczęścia i zgarnij darmowe nagrody.**",
+        "> `🎯` × **Spróbuj swojego szczęścia i zgarnij darmowe nagrody z FREE KASA.**",
         "",
         "`📌` × **Ustaw w statusie Discord:** `.gg/newshop`",
         `\`🎮\` × **Użyj komendy:** ${FREE_KASA_COMMAND_MENTION}`,
         "`⏰` × **Masz 1 próbę co 12 godzin**",
         "",
-        "`🎁` × **Do wygrania:**",
-        "• 10k$ na anarchia.gg",
-        "• 20k$ na anarchia.gg",
-        "• 30k$ na anarchia.gg",
-        "• 40k$ na anarchia.gg",
-        "• 50k$ na anarchia.gg",
-        "• Zniżka -5% na zakupy",
-        "• Zniżka -10% na zakupy",
-        "• Anarchiczny miecz",
+        "`💸` × **Nagrody pieniężne na anarchia.gg:**",
+        `• ${FREE_KASA_CASH_EMOJI} \`10k$\` / \`20k$\` / \`30k$\` / \`40k$\` / \`50k$\``,
+        "",
+        "`🛍️` × **Nagrody sklepowe:**",
+        "• 🎟️ `Zniżka -5% na zakupy`",
+        "• 🎟️ `Zniżka -10% na zakupy`",
+        "",
+        "`✨` × **Nagrody specjalne:**",
+        `• ${FREE_KASA_SWORD_EMOJI} \`Anarchiczny miecz\``,
+        `• ${FREE_KASA_PICKAXE_EMOJI} \`Anarchiczny kilof\``,
+        `• ${FREE_KASA_ELYTRA_EMOJI} \`ELYTRA\` *(ekstremalnie rzadka)*`,
       ].join("\n"),
     );
 
@@ -1568,23 +1669,10 @@ async function handleFreeKasaCommand(interaction) {
   const reward = pickFreeKasaReward();
 
   if (!reward) {
-    const loseEmbed = new EmbedBuilder()
-      .setColor(COLOR_GRAY)
-      .setDescription(
-        [
-          "```",
-          "🎀 New Shop × FREE KASA",
-          "```",
-          `\`👤\` × **Użytkownik:** ${user}`,
-          "`😢` × **Niestety, tym razem nie udało się! Spróbuj ponownie później...**",
-        ].join("\n"),
-      )
-      .setTimestamp();
-
     await interaction.reply({
       content: `<@${user.id}>`,
       allowedMentions: { users: [user.id] },
-      embeds: [loseEmbed],
+      embeds: [buildFreeKasaResultEmbed({ user, loss: true })],
     });
     await refreshFreeKasaInstruction(channel);
     return;
@@ -1612,20 +1700,6 @@ async function handleFreeKasaCommand(interaction) {
       scheduleSavePersistentState();
     }, FREE_KASA_CODE_EXPIRES_MS);
 
-    const winEmbed = new EmbedBuilder()
-      .setColor(0xd4af37)
-      .setDescription(
-        [
-          "```",
-          "🎀 New Shop × FREE KASA",
-          "```",
-          `\`👤\` × **Użytkownik:** ${user}`,
-          `\`🎉\` × **Gratulacje! Udało Ci się wygrać ${reward.rewardText}.**`,
-          "`📩` × **Sprawdź prywatne wiadomości po kod!**",
-        ].join("\n"),
-      )
-      .setTimestamp();
-
     let dmDelivered = true;
     try {
       const dmEmbed = buildCodeDeliveryDmEmbed({
@@ -1643,7 +1717,7 @@ async function handleFreeKasaCommand(interaction) {
     await interaction.reply({
       content: `<@${user.id}>`,
       allowedMentions: { users: [user.id] },
-      embeds: [winEmbed],
+      embeds: [buildFreeKasaResultEmbed({ user, reward })],
     });
     await refreshFreeKasaInstruction(channel);
 
@@ -1662,20 +1736,6 @@ async function handleFreeKasaCommand(interaction) {
 
   const rewardCodeData = await createFreeKasaRewardCode(user.id, reward);
 
-  const winEmbed = new EmbedBuilder()
-    .setColor(0xd4af37)
-    .setDescription(
-      [
-        "```",
-        "🎀 New Shop × FREE KASA",
-        "```",
-        `\`👤\` × **Użytkownik:** ${user}`,
-        `\`🎉\` × **Gratulacje! Udało Ci się wygrać ${reward.rewardText}.**`,
-        "`📩` × **Sprawdź prywatne wiadomości po kod!**",
-      ].join("\n"),
-    )
-    .setTimestamp();
-
   let dmDelivered = true;
   try {
     const dmEmbed = buildCodeDeliveryDmEmbed({
@@ -1693,7 +1753,7 @@ async function handleFreeKasaCommand(interaction) {
   await interaction.reply({
     content: `<@${user.id}>`,
     allowedMentions: { users: [user.id] },
-    embeds: [winEmbed],
+    embeds: [buildFreeKasaResultEmbed({ user, reward })],
   });
   await refreshFreeKasaInstruction(channel);
 
@@ -2250,6 +2310,11 @@ async function loadPersistentState() {
         freeKasaCooldowns.set(userId, timestamp);
       }
     }
+
+    freeKasaLossStreak = Math.max(
+      0,
+      Number(botStateData.freeKasaLossStreak || 0),
+    );
 
     if (
       botStateData.freeKasaRewardProgress &&
