@@ -1298,50 +1298,35 @@ function isRewardTicketLabel(label = "") {
   );
 }
 
-function buildFreeKasaInstructionPayload() {
-  const attachmentName = "free_kasa_status_guide.png";
-  const attachmentPath = path.join(
-    __dirname,
-    "attached_assets",
-    attachmentName,
-  );
-  const attachment = fs.existsSync(attachmentPath)
-    ? new AttachmentBuilder(attachmentPath, { name: attachmentName })
-    : null;
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      [
-        "```",
-        "🎀 New Shop × FREE KASA",
-        "```",
-        "> `🎯` × **Spróbuj swojego szczęścia i zgarnij darmowe nagrody z FREE KASA.**",
-        "",
-        "`📌` × **Ustaw w statusie Discord:** `.gg/newshop`",
-        `\`🎮\` × **Użyj komendy:** ${FREE_KASA_COMMAND_MENTION}`,
-        "`⏰` × **Masz 1 próbę co 12 godzin**",
-        "",
-        "`💸` × **Nagrody pieniężne na anarchia.gg:**",
-        `• ${FREE_KASA_CASH_EMOJI} \`10k$\` / \`20k$\` / \`30k$\` / \`40k$\` / \`50k$\``,
-        "",
-        "`🛍️` × **Nagrody sklepowe:**",
-        "• 🎟️ `Zniżka -5% na zakupy`",
-        "• 🎟️ `Zniżka -10% na zakupy`",
-        "",
-        "`✨` × **Nagrody specjalne:**",
-        `• ${FREE_KASA_SWORD_EMOJI} \`Anarchiczny miecz\``,
-        `• ${FREE_KASA_PICKAXE_EMOJI} \`Anarchiczny kilof\``,
-        `• ${FREE_KASA_ELYTRA_EMOJI} \`ELYTRA\` *(ekstremalnie rzadka)*`,
-      ].join("\n"),
-    );
+function buildFreeKasaInstructionPayload(guildId = null) {
+  const rawDescription = [
+    "```",
+    "💰 NEW SHOP × free kasa",
+    "```",
+    "",
+    "### `📌` × Ustaw w statusie `.gg/newshop`",
+    `\`🎮\` × Użyj komendy: ${FREE_KASA_COMMAND_MENTION}`,
+    "`⏰` × Masz **1** próbę co **12** godzin",
+    "",
+    "🎁 × **Nagrody do wygrania:**",
+    ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
+    ":arrowwhite: :jump_dirt: Zniżka -5% na zakupy",
+    ":arrowwhite: :jump_dirt: Zniżka -10% na zakupy",
+    ":arrowwhite: :ana_miecz: Anarchiczny miecz",
+    ":arrowwhite: :ana_kilof: Anarchiczny kilof",
+    ":arrowwhite: :elytra: Elytra",
+  ].join("\n");
 
-  if (attachment) {
-    embed.setImage(`attachment://${attachmentName}`);
-  }
+  const description = guildId
+    ? replaceNamedGuildEmojis(replaceEmbedAliasTokens(rawDescription), guildId)
+    : replaceEmbedAliasTokens(rawDescription);
+
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_YELLOW)
+    .setDescription(description);
 
   return {
     embeds: [embed],
-    files: attachment ? [attachment] : undefined,
   };
 }
 
@@ -1601,6 +1586,10 @@ async function refreshFreeKasaInstruction(channel) {
   if (!channel?.isTextBased?.()) return;
 
   try {
+    if (channel.guild?.id) {
+      await ensureEmbedTestEmojiCacheReady(channel.guild.id);
+    }
+
     const recentMessages = await channel.messages.fetch({ limit: 30 }).catch(() => null);
     if (recentMessages?.size) {
       for (const message of recentMessages.values()) {
@@ -1610,7 +1599,9 @@ async function refreshFreeKasaInstruction(channel) {
       }
     }
 
-    const sent = await channel.send(buildFreeKasaInstructionPayload());
+    const sent = await channel.send(
+      buildFreeKasaInstructionPayload(channel.guild?.id || null),
+    );
     lastFreeKasaInstruction.set(channel.id, sent.id);
   } catch (error) {
     console.error("Błąd odświeżania instrukcji free-kasa:", error);
