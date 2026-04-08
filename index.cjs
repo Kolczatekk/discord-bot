@@ -1803,7 +1803,7 @@ async function handleWezwijCommand(interaction) {
 
   const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
   // użyj formatu animowanego (a:...) jeśli emoji jest GIFem
-  const arrowEmoji = '<:arrowwhite:1491476759290449984>';
+  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
 
   try {
     const user = await client.users.fetch(ownerId);
@@ -3217,7 +3217,7 @@ function getModsVideoConfigByFilename(filename) {
 }
 
 function getModsVideoCaption(videoCfg, fallbackName = "Nagranie") {
-  const arrowEmoji = "<:arrowwhite:1491476759290449984>";
+  const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
   const safeName = (videoCfg?.modName || fallbackName)
     .toString()
     .replace(/[\r\n`*_~|<>]/g, "")
@@ -4739,7 +4739,7 @@ async function handleModalSubmit(interaction) {
       categoryId = REWARDS_CATEGORY_ID;
       ticketType = "odbior-nagrody";
       ticketTypeLabel = "NAGRODA";
-      formInfo = `> <:arrowwhite:1491476759290449984> × **Kod:** \`${enteredCode}\`\n> <:arrowwhite:1491476759290449984> × **Nagroda:** \`${codeData.rewardText || codeData.reward || "Brak"}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || codeData.reward || "Brak"}\``;
       break;
     }
     case "modal_inne": {
@@ -4748,7 +4748,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "PYTANIE";
-      formInfo = `> <:arrowwhite:1491476759290449984> × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -4844,9 +4844,9 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ 👤 × Informacje o kliencie:\n` +
-        `> <:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
         `### ・ 📋 × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -6463,7 +6463,7 @@ async function handlePanelKalkulatorCommand(interaction) {
       "```\n" +
       "🧮 New Shop × Kalkulator\n" +
       "```\n" +
-      "> <:arrowwhite:1491476759290449984> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
+      "> <a:arrowwhite:1469100658606211233> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
     );
 
   const typeSelect = new StringSelectMenuBuilder()
@@ -6610,7 +6610,7 @@ async function handleAdminOdprzejmij(interaction) {
 }
 
 function replaceEmbedAliasTokens(text = "") {
-  const arrowEmoji = "<:arrowwhite:1491476759290449984>";
+  const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
   const alertEmoji = "<a:alert:1474431227972026469>";
   const alertEmoji2 = "<a:alertownik2:1477688955221835807>";
   const minecraftEmoji2 = "<a:minecraft2:1480590181944791122>";
@@ -6954,7 +6954,7 @@ async function handleModyCommand(interaction) {
 
   collector.on("collect", async (msg) => {
     const contentRaw = (msg.content || "").trim();
-    const arrowEmoji = "<:arrowwhite:1491476759290449984>";
+    const arrowEmoji = "<a:arrowwhite:1469100658606211233>";
     const alertEmoji = "<a:alert:1474431227972026469>";
     const alertEmoji2 = "<a:alertownik2:1477688955221835807>";
     const minecraftEmoji2 = "<a:minecraft2:1480590181944791122>";
@@ -7305,8 +7305,8 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       "```\n" +
       "🛒 New Shop × WERYFIKACJA\n" +
       "```\n" +
-      `<:arrowwhite:1491476759290449984> **Kliknij w przycisk** na dole, **aby przejdź prostą** zagadkę\n` +
-      `<:arrowwhite:1491476759290449984> **matematyczną** i **otrzymać** rolę **klient.**`,
+      `<a:arrowwhite:1469100658606211233> **Kliknij w przycisk** na dole, **aby przejdź prostą** zagadkę\n` +
+      `<a:arrowwhite:1469100658606211233> **matematyczną** i **otrzymać** rolę **klient.**`,
     )
     // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
@@ -7568,9 +7568,9 @@ const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
   gg: "<:anarchia_gg:1469444521308852324>",
   kasa: "<:kasa_2:1476700165082710178>",
   kasa_2: "<:kasa_2:1476700165082710178>",
-  strzalka: "<:arrowwhite:1491476759290449984>",
-  "strzałka": "<:arrowwhite:1491476759290449984>",
-  arrowwhite: "<:arrowwhite:1491476759290449984>",
+  strzalka: "<a:arrowwhite:1469100658606211233>",
+  "strzałka": "<a:arrowwhite:1469100658606211233>",
+  arrowwhite: "<a:arrowwhite:1469100658606211233>",
 };
 
 function getEmbedTestColorDef(value) {
@@ -9316,7 +9316,7 @@ async function handleTicketZakonczCommand(interaction) {
   }
 
   const legitRepChannelId = "1449840030947217529";
-  const arrowEmoji = '<:arrowwhite:1491476759290449984>';
+  const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
   let thankLine = "Dziękujemy za zakup w naszym sklepie";
   let repVerb = "sprzedał";
   const typLower = typ.toLowerCase();
@@ -9469,7 +9469,7 @@ async function handleZamknijZPowodemCommand(interaction) {
     const ticketMeta = ticketOwners.get(channel.id) || null;
 
     // Wyślij embed do właściciela ticketu
-    const arrowEmoji = '<:arrowwhite:1491476759290449984>';
+    const arrowEmoji = '<a:arrowwhite:1469100658606211233>';
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(
@@ -10524,20 +10524,20 @@ function buildRewardClaimSummary(availability) {
   if (availability.inviteMilestones.length) {
     for (const milestone of availability.inviteMilestones) {
       rewardLines.push(
-        `> <:arrowwhite:1491476759290449984> × **Zaproszenia:** \`${milestone.label}\` za próg \`${milestone.threshold}\` zaproszeń`,
+        `> <a:arrowwhite:1469100658606211233> × **Zaproszenia:** \`${milestone.label}\` za próg \`${milestone.threshold}\` zaproszeń`,
       );
     }
   }
 
   if (availability.freeKasaCashToClaim > 0) {
     rewardLines.push(
-      `> <:arrowwhite:1491476759290449984> × **FREE KASA do odebrania teraz:** \`${formatRewardCashAmount(availability.freeKasaCashToClaim)}\``,
+      `> <a:arrowwhite:1469100658606211233> × **FREE KASA do odebrania teraz:** \`${formatRewardCashAmount(availability.freeKasaCashToClaim)}\``,
     );
   }
 
   if (availability.freeKasaSwordCount > 0) {
     rewardLines.push(
-      `> <:arrowwhite:1491476759290449984> × **Przedmioty z FREE KASA:** \`${availability.freeKasaSwordCount}x Anarchiczny miecz\``,
+      `> <a:arrowwhite:1469100658606211233> × **Przedmioty z FREE KASA:** \`${availability.freeKasaSwordCount}x Anarchiczny miecz\``,
     );
   }
 
@@ -10548,7 +10548,7 @@ function buildRewardClaimSummary(availability) {
   const infoLines = [];
   if (availability.freeKasaCashToClaim > 0 || availability.freeKasaSwordCount > 0) {
     infoLines.push(
-      "> <:arrowwhite:1491476759290449984> × **Wyślij screeny wiadomości z FREE KASA potwierdzające te wygrane.**",
+      "> <a:arrowwhite:1469100658606211233> × **Wyślij screeny wiadomości z FREE KASA potwierdzające te wygrane.**",
     );
   }
 
@@ -10643,9 +10643,9 @@ async function openRewardClaimTicket(interaction) {
     .setDescription(
       `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
         `${formInfo}`,
     )
@@ -11870,10 +11870,10 @@ async function handleModalSubmit(interaction) {
       );
 
       formInfo =
-        `> <:arrowwhite:1491476759290449984> × **Co chcesz kupić:** \`${itemToBuy}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Serwer:** \`${serverLabel}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Kwota:** \`${kwotaNum}zł\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentLabel}\``;
+        `> <a:arrowwhite:1469100658606211233> × **Co chcesz kupić:** \`${itemToBuy}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serverLabel}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Kwota:** \`${kwotaNum}zł\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentLabel}\``;
       break;
     }
     case "modal_mody_zakup": {
@@ -11938,10 +11938,10 @@ async function handleModalSubmit(interaction) {
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
 
-      formInfo = `> <:arrowwhite:1491476759290449984> × **Mod:** \`${modName}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethod}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Ilość modów:** \`${modsCount}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Łączna kwota:** \`${totalPrice}zł\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Mod:** \`${modName}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ilość modów:** \`${modsCount}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Łączna kwota:** \`${totalPrice}zł\``;
       break;
     }
     case "modal_autorynek_zakup": {
@@ -11974,8 +11974,8 @@ async function handleModalSubmit(interaction) {
       const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
 
       formInfo =
-        `> <:arrowwhite:1491476759290449984> × **Cena:** \`20zł\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethod}\``;
+        `> <a:arrowwhite:1469100658606211233> × **Cena:** \`20zł\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Forma płatności:** \`${paymentMethod}\``;
       break;
     }
     case "modal_sprzedaz": {
@@ -12025,9 +12025,9 @@ async function handleModalSubmit(interaction) {
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
 
       formInfo =
-        `> <:arrowwhite:1491476759290449984> × **Co chce sprzedać:** \`${coTrimmed}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Serwer:** \`${serwer}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **Forma wypłaty:** \`${payoutMethod}\``;
+        `> <a:arrowwhite:1469100658606211233> × **Co chce sprzedać:** \`${coTrimmed}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Serwer:** \`${serwer}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Forma wypłaty:** \`${payoutMethod}\``;
       break;
     }
     case "modal_odbior": {
@@ -12112,10 +12112,10 @@ async function handleModalSubmit(interaction) {
         ? Math.floor(codeData.expiresAt / 1000)
         : null;
       const expiryLine = expiryTs
-        ? `\n> <:arrowwhite:1491476759290449984> × **Kod wygasa za:** <t:${expiryTs}:R>`
+        ? `\n> <a:arrowwhite:1469100658606211233> × **Kod wygasa za:** <t:${expiryTs}:R>`
         : "";
 
-      const formInfo = `> <:arrowwhite:1491476759290449984> × **Kod:** \`${enteredCode}\`\n> <:arrowwhite:1491476759290449984> × **Nagroda:** \`${codeData.rewardText || codeData.reward || INVITE_REWARD_TEXT || "70k$"}\`${expiryLine}`;
+      const formInfo = `> <a:arrowwhite:1469100658606211233> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1469100658606211233> × **Nagroda:** \`${codeData.rewardText || codeData.reward || INVITE_REWARD_TEXT || "70k$"}\`${expiryLine}`;
 
       try {
         let parentToUse = categoryId;
@@ -12163,9 +12163,9 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> <:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-            `> <:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-            `> <:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+            `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
+            `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+            `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
             `### ・ \`📋\` × Informacje z formularza:\n` +
             `${formInfo}`,
           )
@@ -12241,7 +12241,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "PYTANIE";
-      formInfo = `> <:arrowwhite:1491476759290449984> × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1469100658606211233> × **Sprawa:** \`${sprawa}\``;
       break;
     }
     default:
@@ -12402,9 +12402,9 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1469100658606211233> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1469100658606211233> × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
         `${formInfo}`,
       )
@@ -12868,8 +12868,8 @@ client.on(Events.MessageCreate, async (message) => {
             "```\n" +
             "✅ New Shop × LEGIT CHECK\n" +
             "```\n" +
-            `<:arrowwhite:1491476759290449984> **__Stop!__**\n` +
-            `<:arrowwhite:1491476759290449984> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
+            `<a:arrowwhite:1469100658606211233> **__Stop!__**\n` +
+            `<a:arrowwhite:1469100658606211233> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
           )
           .setTimestamp();
         message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
