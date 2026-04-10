@@ -8746,8 +8746,19 @@ function collectEmbedTestMessageData(node, collector) {
     collector.accentColor = node.accent_color;
   }
 
+  const isSeparatorNode =
+    node.type === 14 ||
+    (typeof node.divider === "boolean" &&
+      !("content" in node) &&
+      !("label" in node));
+
+  if (isSeparatorNode) {
+    collector.sequence.push({ type: "separator" });
+  }
+
   if (typeof node.content === "string" && node.content.trim()) {
     collector.texts.push(node.content);
+    collector.sequence.push({ type: "text", content: node.content });
   }
 
   if (typeof node.label === "string" && (node.custom_id || node.url)) {
@@ -8833,12 +8844,75 @@ function splitEmbedTestHeadingParts(content = "") {
   return { headerBadge, title, headerNote };
 }
 
+function isEmbedTestSectionTitleBlock(content = "") {
+  const trimmed = String(content || "").trim();
+  if (!trimmed || trimmed.includes("\n")) return null;
+
+  const titleMatch = trimmed.match(/^\*\*(.+?)\*\*$/s);
+  return titleMatch ? titleMatch[1] : null;
+}
+
+function joinEmbedTestSectionBodyParts(parts = []) {
+  const normalized = [];
+
+  for (const part of parts) {
+    if (part === "__SEPARATOR__") {
+      if (
+        normalized.length &&
+        normalized[normalized.length - 1] !== "__SEPARATOR__"
+      ) {
+        normalized.push(part);
+      }
+      continue;
+    }
+
+    const trimmed = String(part || "").trim();
+    if (trimmed) {
+      normalized.push(trimmed);
+    }
+  }
+
+  while (normalized[0] === "__SEPARATOR__") {
+    normalized.shift();
+  }
+
+  while (normalized[normalized.length - 1] === "__SEPARATOR__") {
+    normalized.pop();
+  }
+
+  return normalized
+    .map((part) => (part === "__SEPARATOR__" ? "--" : part))
+    .join("\n\n")
+    .trim();
+}
+
+function appendSerializedSectionToBody(targetSection, section) {
+  if (!targetSection || !section) return;
+
+  const serializedParts = [];
+  if (section.title) {
+    serializedParts.push(`**${section.title}**`);
+  }
+  if (section.body) {
+    serializedParts.push(section.body);
+  }
+
+  const serializedSection = serializedParts.join("\n\n").trim();
+  if (!serializedSection) return;
+
+  if (targetSection.body) {
+    targetSection.body += "\n\n--\n\n";
+  }
+  targetSection.body += serializedSection;
+}
+
 function reconstructEmbedTestStateFromMessage(message, ownerId) {
   if (!message?.guild || !message.channel) return null;
 
   const collector = {
     accentColor: null,
     texts: [],
+    sequence: [],
     buttons: [],
     mediaUrls: [],
   };
@@ -8874,9 +8948,9 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     state.mediaUrls = [...new Set(collector.mediaUrls)];
   }
 
-  const textBlocks = collector.texts.slice();
-  if (textBlocks.length && textBlocks[0].trim().startsWith("## ")) {
-    const heading = splitEmbedTestHeadingParts(textBlocks.shift());
+  const sequence = collector.sequence.slice();
+  if (sequence.length && sequence[0]?.type === "text" && sequence[0].content.trim().startsWith("## ")) {
+    const heading = splitEmbedTestHeadingParts(sequence.shift().content);
     state.headerBadge = heading.headerBadge;
     state.title = heading.title || state.title;
     state.headerNote = heading.headerNote;
@@ -8887,26 +8961,57 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
 
   const pushCurrentSection = () => {
     if (!currentSection) return;
-    currentSection.body = currentSection.bodyParts.join("\n\n").trim();
+    currentSection.body = joinEmbedTestSectionBodyParts(currentSection.bodyParts);
     delete currentSection.bodyParts;
-    sections.push(currentSection);
+    if (currentSection.title || currentSection.body) {
+      sections.push(currentSection);
+    }
     currentSection = null;
   };
 
-  for (const block of textBlocks) {
+  const getNextTextToken = (startIndex) => {
+    for (let i = startIndex; i < sequence.length; i += 1) {
+      if (sequence[i]?.type === "text" && String(sequence[i].content || "").trim()) {
+        return sequence[i];
+      }
+    }
+    return null;
+  };
+
+  for (let index = 0; index < sequence.length; index += 1) {
+    const token = sequence[index];
+    if (!token) continue;
+
+    if (token.type === "separator") {
+      const nextTextToken = getNextTextToken(index + 1);
+      const nextTitle = nextTextToken
+        ? isEmbedTestSectionTitleBlock(nextTextToken.content)
+        : null;
+
+      if (
+        nextTitle &&
+        currentSection &&
+        (currentSection.title || currentSection.bodyParts.length)
+      ) {
+        pushCurrentSection();
+        continue;
+      }
+
+      if (currentSection && currentSection.bodyParts.length) {
+        currentSection.bodyParts.push("__SEPARATOR__");
+      }
+      continue;
+    }
+
+    const block = token.content;
     const trimmed = String(block || "").trim();
     if (!trimmed) continue;
 
-    const titleMatch =
-      trimmed.match(/^\*\*(.+?)\*\*$/s) &&
-      !trimmed.includes("\n")
-        ? trimmed.match(/^\*\*(.+?)\*\*$/s)
-        : null;
-
+    const titleMatch = isEmbedTestSectionTitleBlock(trimmed);
     if (titleMatch) {
       pushCurrentSection();
       currentSection = {
-        title: titleMatch[1],
+        title: titleMatch,
         bodyParts: [],
       };
       continue;
@@ -8924,7 +9029,21 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
 
   pushCurrentSection();
 
-  const [cashSection, itemsSection, extraSection, extraSectionTwo] = sections;
+  const cashSection = sections[0] || null;
+  const itemsSection = sections[1] || null;
+  const extraSection = sections[2] || null;
+  const extraSectionTwo = sections[3]
+    ? {
+        title: sections[3].title || "",
+        body: sections[3].body || "",
+      }
+    : null;
+
+  if (sections.length > 4 && extraSectionTwo) {
+    for (const overflowSection of sections.slice(4)) {
+      appendSerializedSectionToBody(extraSectionTwo, overflowSection);
+    }
+  }
 
   if (cashSection) {
     state.cashSectionTitle = cashSection.title || "";
