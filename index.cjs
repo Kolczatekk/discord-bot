@@ -8852,6 +8852,42 @@ function isEmbedTestSectionTitleBlock(content = "") {
   return titleMatch ? titleMatch[1] : null;
 }
 
+function tokenizeEmbedTestSectionContent(content = "") {
+  const lines = String(content || "").split(/\r?\n/);
+  const tokens = [];
+  let buffer = [];
+
+  const flushBuffer = () => {
+    const joined = buffer.join("\n").trim();
+    if (joined) {
+      tokens.push({ type: "text", content: joined });
+    }
+    buffer = [];
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed === "--") {
+      flushBuffer();
+      tokens.push({ type: "separator" });
+      continue;
+    }
+
+    const inlineTitle = isEmbedTestSectionTitleBlock(trimmed);
+    if (inlineTitle) {
+      flushBuffer();
+      tokens.push({ type: "title", title: inlineTitle });
+      continue;
+    }
+
+    buffer.push(line);
+  }
+
+  flushBuffer();
+  return tokens;
+}
+
 function joinEmbedTestSectionBodyParts(parts = []) {
   const normalized = [];
 
@@ -8948,7 +8984,20 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     state.mediaUrls = [...new Set(collector.mediaUrls)];
   }
 
-  const sequence = collector.sequence.slice();
+  const sequence = [];
+  for (const token of collector.sequence) {
+    if (!token) continue;
+
+    if (token.type === "separator") {
+      sequence.push(token);
+      continue;
+    }
+
+    if (token.type === "text") {
+      sequence.push(...tokenizeEmbedTestSectionContent(token.content));
+    }
+  }
+
   if (sequence.length && sequence[0]?.type === "text" && sequence[0].content.trim().startsWith("## ")) {
     const heading = splitEmbedTestHeadingParts(sequence.shift().content);
     state.headerBadge = heading.headerBadge;
@@ -8984,9 +9033,12 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
 
     if (token.type === "separator") {
       const nextTextToken = getNextTextToken(index + 1);
-      const nextTitle = nextTextToken
-        ? isEmbedTestSectionTitleBlock(nextTextToken.content)
-        : null;
+      const nextTitle =
+        nextTextToken?.type === "title"
+          ? nextTextToken.title
+          : nextTextToken?.type === "text"
+            ? isEmbedTestSectionTitleBlock(nextTextToken.content)
+            : null;
 
       if (
         nextTitle &&
@@ -9003,19 +9055,18 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
       continue;
     }
 
-    const block = token.content;
-    const trimmed = String(block || "").trim();
-    if (!trimmed) continue;
-
-    const titleMatch = isEmbedTestSectionTitleBlock(trimmed);
-    if (titleMatch) {
+    if (token.type === "title") {
       pushCurrentSection();
       currentSection = {
-        title: titleMatch,
+        title: token.title,
         bodyParts: [],
       };
       continue;
     }
+
+    const block = token.content;
+    const trimmed = String(block || "").trim();
+    if (!trimmed) continue;
 
     if (!currentSection) {
       currentSection = {
