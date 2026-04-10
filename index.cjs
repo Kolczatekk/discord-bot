@@ -9204,9 +9204,12 @@ async function handleSprawdzEmbedTestCommand(interaction) {
     return;
   }
 
+  const reconstructedState = reconstructEmbedTestStateFromMessage(
+    foundMessage,
+    interaction.user.id,
+  );
   const existingState =
-    embedTestStates.get(foundMessage.id) ||
-    reconstructEmbedTestStateFromMessage(foundMessage, interaction.user.id);
+    reconstructedState || embedTestStates.get(foundMessage.id) || null;
 
   if (!existingState) {
     await interaction.reply({
