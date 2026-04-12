@@ -2280,15 +2280,30 @@ async function loadPersistentState() {
       console.log("[state] Wczytano contestLeaveBlocks");
     }
 
+    if (botStateData.weeklySales && typeof botStateData.weeklySales === "object") {
+      for (const [userId, saleData] of Object.entries(botStateData.weeklySales)) {
+        if (!saleData || typeof saleData !== "object") continue;
+        weeklySales.set(userId, {
+          amount: Number(saleData.amount || 0),
+          lastUpdate: Number(saleData.lastUpdate || Date.now()),
+          paid: !!saleData.paid,
+          paidAt: saleData.paidAt || null,
+          guildId: saleData.guildId || null,
+        });
+      }
+      console.log(`[state] Wczytano weeklySales ze snapshotu: ${weeklySales.size} użytkowników`);
+    }
+
     // Load weekly sales from Supabase
     try {
       const sales = await db.getWeeklySales();
-      sales.forEach(({ user_id, amount, paid, paid_at }) => {
+      sales.forEach(({ user_id, amount, paid, paid_at, guild_id, updated_at }) => {
         weeklySales.set(user_id, { 
-          amount, 
-          lastUpdate: Date.now(),
-          paid: paid || false, // z Supabase
-          paidAt: paid_at || null
+          amount: Number(amount || 0),
+          lastUpdate: updated_at ? new Date(updated_at).getTime() : Date.now(),
+          paid: paid || false,
+          paidAt: paid_at ? new Date(paid_at).getTime() : null,
+          guildId: guild_id || null,
         });
       });
       console.log(`[Supabase] Wczytano weeklySales: ${sales.length} użytkowników`);
@@ -5938,15 +5953,31 @@ async function handleRozliczenieCommand(interaction) {
   const userId = interaction.user.id;
 
   if (!weeklySales.has(userId)) {
-    weeklySales.set(userId, { amount: 0, lastUpdate: Date.now() });
+    weeklySales.set(userId, {
+      amount: 0,
+      lastUpdate: Date.now(),
+      paid: false,
+      paidAt: null,
+      guildId: interaction.guild.id,
+    });
   }
 
   const userData = weeklySales.get(userId);
   userData.amount += kwota;
   userData.lastUpdate = Date.now();
+  userData.guildId = interaction.guild.id;
+  weeklySales.set(userId, userData);
   
   // Zapisz weekly sales do Supabase
-  await db.saveWeeklySale(userId, userData.amount, interaction.guild.id, userData.paid || false, userData.paidAt || null);
+  await db.saveWeeklySale(
+    userId,
+    userData.amount,
+    interaction.guild.id,
+    userData.paid || false,
+    userData.paidAt || null,
+    userData.lastUpdate,
+  );
+  scheduleSavePersistentState(true);
   console.log(`[rozliczenie] Użytkownik ${userId} dodał rozliczenie: ${kwota} zł, suma tygodniowa: ${userData.amount} zł`);
 
   const embed = new EmbedBuilder()
@@ -5996,10 +6027,20 @@ async function handleRozliczenieZaplacilCommand(interaction) {
   // Zaktualizuj status zapłaty
   userData.paid = true;
   userData.paidAt = Date.now();
+  userData.lastUpdate = Date.now();
+  userData.guildId = interaction.guild.id;
   weeklySales.set(userId, userData);
 
   // Zapisz do Supabase
-  await db.saveWeeklySale(userId, userData.amount, interaction.guild.id, true, Date.now());
+  await db.saveWeeklySale(
+    userId,
+    userData.amount,
+    interaction.guild.id,
+    true,
+    userData.paidAt,
+    userData.lastUpdate,
+  );
+  scheduleSavePersistentState(true);
 
   const embed = new EmbedBuilder()
     .setColor(0x00ff00) // zielony
@@ -6103,21 +6144,18 @@ async function handleRozliczenieZakonczCommand(interaction) {
     weeklySales.clear();
     console.log("Ręcznie zresetowano rozliczenia po /rozliczeniezakoncz");
     
-    // Resetuj też w Supabase - usuń WSZYSTKIE rozliczenia
+    // Resetuj też w Supabase dla aktualnego tygodnia
     try {
-      const { error } = await supabase
-        .from("weekly_sales")
-        .delete()
-        .neq("user_id", "000000000000000000"); // usuń wszystkie (warunek zawsze prawdziwy)
-        
-      if (error) {
-        console.error("[Supabase] Błąd resetowania wszystkich weekly_sales:", error);
+      const resetOk = await db.resetWeeklySales();
+      if (!resetOk) {
+        console.error("[Supabase] Nie udało się zresetować weekly_sales dla aktualnego tygodnia");
       } else {
-        console.log("[Supabase] Zresetowano WSZYSTKIE weekly_sales w bazie danych");
+        console.log("[Supabase] Zresetowano weekly_sales po /rozliczeniezakoncz");
       }
     } catch (err) {
-      console.error("Błąd podczas resetowania wszystkich rozliczeń w Supabase:", err);
+      console.error("Błąd podczas resetowania rozliczeń w Supabase:", err);
     }
+    scheduleSavePersistentState(true);
     
     // UWAGA: NIE resetujemy zaproszeń - są one przechowywane w Supabase osobno!
     console.log("🔒 ZAPROSZENIA ZACHOWANE - nie resetowane!");
@@ -6202,7 +6240,13 @@ async function handleRozliczenieUstawCommand(interaction) {
 
   // Inicjalizuj użytkownika jeśli nie istnieje
   if (!weeklySales.has(userId)) {
-    weeklySales.set(userId, { amount: 0, lastUpdate: Date.now() });
+    weeklySales.set(userId, {
+      amount: 0,
+      lastUpdate: Date.now(),
+      paid: false,
+      paidAt: null,
+      guildId: interaction.guild.id,
+    });
   }
 
   const userData = weeklySales.get(userId);
@@ -6216,12 +6260,21 @@ async function handleRozliczenieUstawCommand(interaction) {
   }
 
   userData.lastUpdate = Date.now();
+  userData.guildId = interaction.guild.id;
+  weeklySales.set(userId, userData);
   
   // Zapisz do Supabase
-  await db.saveWeeklySale(userId, userData.amount, interaction.guild.id);
+  await db.saveWeeklySale(
+    userId,
+    userData.amount,
+    interaction.guild.id,
+    userData.paid || false,
+    userData.paidAt || null,
+    userData.lastUpdate,
+  );
   
   // Zapisz stan po zmianie rozliczenia
-  scheduleSavePersistentState();
+  scheduleSavePersistentState(true);
 
   const prowizja = userData.amount * ROZLICZENIA_PROWIZJA;
   const zmiana = kwota;
@@ -16757,6 +16810,8 @@ async function checkWeeklyReset() {
 
       // Reset mapy
       weeklySales.clear();
+      await db.resetWeeklySales();
+      scheduleSavePersistentState(true);
       console.log("Zresetowano cotygodniowe rozliczenia");
     } catch (err) {
       console.error("Błąd resetowania rozliczeń:", err);

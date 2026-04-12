@@ -5,43 +5,53 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// Weekly sales functions
-async function saveWeeklySale(userId, amount, guildId = "default") {
-  // Pobierz początek tygodnia (niedziela)
+function getCurrentWeekStartString() {
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
+  const dayOfWeek = now.getDay();
   const diff = now.getDate() - dayOfWeek;
   const weekStart = new Date(now.setDate(diff));
   weekStart.setHours(0, 0, 0, 0);
+  return weekStart.toISOString().split("T")[0];
+}
+
+// Weekly sales functions
+async function saveWeeklySale(
+  userId,
+  amount,
+  guildId = "default",
+  paid = false,
+  paidAt = null,
+  lastUpdate = Date.now()
+) {
+  // Pobierz początek tygodnia (niedziela)
+  const weekStart = getCurrentWeekStartString();
   
   const { error } = await supabase
     .from("weekly_sales")
     .upsert({ 
       user_id: userId, 
       guild_id: guildId,
-      amount, 
-      week_start: weekStart.toISOString().split('T')[0] // YYYY-MM-DD
+      amount,
+      paid,
+      paid_at: paidAt ? new Date(paidAt).toISOString() : null,
+      updated_at: new Date(lastUpdate).toISOString(),
+      week_start: weekStart
     });
   if (error) console.error("[Supabase] Błąd zapisu weekly_sales:", error);
-  else console.log(`[Supabase] Zapisano weekly_sales: ${userId} -> ${amount}`);
+  else console.log(`[Supabase] Zapisano weekly_sales: ${guildId}/${userId} -> ${amount} (paid=${paid})`);
 }
 
 async function getWeeklySales(guildId = null) {
   // Pobierz początek aktualnego tygodnia (niedziela)
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const diff = now.getDate() - dayOfWeek;
-  const weekStart = new Date(now.setDate(diff));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekStartStr = weekStart.toISOString().split('T')[0]; // YYYY-MM-DD
+  const weekStartStr = getCurrentWeekStartString();
   
   let query = supabase
     .from("weekly_sales")
     .select("*")
     .eq("week_start", weekStartStr); // Tylko aktualny tydzień
     
-  if (guildId) {
-    query = query.eq("guild_id", guildId); // Konkretny guild
+  if (guildId && guildId !== "default") {
+    query = query.eq("guild_id", guildId);
   }
   
   const { data, error } = await query;
@@ -50,6 +60,30 @@ async function getWeeklySales(guildId = null) {
     return [];
   }
   return data;
+}
+
+async function resetWeeklySales(guildId = null) {
+  const weekStartStr = getCurrentWeekStartString();
+
+  let query = supabase
+    .from("weekly_sales")
+    .delete()
+    .eq("week_start", weekStartStr);
+
+  if (guildId && guildId !== "default") {
+    query = query.eq("guild_id", guildId);
+  }
+
+  const { error } = await query;
+  if (error) {
+    console.error("[Supabase] BÅ‚Ä…d resetowania weekly_sales:", error);
+    return false;
+  }
+
+  console.log(
+    `[Supabase] Zresetowano weekly_sales dla tygodnia ${weekStartStr}${guildId && guildId !== "default" ? ` w guild ${guildId}` : ""}`
+  );
+  return true;
 }
 
 // Invite counts functions
@@ -196,6 +230,20 @@ async function getActiveCodes() {
     return [];
   }
   return data;
+}
+
+async function getActiveCode(code) {
+  const { data, error } = await supabase
+    .from("active_codes")
+    .select("*")
+    .eq("code", code)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[Supabase] Błąd odczytu active_code:", error);
+    return null;
+  }
+  return data || null;
 }
 
 async function updateActiveCode(code, updates) {
@@ -500,6 +548,7 @@ async function getInvitedUsersByInviter(guildId, inviterId) {
 module.exports = {
   saveWeeklySale,
   getWeeklySales,
+  resetWeeklySales,
   saveInviteCount,
   getInviteCounts,
   saveInviteTotalJoined,
@@ -516,6 +565,7 @@ module.exports = {
   getTicketOwners,
   deleteTicketOwner,
   saveActiveCode,
+  getActiveCode,
   getActiveCodes,
   updateActiveCode,
   deleteActiveCode,
