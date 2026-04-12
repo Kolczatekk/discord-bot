@@ -1806,15 +1806,16 @@ async function handleFreeKasaCommand(interaction) {
 
     const statusGuideEmbed = statusGuideAttachment
       ? new EmbedBuilder()
-          .setColor(COLOR_YELLOW)
+          .setColor(COLOR_GRAY)
           .setImage(`attachment://${FREE_KASA_STATUS_GUIDE_IMAGE_NAME}`)
       : null;
 
     await interaction.reply({
       content:
-        "> `❌` × Aby wylosować nagrodę, ustaw status `.gg/newshop`\n" +
-        "> `☁️` × Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.\n" +
-        "> `⚠️` × Pamiętaj, że Twój status musi być aktywny, nie może być niedostępny!",
+        "> `❌` × Aby **wylosować nagrodę**, ustaw status **`.gg/newshop`**\n" +
+        "> `☁️` × Status ustawisz po kliknięciu w **profil** i szarą chmurkę obok nicku.\n" +
+        "> `⚠️` × Pamiętaj, że Twój status musi być **aktywny**. Nie może być ustawiony na **niedostępny**!\n" +
+        "> `🖼️` × Podgląd ustawienia statusu masz **na dole**.",
       embeds: statusGuideEmbed ? [statusGuideEmbed] : undefined,
       files: statusGuideAttachment ? [statusGuideAttachment] : undefined,
       flags: [MessageFlags.Ephemeral],
