@@ -1826,7 +1826,7 @@ async function handleFreeKasaCommand(interaction) {
   if (now - last < FREE_KASA_COOLDOWN_MS) {
     const remaining = FREE_KASA_COOLDOWN_MS - (now - last);
     await interaction.reply({
-      content: `> \`❌\` × Możesz losować ponownie za \`${humanizeMs(remaining)}\``,
+      content: `> \`❌\` × Możesz ponownie losować nagrodę za \`${humanizeMs(remaining)}\``,
       flags: [MessageFlags.Ephemeral],
     });
     return;
