@@ -1311,7 +1311,9 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     "```",
     "### `📌` × Ustaw w statusie `.gg/newshop`",
     "`⏰` × Masz **1** próbę co **12** godzin",
+    "`📩` × Nagrody z zaproszeń odbierasz od **1** zaproszenia",
     "-# Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.",
+    "-# `Losuj nagrodę` działa tylko, gdy bot widzi Twój aktywny status z `.gg/newshop`.",
     "",
     "🎁 × **Nagrody do wygrania:**",
     ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
@@ -1634,7 +1636,9 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     "```",
     "### `📌` × Ustaw w statusie `.gg/newshop`",
     "`⏰` × Masz **1** próbę co **12** godzin",
+    "`📩` × Nagrody z zaproszeń odbierasz od **1** zaproszenia",
     "-# Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.",
+    "-# `Losuj nagrodę` działa tylko, gdy bot widzi Twój aktywny status z `.gg/newshop`.",
     "",
     "🎁 × **Nagrody do wygrania:**",
     ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
@@ -1785,7 +1789,7 @@ async function handleFreeKasaCommand(interaction) {
   if (!memberHasFreeKasaStatus(member)) {
     await interaction.reply({
       content:
-        "> `❌` × Aby wylosować nagrodę musisz mieć `.gg/newshop` w statusie.",
+        "> `❌` × Aby losować, ustaw aktywny status `.gg/newshop`, żebym mógł go wykryć.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
