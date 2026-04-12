@@ -198,6 +198,12 @@ const FREE_KASA_REQUIRED_STATUS_ALIASES = [
   FREE_KASA_REQUIRED_STATUS,
   "discord.gg/newshop",
 ];
+const FREE_KASA_STATUS_GUIDE_IMAGE_NAME = "free_kasa_status_guide.png";
+const FREE_KASA_STATUS_GUIDE_IMAGE_PATH = path.join(
+  __dirname,
+  "attached_assets",
+  FREE_KASA_STATUS_GUIDE_IMAGE_NAME,
+);
 const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
@@ -1312,7 +1318,6 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     "### `📌` × Ustaw w statusie `.gg/newshop`",
     "`⏰` × Masz **1** próbę co **12** godzin",
     "`📩` × Nagrodę odebrać będziesz mógł od **1** zaproszenia!",
-    "-# `Losuj nagrodę` działa tylko, gdy bot widzi Twój aktywny status z `.gg/newshop`.",
     "",
     "🎁 × **Nagrody do wygrania:**",
     ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
@@ -1636,7 +1641,6 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     "### `📌` × Ustaw w statusie `.gg/newshop`",
     "`⏰` × Masz **1** próbę co **12** godzin",
     "`📩` × Nagrodę odebrać będziesz mógł od **1** zaproszenia!",
-    "-# `Losuj nagrodę` działa tylko, gdy bot widzi Twój aktywny status z `.gg/newshop`.",
     "",
     "🎁 × **Nagrody do wygrania:**",
     ":arrowwhite: :kasa_2: `10k$` **/** `20k$` **/** `30k$` **/** `40k$` **/** `50k$`",
@@ -1785,11 +1789,34 @@ async function handleFreeKasaCommand(interaction) {
   const channel = interaction.channel;
 
   if (!memberHasFreeKasaStatus(member)) {
+    let statusGuideAttachment = null;
+    if (fs.existsSync(FREE_KASA_STATUS_GUIDE_IMAGE_PATH)) {
+      try {
+        statusGuideAttachment = new AttachmentBuilder(
+          FREE_KASA_STATUS_GUIDE_IMAGE_PATH,
+          { name: FREE_KASA_STATUS_GUIDE_IMAGE_NAME },
+        );
+      } catch (error) {
+        console.warn(
+          "[free-kasa] Nie udało się załadować obrazka instrukcji statusu:",
+          error,
+        );
+      }
+    }
+
+    const statusGuideEmbed = statusGuideAttachment
+      ? new EmbedBuilder()
+          .setColor(COLOR_YELLOW)
+          .setImage(`attachment://${FREE_KASA_STATUS_GUIDE_IMAGE_NAME}`)
+      : null;
+
     await interaction.reply({
       content:
         "> `❌` × Aby wylosować nagrodę, ustaw status `.gg/newshop`\n" +
         "> `☁️` × Status ustawisz po kliknięciu w profil i szarą chmurkę obok nicku.\n" +
         "> `⚠️` × Pamiętaj, że Twój status musi być aktywny, nie może być niedostępny!",
+      embeds: statusGuideEmbed ? [statusGuideEmbed] : undefined,
+      files: statusGuideAttachment ? [statusGuideAttachment] : undefined,
       flags: [MessageFlags.Ephemeral],
     });
     return;
