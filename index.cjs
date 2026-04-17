@@ -10196,7 +10196,7 @@ async function handleAnonimCommand(interaction) {
     if (ticketData.serwer) {
       simulatedRepText += ` ${ticketData.serwer}`;
     }
-    simulatedRepText += `\n(Wystawienie legit repa anonimowe)`;
+    simulatedRepText += `\n-# (Wystawienie legit repa anonimowe)`;
 
     await repChannel.send({ content: simulatedRepText });
 
