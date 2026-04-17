@@ -5835,6 +5835,9 @@ async function handleSlashCommand(interaction) {
     case "ticket-zakoncz":
       await handleTicketZakonczCommand(interaction);
       break;
+    case "anonim":
+      await handleAnonimCommand(interaction);
+      break;
     case "zamknij-z-powodem":
       await handleZamknijZPowodemCommand(interaction);
       break;
@@ -10134,6 +10137,125 @@ async function handleTicketZakonczCommand(interaction) {
   }).catch((err) => console.error("ticket-zakoncz log error:", err));
 
   console.log(`Ticket ${channel.id} oczekuje na +rep od użytkownika ${ticketOwnerId} (komenda użyta przez ${interaction.user.username})`);
+}
+
+// ----------------- /anonim handler -----------------
+async function handleAnonimCommand(interaction) {
+  const isOwner = interaction.user.id === interaction.guild.ownerId;
+  const SELLER_ROLE_ID = "1350786945944391733";
+  const hasSellerRole = interaction.member.roles.cache.has(SELLER_ROLE_ID);
+  
+  if (!isOwner && !hasSellerRole) {
+    await interaction.reply({
+      content: "> `❌` Brak uprawnień do użycia komendy /anonim.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const channel = interaction.channel;
+  if (!isTicketChannel(channel)) {
+    await interaction.reply({
+      content: "> `❌` Ta **komenda** działa jedynie na **ticketach**!",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const ticketData = pendingTicketClose.get(channel.id);
+  if (!ticketData || !ticketData.awaitingRep) {
+    await interaction.reply({
+      content: "> `❌` Brak oczekującego legit-repa! Najpierw użyj komendy **/ticket-zakoncz** z poprawnymi danymi.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    const repChannel = await client.channels.fetch(ticketData.legitRepChannelId).catch(() => null);
+    if (!repChannel) {
+      return interaction.editReply({ content: "> `❌` Nie można znaleźć kanału w bazie (legit reps)." });
+    }
+
+    let verb = "wystawił/a";
+    if (ticketData.typ === "zakup") verb = "kupił";
+    else if (ticketData.typ === "sprzedaz" || ticketData.typ === "sprzedaż") verb = "sprzedał";
+    else if (ticketData.typ === "wreczyl nagrode" || ticketData.typ === "wręczył nagrodę") verb = "wręczył nagrodę";
+    
+    let simulatedRepText = `+rep <@${ticketData.commandUserId}> ${verb} ${ticketData.co}`;
+    if (ticketData.serwer) {
+      simulatedRepText += ` ${ticketData.serwer}`;
+    }
+    simulatedRepText += `\n*(Wystawione anonimowo przez bota)*`;
+
+    await repChannel.send({ content: simulatedRepText });
+
+    legitRepCount++;
+    console.log(`[anonim] +rep wystawione przez bota, licznik: ${legitRepCount}`);
+
+    scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
+    scheduleSavePersistentState();
+
+    const prevId = repLastInfoMessage.get(repChannel.id);
+    if (prevId) {
+      try {
+        const prevMsg = await repChannel.messages.fetch(prevId).catch(() => null);
+        if (prevMsg && prevMsg.deletable) {
+          await prevMsg.delete().catch(() => null);
+        }
+      } catch (delErr) {}
+    }
+
+    const userID = "1305200545979437129";
+    let attachment = null;
+    let imageUrl = "https://share.creavite.co/693f180207e523c90b19fbf9.gif";
+    try {
+      const gifPath = path.join(__dirname, "attached_assets", "standard_1765794552774_1766946611654.gif");
+      attachment = new AttachmentBuilder(gifPath, { name: "legit.gif" });
+      imageUrl = "attachment://legit.gif";
+    } catch (err) {
+      attachment = null;
+    }
+
+    const infoEmbed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+        "✅ New Shop × LEGIT CHECK\n" +
+        "```\n" +
+        "- `📝` **× Jak napisać:**\n" +
+        "> `+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]`\n\n" +
+        "- `📋` **× Przykład:**\n" +
+        "> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n" +
+        `*Aktualna liczba legitcheck: **${legitRepCount}***`
+      )
+      .setImage(imageUrl);
+
+    try {
+      const sendOptions = {
+        embeds: [infoEmbed],
+        allowedMentions: { users: [userID] },
+      };
+      if (attachment) sendOptions.files = [attachment];
+      const newInfoMsg = await repChannel.send(sendOptions);
+      repLastInfoMessage.set(repChannel.id, newInfoMsg.id);
+    } catch (err) {}
+
+    const ticketMeta = ticketOwners.get(channel.id) || null;
+    await archiveTicketOnClose(channel, interaction.user.id, ticketMeta, {
+      closeMethod: "Automatyczne zamknięcie po /anonim",
+    }).catch(() => null);
+    await channel.delete('Ticket zamknięty z /anonim');
+    pendingTicketClose.delete(channel.id);
+    await commitRewardTicketClaim(channel.id).catch(() => null);
+    ticketOwners.delete(channel.id);
+
+  } catch (error) {
+    console.error("Blad komendy /anonim:", error);
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas wystawiania anonimowego repa." }).catch(() => null);
+  }
 }
 
 // ----------------- /zamknij-z-powodem handler -----------------
