@@ -10105,7 +10105,10 @@ async function handleTicketZakonczCommand(interaction) {
   pendingTicketClose.set(channel.id, {
     userId: ticketOwnerId, // właściciel ticketu musi wysłać +rep
     commandUserId: interaction.user.id, // osoba która użyła komendy
-    commandUsername: interaction.user.username, // nick osoby która użyła komendy
+    commandUsername: interaction.user.username, // nick osoby
+    typ: typ,
+    co: co,
+    serwer: serwer,
     awaitingRep: true,
     legitRepChannelId,
     ts: Date.now()
@@ -10193,7 +10196,7 @@ async function handleAnonimCommand(interaction) {
     if (ticketData.serwer) {
       simulatedRepText += ` ${ticketData.serwer}`;
     }
-    simulatedRepText += `\n*(Wystawione anonimowo przez bota)*`;
+    simulatedRepText += `\n(Wystawienie legit repa anonimowe)`;
 
     await repChannel.send({ content: simulatedRepText });
 
