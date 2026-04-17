@@ -2798,6 +2798,11 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("anonim")
+    .setDescription("Bot wystawia legit rep i zamyka ticket anonimowo (po /ticket-zakoncz)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("zamknij-z-powodem")
     .setDescription("Zamknij ticket z powodem (tylko właściciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
