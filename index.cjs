@@ -10188,8 +10188,8 @@ async function handleAnonimCommand(interaction) {
     }
 
     let verb = "wystawił/a";
-    if (ticketData.typ === "zakup") verb = "kupił";
-    else if (ticketData.typ === "sprzedaz" || ticketData.typ === "sprzedaż") verb = "sprzedał";
+    if (ticketData.typ === "zakup") verb = "sprzedał";
+    else if (ticketData.typ === "sprzedaz" || ticketData.typ === "sprzedaż") verb = "kupił";
     else if (ticketData.typ === "wreczyl nagrode" || ticketData.typ === "wręczył nagrodę") verb = "wręczył nagrodę";
     
     let simulatedRepText = `+rep <@${ticketData.commandUserId}> ${verb} ${ticketData.co}`;
