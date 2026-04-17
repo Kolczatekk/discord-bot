@@ -212,11 +212,11 @@ const FREE_KASA_CASH_EMOJI = "<:kasa_2:1476700165082710178>";
 const FREE_KASA_SWORD_EMOJI = "<:ana_miecz:1476679184813260822>";
 const FREE_KASA_PICKAXE_EMOJI = "<:ana_kilof:1476679224331862169>";
 const FREE_KASA_ELYTRA_EMOJI = "<:elytra:1476679447846588416>";
-const FREE_KASA_BASE_WIN_CHANCE = 5.5;
-const FREE_KASA_PITY_START = 7;
-const FREE_KASA_PITY_STEP = 1.6;
-const FREE_KASA_PITY_CAP = 26;
-const FREE_KASA_PITY_GUARANTEE_AFTER = 18;
+const FREE_KASA_BASE_WIN_CHANCE = 2.0;
+const FREE_KASA_PITY_START = 15;
+const FREE_KASA_PITY_STEP = 0.5;
+const FREE_KASA_PITY_CAP = 15;
+const FREE_KASA_PITY_GUARANTEE_AFTER = 40;
 const PURCHASE_CODE_USAGE_TEXT =
   "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i kliknij przycisk **Kod rabatowy**.";
 const REWARD_CODE_USAGE_TEXT =
@@ -1750,16 +1750,18 @@ function buildFreeKasaResultEmbed({
 }
 
 async function sendFreeKasaPublicResult(interaction, payload) {
-  if (interaction?.deferred || interaction?.replied) {
-    return interaction.followUp(payload);
-  }
-
   if (typeof interaction?.isMessageComponent === "function" && interaction.isMessageComponent()) {
-    await interaction.deferUpdate();
-    return interaction.channel?.send(payload);
+      if (!interaction.deferred && !interaction.replied) {
+          try { await interaction.deferUpdate(); } catch(e) {}
+      }
+      return interaction.channel?.send(payload).catch(() => null);
   }
 
-  return interaction.reply(payload);
+  if (interaction?.deferred || interaction?.replied) {
+    return interaction.followUp(payload).catch(() => null);
+  }
+
+  return interaction.reply(payload).catch(() => null);
 }
 
 async function handleFreeKasaCommand(interaction) {
@@ -1834,6 +1836,10 @@ async function handleFreeKasaCommand(interaction) {
 
   freeKasaCooldowns.set(user.id, now);
   scheduleSavePersistentState(true);
+
+  try {
+    await interaction.deferUpdate();
+  } catch (e) {}
 
   const reward = pickFreeKasaReward();
   const retryTimestamp = Math.floor((now + FREE_KASA_COOLDOWN_MS) / 1000);
