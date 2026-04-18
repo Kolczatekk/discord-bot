@@ -5629,8 +5629,8 @@ const nickInput = new TextInputBuilder()
     if (action === "add") {
       nextIndex = Math.min(safeIndex + 1, nextPages.length);
       nextPages.splice(nextIndex, 0, {
-        title: `Strona ${nextIndex + 1}`,
-        body: "-# Uzupełnij treść tej strony regulaminu.",
+        title: `> # ${nextIndex + 1}. __Nowa strona__`,
+        body: "> :strzałka: Uzupełnij treść tej strony regulaminu.",
       });
     } else if (action === "delete") {
       if (nextPages.length <= 1) {
@@ -8343,20 +8343,38 @@ function normalizeRegulationPage(page) {
 function createDefaultRegulationPages() {
   return [
     {
-      title: "1. Postanowienia ogólne",
-      body: "-# Uzupełnij pierwszą stronę regulaminu.",
+      title: "> # 1. __Postanowienia ogólne__ 📜",
+      body:
+        "> :strzałka: Korzystanie z naszych usług oznacza **akceptację zasad** obowiązujących na serwerze.\n" +
+        "> :strzałka: Zakupy dotyczą m.in. serwerów takich jak: **Anarchia, DonutSMP, PvkMC** oraz innych wskazanych przez administrację.\n" +
+        "> :strzałka: Administracja zastrzega sobie prawo do **zmiany regulaminu** w każdym momencie.\n" +
+        "> :strzałka: **Nieznajomość zasad** nie zwalnia z ich przestrzegania.",
     },
     {
-      title: "2. Zasady użytkowania",
-      body: "-# Uzupełnij drugą stronę regulaminu.",
+      title: "> # 2. __Transakcje__ 🛒",
+      body:
+        "> :strzałka: Obsługujemy płatności przez **BLIK, Paysafecard, PayPal, Revolut oraz krypto**.\n" +
+        "> :strzałka: Każdą wpłatę wykonuj **dokładnie według wskazówek administracji**, inaczej może nie zostać zaliczona.\n" +
+        "> :strzałka: Wykrycie środków z **nielegalnego pochodzenia** skutkuje **cofnięciem transakcji** i **blokadą konta**.",
     },
     {
-      title: "3. Płatności i zwroty",
-      body: "-# Uzupełnij trzecią stronę regulaminu.",
+      title: "> # 3. Zachowanie użytkownika 👤",
+      body:
+        "> :strzałka: Próby **oszustwa**, wprowadzania w błąd lub **brak szacunku wobec administracji** mogą skutkować **odmową realizacji transakcji** oraz **blokadą konta**.\n" +
+        "> :strzałka: W takich przypadkach administracja może **zatrzymać środki** oraz **ukarać użytkownika**.",
     },
     {
-      title: "4. Kary i postanowienia końcowe",
-      body: "-# Uzupełnij czwartą stronę regulaminu.",
+      title: "> # 4. Zwroty :kasa_3:",
+      body:
+        "> :strzałka: Po dokonaniu zakupu **środki nie podlegają zwrotowi**.",
+    },
+    {
+      title: "> # 5. Wymogi nagród za zaproszenia :gift:",
+      body:
+        "> :strzałka: **Multikonta, konta AFK oraz puste profile** nie są zaliczane każde zaproszenie jest **weryfikowane**.\n" +
+        "> :strzałka: **Zaproszona osoba musi być zweryfikowana** (posiadać rangę **Klient**).\n" +
+        "> :strzałka: Zaproszona osoba musi przebywać na serwerze **minimum 24h** oraz mieć konto discord **co najmniej 2 miesiące**.\n" +
+        "> :strzałka: **Zakaz oszustw, spamu i sztucznego nabijania** grozi **brakiem nagrody lub banem**.",
     },
   ];
 }
@@ -8463,7 +8481,9 @@ function cloneRegulationPanelState(state, overrides = {}) {
     mediaUrls: Array.isArray(state?.mediaUrls)
       ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
       : [],
-    pages: [],
+    pages: Array.isArray(state?.pages)
+      ? state.pages.map((page) => normalizeRegulationPage(page))
+      : [],
     ...overrides,
   };
 
@@ -8659,10 +8679,7 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
 
   const embed = new EmbedBuilder()
     .setColor(state.accentColor || COLOR_BLUE)
-    .setDescription(descriptionParts.join("\n"))
-    .setFooter({
-      text: `Strona ${safeIndex + 1}/${pages.length}`,
-    });
+    .setDescription(descriptionParts.join("\n"));
 
   const components = [];
   if (pages.length > 1) {
@@ -10111,6 +10128,16 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
 
   pushCurrentSection();
 
+  if (isRegulationPanel && sections.length) {
+    setRegulationPagesOnState(
+      state,
+      sections.map((section) => ({
+        title: section?.title || "",
+        body: section?.body || "",
+      })),
+    );
+  }
+
   const cashSection = sections[0] || null;
   const itemsSection = sections[1] || null;
   const extraSection = sections[2] || null;
@@ -10166,23 +10193,36 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
   return state;
 }
 
+function getPanelComponentDump(message) {
+  const componentJson = Array.isArray(message?.components)
+    ? message.components.map(getSerializableMessageComponent).filter(Boolean)
+    : [];
+  return JSON.stringify(componentJson);
+}
+
+function isRegulationPanelMessage(message) {
+  return getPanelComponentDump(message).includes("embedtest_buy_open_regulamin");
+}
+
 async function findLatestEmbedTestMessage(channel) {
   if (!channel?.isTextBased?.()) return null;
 
   try {
-    const fetched = await channel.messages.fetch({ limit: 50 });
+    const fetched = await channel.messages.fetch({ limit: 100 });
     for (const message of fetched.values()) {
       if (message.author?.id !== client.user?.id) continue;
 
-      const componentJson = Array.isArray(message.components)
-        ? message.components.map(getSerializableMessageComponent).filter(Boolean)
-        : [];
-      const componentDump = JSON.stringify(componentJson);
+      if (regulationPanels.has(message.id) || embedTestStates.has(message.id)) {
+        return message;
+      }
+
+      const componentDump = getPanelComponentDump(message);
 
       if (
         componentDump.includes("embedtest_buy_open_") ||
         componentDump.includes("\"Kup teraz\"") ||
-        componentDump.includes("\"Płatności\"")
+        componentDump.includes("\"Płatności\"") ||
+        componentDump.includes("\"Zobacz regulamin\"")
       ) {
         return message;
       }
@@ -10234,7 +10274,7 @@ async function handleSprawdzEmbedTestCommand(interaction) {
   }
 
   const liveState = embedTestStates.get(foundMessage.id) || null;
-  const reconstructedState = regulationPanels.has(foundMessage.id)
+  const storedRegulationState = regulationPanels.has(foundMessage.id)
     ? cloneRegulationPanelState(regulationPanels.get(foundMessage.id), {
         ownerId: interaction.user.id,
         guildId: interaction.guild.id,
@@ -10242,8 +10282,22 @@ async function handleSprawdzEmbedTestCommand(interaction) {
         messageId: foundMessage.id,
         persistPanel: true,
       })
-    : reconstructEmbedTestStateFromMessage(foundMessage, interaction.user.id);
-  const existingState = liveState || reconstructedState || null;
+    : null;
+
+  if (!liveState && !storedRegulationState && isRegulationPanelMessage(foundMessage)) {
+    await interaction.reply({
+      content:
+        "> `❌` × Znalazłem panel regulaminu, ale bot nie ma zapisanego stanu jego stron. Podepnij go ponownie przez `/regulaminwyslij` albo otwórz aktywną sesję edycji.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const reconstructedState =
+    liveState || storedRegulationState
+      ? null
+      : reconstructEmbedTestStateFromMessage(foundMessage, interaction.user.id);
+  const existingState = liveState || storedRegulationState || reconstructedState || null;
 
   if (!existingState) {
     await interaction.reply({
