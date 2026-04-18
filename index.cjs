@@ -5580,6 +5580,87 @@ const nickInput = new TextInputBuilder()
     return;
   }
 
+  const regulationEditorMatch = customId.match(
+    /^regulamin_editor_(prev|next|edit|add|delete)_(\d+)_(\d+)$/,
+  );
+  if (regulationEditorMatch) {
+    const [, action, messageId, rawPageIndex] = regulationEditorMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state || !isRegulationEmbedState(state)) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/regulaminwyslij` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor panelu może edytować ten regulamin.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const pages = getRegulationPanelPages(state);
+    const safeIndex = Math.max(
+      0,
+      Math.min(Number(rawPageIndex) || 0, pages.length - 1),
+    );
+
+    if (action === "edit") {
+      await interaction.showModal(buildRegulationPageModal(state, safeIndex));
+      return;
+    }
+
+    if (action === "prev" || action === "next") {
+      const nextIndex =
+        action === "prev"
+          ? Math.max(0, safeIndex - 1)
+          : Math.min(pages.length - 1, safeIndex + 1);
+      await interaction.update(buildRegulationPagesEditorPayload(state, nextIndex));
+      return;
+    }
+
+    const nextPages = pages.map((page) => normalizeRegulationPage(page));
+    let nextIndex = safeIndex;
+
+    if (action === "add") {
+      nextIndex = Math.min(safeIndex + 1, nextPages.length);
+      nextPages.splice(nextIndex, 0, {
+        title: `Strona ${nextIndex + 1}`,
+        body: "-# Uzupełnij treść tej strony regulaminu.",
+      });
+    } else if (action === "delete") {
+      if (nextPages.length <= 1) {
+        await interaction.update(buildRegulationPagesEditorPayload(state, safeIndex));
+        return;
+      }
+
+      nextPages.splice(safeIndex, 1);
+      nextIndex = Math.max(0, Math.min(safeIndex, nextPages.length - 1));
+    }
+
+    setRegulationPagesOnState(state, nextPages);
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.update({
+        content:
+          "> `❌` × Nie udało się zaktualizować panelu regulaminu. Użyj `/regulaminwyslij` ponownie.",
+        embeds: [],
+        components: [],
+      });
+      return;
+    }
+
+    await interaction.update(buildRegulationPagesEditorPayload(state, nextIndex));
+    return;
+  }
+
   const embedTestEditMatch = customId.match(
     /^embedtest_edit_(header|content|content_extra|buttons|emojis)_(\d+)$/,
   );
@@ -5609,11 +5690,27 @@ const nickInput = new TextInputBuilder()
     }
 
     if (mode === "content") {
+      if (isRegulationEmbedState(state)) {
+        await interaction.reply({
+          ...buildRegulationPagesEditorPayload(state, 0),
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       await interaction.showModal(buildEmbedTestContentModal(state));
       return;
     }
 
     if (mode === "content_extra") {
+      if (isRegulationEmbedState(state)) {
+        await interaction.reply({
+          ...buildRegulationPagesEditorPayload(state, 0),
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
       await interaction.showModal(buildEmbedTestExtraContentModal(state));
       return;
     }
@@ -8236,11 +8333,104 @@ function isRegulationEmbedState(state) {
   return state?.variant === "regulamin";
 }
 
+function normalizeRegulationPage(page) {
+  return {
+    title: String(page?.title || ""),
+    body: String(page?.body || ""),
+  };
+}
+
+function createDefaultRegulationPages() {
+  return [
+    {
+      title: "1. Postanowienia ogólne",
+      body: "-# Uzupełnij pierwszą stronę regulaminu.",
+    },
+    {
+      title: "2. Zasady użytkowania",
+      body: "-# Uzupełnij drugą stronę regulaminu.",
+    },
+    {
+      title: "3. Płatności i zwroty",
+      body: "-# Uzupełnij trzecią stronę regulaminu.",
+    },
+    {
+      title: "4. Kary i postanowienia końcowe",
+      body: "-# Uzupełnij czwartą stronę regulaminu.",
+    },
+  ];
+}
+
+function getLegacyRegulationPages(state) {
+  return [
+    {
+      title: state?.cashSectionTitle || "",
+      body: state?.cashBody || "",
+    },
+    {
+      title: state?.itemsSectionTitle || "",
+      body: state?.itemsBody || "",
+    },
+    {
+      title: state?.extraSectionTitle || "",
+      body: state?.extraSectionBody || "",
+    },
+    {
+      title: state?.extraSectionTwoTitle || "",
+      body: state?.extraSectionTwoBody || "",
+    },
+  ]
+    .map((page) => normalizeRegulationPage(page))
+    .filter(
+      (page) => String(page.title || "").trim() || String(page.body || "").trim(),
+    );
+}
+
+function getRawRegulationPages(state, fallbackPages = null) {
+  if (Array.isArray(state?.pages) && state.pages.length) {
+    return state.pages.map((page) => normalizeRegulationPage(page));
+  }
+
+  const legacyPages = getLegacyRegulationPages(state);
+  if (legacyPages.length) {
+    return legacyPages;
+  }
+
+  if (Array.isArray(fallbackPages) && fallbackPages.length) {
+    return fallbackPages.map((page) => normalizeRegulationPage(page));
+  }
+
+  return [
+    {
+      title: "Regulamin",
+      body: "-# Ten regulamin nie został jeszcze uzupełniony.",
+    },
+  ];
+}
+
+function setRegulationPagesOnState(state, pages) {
+  const normalizedPages =
+    Array.isArray(pages) && pages.length
+      ? pages.map((page) => normalizeRegulationPage(page))
+      : [{ title: "", body: "" }];
+  const [first = {}, second = {}, third = {}, fourth = {}] = normalizedPages;
+
+  state.pages = normalizedPages;
+  state.cashSectionTitle = first.title || "";
+  state.cashBody = first.body || "";
+  state.itemsSectionTitle = second.title || "";
+  state.itemsBody = second.body || "";
+  state.extraSectionTitle = third.title || "";
+  state.extraSectionBody = third.body || "";
+  state.extraSectionTwoTitle = fourth.title || "";
+  state.extraSectionTwoBody = fourth.body || "";
+  return state;
+}
+
 function cloneRegulationPanelState(state, overrides = {}) {
   const colorKey = state?.accentColorKey || "yellow";
   const colorDef = getEmbedTestColorDef(colorKey);
-
-  return {
+  const cloned = {
     ownerId: state?.ownerId || null,
     guildId: state?.guildId || null,
     channelId: state?.channelId || null,
@@ -8273,8 +8463,14 @@ function cloneRegulationPanelState(state, overrides = {}) {
     mediaUrls: Array.isArray(state?.mediaUrls)
       ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
       : [],
+    pages: [],
     ...overrides,
   };
+
+  return setRegulationPagesOnState(
+    cloned,
+    getRawRegulationPages(cloned, createDefaultRegulationPages()),
+  );
 }
 
 function createDefaultRegulaminState(
@@ -8301,14 +8497,7 @@ function createDefaultRegulaminState(
     headerBadge: "📜",
     headerNote: "• Kliknij **przycisk poniżej**, aby wyświetlić regulamin.",
     title: "NEW SHOP × REGULAMIN",
-    cashSectionTitle: "1. Postanowienia ogólne",
-    cashBody: "-# Uzupełnij pierwszą stronę regulaminu.",
-    itemsSectionTitle: "2. Zasady użytkowania",
-    itemsBody: "-# Uzupełnij drugą stronę regulaminu.",
-    extraSectionTitle: "3. Płatności i zwroty",
-    extraSectionBody: "-# Uzupełnij trzecią stronę regulaminu.",
-    extraSectionTwoTitle: "4. Kary i postanowienia końcowe",
-    extraSectionTwoBody: "-# Uzupełnij czwartą stronę regulaminu.",
+    pages: createDefaultRegulationPages(),
     buttonOneLabel: "Zobacz regulamin",
     buttonOneEmoji: "📜",
     buttonTwoLabel: "",
@@ -8318,35 +8507,7 @@ function createDefaultRegulaminState(
 }
 
 function getRegulationPanelPages(state) {
-  const pages = [
-    {
-      title: state?.cashSectionTitle || "",
-      body: state?.cashBody || "",
-    },
-    {
-      title: state?.itemsSectionTitle || "",
-      body: state?.itemsBody || "",
-    },
-    {
-      title: state?.extraSectionTitle || "",
-      body: state?.extraSectionBody || "",
-    },
-    {
-      title: state?.extraSectionTwoTitle || "",
-      body: state?.extraSectionTwoBody || "",
-    },
-  ].filter((page) => String(page.title || "").trim() || String(page.body || "").trim());
-
-  if (pages.length) {
-    return pages;
-  }
-
-  return [
-    {
-      title: "Regulamin",
-      body: "-# Ten regulamin nie został jeszcze uzupełniony.",
-    },
-  ];
+  return getRawRegulationPages(state);
 }
 
 function getRegulationPanelStateByMessageId(messageId) {
@@ -8529,6 +8690,119 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
     embeds: [embed],
     components,
   };
+}
+
+function buildRegulationPagesEditorPayload(state, pageIndex = 0) {
+  const pages = getRegulationPanelPages(state);
+  const safeIndex = Math.max(
+    0,
+    Math.min(Number(pageIndex) || 0, pages.length - 1),
+  );
+  const page = pages[safeIndex] || pages[0] || { title: "", body: "" };
+  const titlePreview = replaceNamedGuildEmojis(
+    page.title || `Strona ${safeIndex + 1}`,
+    state.guildId,
+  );
+  const bodyPreview = replaceNamedGuildEmojis(
+    page.body || "-# Ta strona jest jeszcze pusta.",
+    state.guildId,
+  );
+
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setTitle("New Shop × Strony regulaminu")
+    .setDescription(
+      `Edytujesz stronę **${safeIndex + 1}/${pages.length}**.\nKliknij przycisk niżej, żeby ją zmienić albo dodać kolejną.`,
+    )
+    .addFields(
+      {
+        name: "Tytuł strony",
+        value: titlePreview.slice(0, 1024) || "-# Brak tytułu",
+      },
+      {
+        name: "Treść strony",
+        value:
+          bodyPreview.length > 1024
+            ? `${bodyPreview.slice(0, 1021)}...`
+            : bodyPreview,
+      },
+    );
+
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`regulamin_editor_prev_${state.messageId}_${safeIndex}`)
+          .setLabel("<")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(safeIndex === 0),
+        new ButtonBuilder()
+          .setCustomId(`regulamin_editor_info_${state.messageId}_${safeIndex}`)
+          .setLabel(`${safeIndex + 1}/${pages.length}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`regulamin_editor_next_${state.messageId}_${safeIndex}`)
+          .setLabel(">")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(safeIndex === pages.length - 1),
+        new ButtonBuilder()
+          .setCustomId(`regulamin_editor_edit_${state.messageId}_${safeIndex}`)
+          .setLabel("Edytuj")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`regulamin_editor_add_${state.messageId}_${safeIndex}`)
+          .setLabel("Dodaj stronę")
+          .setStyle(ButtonStyle.Success),
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`regulamin_editor_delete_${state.messageId}_${safeIndex}`)
+          .setLabel("Usuń stronę")
+          .setStyle(ButtonStyle.Danger)
+          .setDisabled(pages.length <= 1),
+      ),
+    ],
+  };
+}
+
+function buildRegulationPageModal(state, pageIndex = 0) {
+  const pages = getRegulationPanelPages(state);
+  const safeIndex = Math.max(
+    0,
+    Math.min(Number(pageIndex) || 0, pages.length - 1),
+  );
+  const page = pages[safeIndex] || { title: "", body: "" };
+  const modal = new ModalBuilder()
+    .setCustomId(`regulamin_modal_page_${state.messageId}_${safeIndex}`)
+    .setTitle(`Edytuj stronę ${safeIndex + 1}`);
+
+  const titleInput = new TextInputBuilder()
+    .setCustomId("page_title")
+    .setLabel(`Tytuł strony ${safeIndex + 1}`)
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("Np. 5. Reklamacje");
+
+  const bodyInput = new TextInputBuilder()
+    .setCustomId("page_body")
+    .setLabel(`Treść strony ${safeIndex + 1}`)
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setMaxLength(4000)
+    .setPlaceholder("Wpisz całą treść tej strony regulaminu.");
+
+  setTextInputValueIfPresent(titleInput, page.title);
+  setTextInputValueIfPresent(bodyInput, page.body);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(titleInput),
+    new ActionRowBuilder().addComponents(bodyInput),
+  );
+
+  return modal;
 }
 
 function createDefaultEmbedTestState(
@@ -8751,7 +9025,7 @@ function buildEmbedTestControls(state) {
       })),
     );
 
-  return [
+  const rows = [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`embedtest_edit_header_${state.messageId}`)
@@ -8759,11 +9033,11 @@ function buildEmbedTestControls(state) {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`embedtest_edit_content_${state.messageId}`)
-        .setLabel("Edytuj treść")
+        .setLabel(isRegulation ? "Edytuj strony" : "Edytuj treść")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`embedtest_edit_buttons_${state.messageId}`)
-        .setLabel("Edytuj przyciski")
+        .setLabel(isRegulation ? "Przyciski" : "Edytuj przyciski")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`embedtest_edit_emojis_${state.messageId}`)
@@ -8771,25 +9045,23 @@ function buildEmbedTestControls(state) {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`embedtest_publish_start_${state.messageId}`)
-        .setLabel("Zakończ")
+        .setLabel(isRegulation ? "Opublikuj" : "Zakończ")
         .setStyle(ButtonStyle.Success),
     ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`embedtest_edit_content_extra_${state.messageId}`)
-        .setLabel("Treść 2")
-        .setStyle(ButtonStyle.Secondary),
-    ),
-    new ActionRowBuilder().addComponents(colorSelect),
   ];
 
-  if (isRegulation) {
-    rows[0].components[1].setLabel("Strony 1-2");
-    rows[0].components[2].setLabel("Przyciski");
-    rows[0].components[4].setLabel("Opublikuj");
-    rows[1].components[0].setLabel("Strony 3-4");
+  if (!isRegulation) {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`embedtest_edit_content_extra_${state.messageId}`)
+          .setLabel("Treść 2")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
   }
 
+  rows.push(new ActionRowBuilder().addComponents(colorSelect));
   return rows;
 }
 
@@ -8883,6 +9155,13 @@ function buildEmbedTestHeaderModal(state) {
     .setRequired(false)
     .setMaxLength(180)
     .setPlaceholder("-# Krótki dopisek pod tytułem");
+  const titleInput = new TextInputBuilder()
+    .setCustomId("panel_title")
+    .setLabel("Tytuł panelu")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. NEW SHOP × REGULAMIN");
 
   if (isRegulation) {
     modal.setTitle("Edytuj górę panelu");
@@ -8893,11 +9172,19 @@ function buildEmbedTestHeaderModal(state) {
 
   setTextInputValueIfPresent(badgeInput, state.headerBadge);
   setTextInputValueIfPresent(noteInput, state.headerNote || "");
+  if (isRegulation) {
+    setTextInputValueIfPresent(titleInput, state.title || "");
+  }
 
-  modal.addComponents(
+  const components = [
     new ActionRowBuilder().addComponents(badgeInput),
     new ActionRowBuilder().addComponents(noteInput),
-  );
+  ];
+  if (isRegulation) {
+    components.splice(1, 0, new ActionRowBuilder().addComponents(titleInput));
+  }
+
+  modal.addComponents(...components);
 
   return modal;
 }
@@ -12266,6 +12553,12 @@ async function handleModalSubmit(interaction) {
     state.headerNote = interaction.fields
       .getTextInputValue("header_note")
       .trim();
+    if (
+      isRegulationEmbedState(state) &&
+      interaction.fields.fields.get("panel_title")
+    ) {
+      state.title = interaction.fields.getTextInputValue("panel_title").trim();
+    }
     embedTestStates.set(messageId, state);
 
     const updated = await updateEmbedTestMessage(state);
@@ -12285,6 +12578,61 @@ async function handleModalSubmit(interaction) {
           ? "Zaktualizowałem górę panelu regulaminu"
           : "Zaktualizowałem górę embeda",
       ),
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const regulationPageModalMatch = cid.match(/^regulamin_modal_page_(\d+)_(\d+)$/);
+  if (regulationPageModalMatch) {
+    const [, messageId, rawPageIndex] = regulationPageModalMatch;
+    const state = embedTestStates.get(messageId);
+
+    if (!state || !isRegulationEmbedState(state)) {
+      await interaction.reply({
+        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/regulaminwyslij` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (state.ownerId !== interaction.user.id) {
+      await interaction.reply({
+        content: "> `❗` × Tylko autor panelu może edytować ten regulamin.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const pages = getRegulationPanelPages(state).map((page) =>
+      normalizeRegulationPage(page),
+    );
+    const safeIndex = Math.max(
+      0,
+      Math.min(Number(rawPageIndex) || 0, pages.length - 1),
+    );
+
+    pages[safeIndex] = {
+      title: interaction.fields.getTextInputValue("page_title").trim(),
+      body: interaction.fields.getTextInputValue("page_body").trim(),
+    };
+
+    setRegulationPagesOnState(state, pages);
+    embedTestStates.set(messageId, state);
+
+    const updated = await updateEmbedTestMessage(state);
+    if (!updated) {
+      embedTestStates.delete(messageId);
+      await interaction.reply({
+        content:
+          "> `❌` × Nie udało się zaktualizować panelu regulaminu. Użyj `/regulaminwyslij` ponownie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      ...buildRegulationPagesEditorPayload(state, safeIndex),
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -12363,14 +12711,29 @@ async function handleModalSubmit(interaction) {
     }
 
     state.title = interaction.fields.getTextInputValue("title").trim();
-    state.cashSectionTitle = interaction.fields
-      .getTextInputValue("cash_section_title")
-      .trim();
-    state.cashBody = interaction.fields.getTextInputValue("cash_body").trim();
-    state.itemsSectionTitle = interaction.fields
-      .getTextInputValue("items_section_title")
-      .trim();
-    state.itemsBody = interaction.fields.getTextInputValue("items_body").trim();
+    if (isRegulationEmbedState(state)) {
+      const pages = getRegulationPanelPages(state).map((page) =>
+        normalizeRegulationPage(page),
+      );
+      pages[0] = {
+        title: interaction.fields.getTextInputValue("cash_section_title").trim(),
+        body: interaction.fields.getTextInputValue("cash_body").trim(),
+      };
+      pages[1] = {
+        title: interaction.fields.getTextInputValue("items_section_title").trim(),
+        body: interaction.fields.getTextInputValue("items_body").trim(),
+      };
+      setRegulationPagesOnState(state, pages);
+    } else {
+      state.cashSectionTitle = interaction.fields
+        .getTextInputValue("cash_section_title")
+        .trim();
+      state.cashBody = interaction.fields.getTextInputValue("cash_body").trim();
+      state.itemsSectionTitle = interaction.fields
+        .getTextInputValue("items_section_title")
+        .trim();
+      state.itemsBody = interaction.fields.getTextInputValue("items_body").trim();
+    }
     embedTestStates.set(messageId, state);
 
     const updated = await updateEmbedTestMessage(state);
@@ -12418,18 +12781,35 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    state.extraSectionTitle = interaction.fields
-      .getTextInputValue("extra_section_title")
-      .trim();
-    state.extraSectionBody = interaction.fields
-      .getTextInputValue("extra_section_body")
-      .trim();
-    state.extraSectionTwoTitle = interaction.fields
-      .getTextInputValue("extra_section_two_title")
-      .trim();
-    state.extraSectionTwoBody = interaction.fields
-      .getTextInputValue("extra_section_two_body")
-      .trim();
+    if (isRegulationEmbedState(state)) {
+      const pages = getRegulationPanelPages(state).map((page) =>
+        normalizeRegulationPage(page),
+      );
+      pages[2] = {
+        title: interaction.fields.getTextInputValue("extra_section_title").trim(),
+        body: interaction.fields.getTextInputValue("extra_section_body").trim(),
+      };
+      pages[3] = {
+        title: interaction.fields
+          .getTextInputValue("extra_section_two_title")
+          .trim(),
+        body: interaction.fields.getTextInputValue("extra_section_two_body").trim(),
+      };
+      setRegulationPagesOnState(state, pages);
+    } else {
+      state.extraSectionTitle = interaction.fields
+        .getTextInputValue("extra_section_title")
+        .trim();
+      state.extraSectionBody = interaction.fields
+        .getTextInputValue("extra_section_body")
+        .trim();
+      state.extraSectionTwoTitle = interaction.fields
+        .getTextInputValue("extra_section_two_title")
+        .trim();
+      state.extraSectionTwoBody = interaction.fields
+        .getTextInputValue("extra_section_two_body")
+        .trim();
+    }
     embedTestStates.set(messageId, state);
 
     const updated = await updateEmbedTestMessage(state);
