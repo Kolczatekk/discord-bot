@@ -8491,7 +8491,7 @@ function createDefaultRegulaminState(
     guildId: guild.id,
     channelId: targetChannel.id,
     messageId: null,
-    persistPanel: false,
+    persistPanel: true,
     accentColorKey: "yellow",
     accentColor: getEmbedTestColorDef("yellow").color,
     headerBadge: "📜",
@@ -8637,21 +8637,29 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
     Math.min(Number(pageIndex) || 0, pages.length - 1),
   );
   const page = pages[safeIndex] || pages[0];
+  const pageTitle = replaceNamedGuildEmojis(
+    page.title || state.title || "REGULAMIN",
+    state.guildId,
+  ).trim();
+  const pageBody = replaceNamedGuildEmojis(
+    page.body || "-# Ta strona regulaminu jest pusta.",
+    state.guildId,
+  ).trim();
+  const descriptionParts = [];
+
+  if (pageTitle) {
+    descriptionParts.push(pageTitle);
+  }
+  if (pageBody) {
+    if (descriptionParts.length) {
+      descriptionParts.push("");
+    }
+    descriptionParts.push(pageBody);
+  }
 
   const embed = new EmbedBuilder()
     .setColor(state.accentColor || COLOR_BLUE)
-    .setTitle(
-      replaceNamedGuildEmojis(
-        page.title || state.title || "REGULAMIN",
-        state.guildId,
-      ),
-    )
-    .setDescription(
-      replaceNamedGuildEmojis(
-        page.body || "-# Ta strona regulaminu jest pusta.",
-        state.guildId,
-      ),
-    )
+    .setDescription(descriptionParts.join("\n"))
     .setFooter({
       text: `Strona ${safeIndex + 1}/${pages.length}`,
     });
@@ -9653,7 +9661,18 @@ async function handleRegulaminWyslijCommand(interaction) {
     await ensureEmbedTestEmojiCache(interaction.guild.id);
     const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
     state.messageId = sent.id;
+    state.persistPanel = true;
     embedTestStates.set(sent.id, state);
+    regulationPanels.set(
+      sent.id,
+      cloneRegulationPanelState(state, {
+        messageId: sent.id,
+        channelId: targetChannel.id,
+        guildId: interaction.guild.id,
+        persistPanel: true,
+      }),
+    );
+    scheduleSavePersistentState(true);
 
     await interaction.reply({
       ...buildEmbedTestControlPayload(
@@ -9966,6 +9985,20 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     state.mediaUrls = [...new Set(collector.mediaUrls)];
   }
 
+  const primaryButton = collector.buttons.find((button) =>
+    String(button.customId || "").startsWith("embedtest_buy_open_"),
+  );
+  if (primaryButton) {
+    state.buttonOneLabel = primaryButton.label || state.buttonOneLabel;
+    state.buttonOneEmoji = formatEmbedTestButtonEmojiValue(primaryButton.emoji);
+    const actionMatch = String(primaryButton.customId).match(
+      /^embedtest_buy_open(?:_(.+))?$/,
+    );
+    state.buttonOneAction = actionMatch?.[1] || "zakup";
+  }
+
+  const isRegulationPanel = state.buttonOneAction === "regulamin";
+
   const sequence = [];
   for (const token of collector.sequence) {
     if (!token) continue;
@@ -9980,11 +10013,27 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     }
   }
 
-  if (sequence.length && sequence[0]?.type === "text" && sequence[0].content.trim().startsWith("## ")) {
-    const heading = splitEmbedTestHeadingParts(sequence.shift().content);
-    state.headerBadge = heading.headerBadge;
-    state.title = heading.title || state.title;
-    state.headerNote = heading.headerNote;
+  if (sequence.length && sequence[0]?.type === "text") {
+    const firstTextBlock = String(sequence[0].content || "").trim();
+    if (firstTextBlock.startsWith("## ") || isRegulationPanel) {
+      const heading = splitEmbedTestHeadingParts(sequence.shift().content);
+      state.headerBadge = heading.headerBadge || state.headerBadge;
+      state.title = heading.title || state.title;
+      state.headerNote = heading.headerNote || state.headerNote;
+
+      if (isRegulationPanel && sequence[0]?.type === "text") {
+        const possibleHeaderNote = String(sequence[0].content || "").trim();
+        const inlineTitle = isEmbedTestSectionTitleBlock(possibleHeaderNote);
+        if (
+          possibleHeaderNote &&
+          !inlineTitle &&
+          !possibleHeaderNote.startsWith("## ")
+        ) {
+          state.headerNote = possibleHeaderNote;
+          sequence.shift();
+        }
+      }
+    }
   }
 
   const sections = [];
@@ -10095,18 +10144,6 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     state.extraSectionTwoBody = extraSectionTwo.body || "";
   }
 
-  const primaryButton = collector.buttons.find((button) =>
-    String(button.customId || "").startsWith("embedtest_buy_open_"),
-  );
-  if (primaryButton) {
-    state.buttonOneLabel = primaryButton.label || state.buttonOneLabel;
-    state.buttonOneEmoji = formatEmbedTestButtonEmojiValue(primaryButton.emoji);
-    const actionMatch = String(primaryButton.customId).match(
-      /^embedtest_buy_open(?:_(.+))?$/,
-    );
-    state.buttonOneAction = actionMatch?.[1] || "zakup";
-  }
-
   const secondaryButton = collector.buttons.find(
     (button) => button.url && button.label !== state.buttonOneLabel,
   );
@@ -10114,6 +10151,16 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     state.buttonTwoLabel = secondaryButton.label || state.buttonTwoLabel;
     state.buttonTwoEmoji = formatEmbedTestButtonEmojiValue(secondaryButton.emoji);
     state.buttonTwoUrl = secondaryButton.url || state.buttonTwoUrl;
+  }
+
+  if (isRegulationPanel) {
+    return cloneRegulationPanelState(state, {
+      ownerId,
+      guildId: message.guild.id,
+      channelId: message.channel.id,
+      messageId: message.id,
+      persistPanel: true,
+    });
   }
 
   return state;
@@ -10186,6 +10233,7 @@ async function handleSprawdzEmbedTestCommand(interaction) {
     return;
   }
 
+  const liveState = embedTestStates.get(foundMessage.id) || null;
   const reconstructedState = regulationPanels.has(foundMessage.id)
     ? cloneRegulationPanelState(regulationPanels.get(foundMessage.id), {
         ownerId: interaction.user.id,
@@ -10195,8 +10243,7 @@ async function handleSprawdzEmbedTestCommand(interaction) {
         persistPanel: true,
       })
     : reconstructEmbedTestStateFromMessage(foundMessage, interaction.user.id);
-  const existingState =
-    reconstructedState || embedTestStates.get(foundMessage.id) || null;
+  const existingState = liveState || reconstructedState || null;
 
   if (!existingState) {
     await interaction.reply({
