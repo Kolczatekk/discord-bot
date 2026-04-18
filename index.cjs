@@ -8504,7 +8504,7 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
             `regulamin_page_${panelMessageId}_${Math.max(0, safeIndex - 1)}`,
           )
           .setStyle(ButtonStyle.Secondary)
-          .setEmoji("⬅️")
+          .setLabel("<")
           .setDisabled(safeIndex === 0),
         new ButtonBuilder()
           .setCustomId(`regulamin_page_info_${panelMessageId}_${safeIndex}`)
@@ -8519,7 +8519,7 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
             )}`,
           )
           .setStyle(ButtonStyle.Secondary)
-          .setEmoji("➡️")
+          .setLabel(">")
           .setDisabled(safeIndex === pages.length - 1),
       ),
     );
