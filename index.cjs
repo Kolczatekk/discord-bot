@@ -8554,7 +8554,7 @@ function buildRegulationPanelMessagePayload(state) {
 
   if (headingParts.length) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`## ${headingParts.join(" ")}`),
+      new TextDisplayBuilder().setContent(headingParts.join(" ")),
     );
   }
 
