@@ -8341,7 +8341,7 @@ function getRegulationPanelPages(state) {
     return pages;
   }
 
-  const rows = [
+  return [
     {
       title: "Regulamin",
       body: "-# Ten regulamin nie został jeszcze uzupełniony.",
