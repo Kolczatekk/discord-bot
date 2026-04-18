@@ -81,6 +81,7 @@ const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
+const regulationPanels = new Map(); // messageId -> persisted regulation panel state
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
 const embedTestEmojiCacheReady = new Map(); // guildId -> timestamp ostatniego fetch emoji
 
@@ -780,6 +781,19 @@ function buildPersistentStateData() {
     }
   }
 
+  const regulationPanelsObj = {};
+  if (
+    typeof regulationPanels !== "undefined" &&
+    regulationPanels instanceof Map
+  ) {
+    for (const [messageId, panelState] of regulationPanels.entries()) {
+      regulationPanelsObj[messageId] = cloneRegulationPanelState(panelState, {
+        messageId,
+        persistPanel: true,
+      });
+    }
+  }
+
   const data = {
     legitRepCount,
     legitRepCooldown: Object.fromEntries(legitRepCooldown),
@@ -823,6 +837,7 @@ function buildPersistentStateData() {
     rewardTicketClaims: rewardTicketClaimsObj,
     pendingTicketClose: pendingTicketCloseObj,
     opinieChannels: opinieChannelsObj,
+    regulationPanels: regulationPanelsObj,
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
   };
@@ -2300,6 +2315,27 @@ async function loadPersistentState() {
       console.log(`[state] Wczytano weeklySales ze snapshotu: ${weeklySales.size} użytkowników`);
     }
 
+    if (
+      botStateData.regulationPanels &&
+      typeof botStateData.regulationPanels === "object"
+    ) {
+      for (const [messageId, panelState] of Object.entries(
+        botStateData.regulationPanels,
+      )) {
+        if (!panelState || typeof panelState !== "object") continue;
+        regulationPanels.set(
+          messageId,
+          cloneRegulationPanelState(panelState, {
+            messageId,
+            persistPanel: true,
+          }),
+        );
+      }
+      console.log(
+        `[state] Wczytano regulationPanels: ${regulationPanels.size} paneli`,
+      );
+    }
+
     // Load weekly sales from Supabase
     try {
       const sales = await db.getWeeklySales();
@@ -3120,6 +3156,26 @@ const commands = [
       o
         .setName("filmik")
         .setDescription("Opcjonalny filmik, gif albo obraz do osadzenia w karcie")
+        .setRequired(false),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("regulaminwyslij")
+    .setDescription("Wyślij panel regulaminu z przyciskiem i edytorem jak w /embedtest")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addChannelOption((o) =>
+      o
+        .setName("kanal")
+        .setDescription(
+          "Kanał docelowy (opcjonalnie). Jeśli nie podasz, użyty zostanie aktualny kanał.",
+        )
+        .setRequired(false)
+        .addChannelTypes(ChannelType.GuildText),
+    )
+    .addAttachmentOption((o) =>
+      o
+        .setName("obrazek")
+        .setDescription("Opcjonalny obraz, gif albo video do osadzenia w panelu")
         .setRequired(false),
     )
     .toJSON(),
@@ -5472,7 +5528,7 @@ const nickInput = new TextInputBuilder()
   }
 
   const embedTestBuyOpenMatch = customId.match(
-    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel))?$/,
+    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin))?$/,
   );
   if (embedTestBuyOpenMatch) {
     const action = embedTestBuyOpenMatch[1] || "zakup";
@@ -5502,10 +5558,25 @@ const nickInput = new TextInputBuilder()
           flags: [MessageFlags.Ephemeral],
         });
         break;
+      case "regulamin":
+        await openRegulationPanelViewer(interaction, interaction.message?.id || "");
+        break;
       default:
         await showZakupModal(interaction);
         break;
     }
+    return;
+  }
+
+  const regulationPageMatch = customId.match(/^regulamin_page_(\d+)_(\d+)$/);
+  if (regulationPageMatch) {
+    const [, panelMessageId, pageIndex] = regulationPageMatch;
+    await openRegulationPanelViewer(
+      interaction,
+      panelMessageId,
+      Number(pageIndex),
+      true,
+    );
     return;
   }
 
@@ -5893,6 +5964,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "embedtest":
       await handleEmbedTestCommand(interaction);
+      break;
+    case "regulaminwyslij":
+      await handleRegulaminWyslijCommand(interaction);
       break;
     case "sprawdzembedtest":
       await handleSprawdzEmbedTestCommand(interaction);
@@ -7782,6 +7856,12 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
     description: "Pokazuje cały panel ticketów",
     emoji: "📩",
   },
+  {
+    value: "regulamin",
+    label: "Regulamin",
+    description: "Otwiera przeglądarkę regulaminu",
+    emoji: "📜",
+  },
 ];
 
 const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
@@ -7880,6 +7960,14 @@ function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
     normalized === "kategorie"
   ) {
     return getEmbedTestPrimaryButtonActionDef("panel");
+  }
+
+  if (
+    normalized === "regulamin" ||
+    normalized === "zasady" ||
+    normalized === "rules"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("regulamin");
   }
 
   return null;
@@ -8144,6 +8232,305 @@ function normalizeEmbedTestAttachment(attachment) {
   };
 }
 
+function isRegulationEmbedState(state) {
+  return state?.variant === "regulamin";
+}
+
+function cloneRegulationPanelState(state, overrides = {}) {
+  const colorKey = state?.accentColorKey || "yellow";
+  const colorDef = getEmbedTestColorDef(colorKey);
+
+  return {
+    ownerId: state?.ownerId || null,
+    guildId: state?.guildId || null,
+    channelId: state?.channelId || null,
+    messageId: state?.messageId || null,
+    variant: "regulamin",
+    persistPanel: !!state?.persistPanel,
+    accentColorKey: colorKey,
+    accentColor: Number(state?.accentColor || colorDef.color),
+    headerBadge: String(state?.headerBadge || "📜"),
+    headerNote: String(
+      state?.headerNote ||
+        "• Kliknij **przycisk poniżej**, aby wyświetlić regulamin.",
+    ),
+    title: String(state?.title || "NEW SHOP × REGULAMIN"),
+    cashSectionTitle: String(state?.cashSectionTitle || ""),
+    cashBody: String(state?.cashBody || ""),
+    itemsSectionTitle: String(state?.itemsSectionTitle || ""),
+    itemsBody: String(state?.itemsBody || ""),
+    extraSectionTitle: String(state?.extraSectionTitle || ""),
+    extraSectionBody: String(state?.extraSectionBody || ""),
+    extraSectionTwoTitle: String(state?.extraSectionTwoTitle || ""),
+    extraSectionTwoBody: String(state?.extraSectionTwoBody || ""),
+    buttonOneLabel: String(state?.buttonOneLabel || "Zobacz regulamin"),
+    buttonOneEmoji: String(state?.buttonOneEmoji || "📜"),
+    buttonOneAction: "regulamin",
+    buttonOneUrl: "",
+    buttonTwoLabel: String(state?.buttonTwoLabel || ""),
+    buttonTwoEmoji: String(state?.buttonTwoEmoji || ""),
+    buttonTwoUrl: String(state?.buttonTwoUrl || ""),
+    mediaUrls: Array.isArray(state?.mediaUrls)
+      ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
+      : [],
+    ...overrides,
+  };
+}
+
+function createDefaultRegulaminState(
+  guild,
+  targetChannel,
+  ownerId,
+  mediaAttachment = null,
+) {
+  const baseState = createDefaultEmbedTestState(
+    guild,
+    targetChannel,
+    ownerId,
+    mediaAttachment,
+  );
+
+  return cloneRegulationPanelState(baseState, {
+    ownerId,
+    guildId: guild.id,
+    channelId: targetChannel.id,
+    messageId: null,
+    persistPanel: false,
+    accentColorKey: "yellow",
+    accentColor: getEmbedTestColorDef("yellow").color,
+    headerBadge: "📜",
+    headerNote: "• Kliknij **przycisk poniżej**, aby wyświetlić regulamin.",
+    title: "NEW SHOP × REGULAMIN",
+    cashSectionTitle: "1. Postanowienia ogólne",
+    cashBody: "-# Uzupełnij pierwszą stronę regulaminu.",
+    itemsSectionTitle: "2. Zasady użytkowania",
+    itemsBody: "-# Uzupełnij drugą stronę regulaminu.",
+    extraSectionTitle: "3. Płatności i zwroty",
+    extraSectionBody: "-# Uzupełnij trzecią stronę regulaminu.",
+    extraSectionTwoTitle: "4. Kary i postanowienia końcowe",
+    extraSectionTwoBody: "-# Uzupełnij czwartą stronę regulaminu.",
+    buttonOneLabel: "Zobacz regulamin",
+    buttonOneEmoji: "📜",
+    buttonTwoLabel: "",
+    buttonTwoEmoji: "",
+    buttonTwoUrl: "",
+  });
+}
+
+function getRegulationPanelPages(state) {
+  const pages = [
+    {
+      title: state?.cashSectionTitle || "",
+      body: state?.cashBody || "",
+    },
+    {
+      title: state?.itemsSectionTitle || "",
+      body: state?.itemsBody || "",
+    },
+    {
+      title: state?.extraSectionTitle || "",
+      body: state?.extraSectionBody || "",
+    },
+    {
+      title: state?.extraSectionTwoTitle || "",
+      body: state?.extraSectionTwoBody || "",
+    },
+  ].filter((page) => String(page.title || "").trim() || String(page.body || "").trim());
+
+  if (pages.length) {
+    return pages;
+  }
+
+  const rows = [
+    {
+      title: "Regulamin",
+      body: "-# Ten regulamin nie został jeszcze uzupełniony.",
+    },
+  ];
+}
+
+function getRegulationPanelStateByMessageId(messageId) {
+  if (!messageId) return null;
+
+  const persistedState = regulationPanels.get(messageId);
+  if (persistedState) {
+    return cloneRegulationPanelState(persistedState, { messageId });
+  }
+
+  const editableState = embedTestStates.get(messageId);
+  if (editableState && isRegulationEmbedState(editableState)) {
+    return editableState;
+  }
+
+  return null;
+}
+
+function buildRegulationPanelMessagePayload(state) {
+  const buttons = [];
+  const mediaUrls = Array.isArray(state.mediaUrls)
+    ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
+    : [];
+  const buttonOneEmoji = parseButtonEmojiInput(
+    state.buttonOneEmoji,
+    state.guildId,
+  );
+  const buttonTwoEmoji = parseButtonEmojiInput(
+    state.buttonTwoEmoji,
+    state.guildId,
+  );
+
+  const headingParts = [];
+  if (state.headerBadge) {
+    headingParts.push(replaceNamedGuildEmojis(state.headerBadge, state.guildId));
+  }
+  if (state.title) {
+    headingParts.push(replaceNamedGuildEmojis(state.title, state.guildId));
+  }
+
+  const container = new ContainerBuilder().setAccentColor(
+    state.accentColor || COLOR_BLUE,
+  );
+
+  if (headingParts.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`## ${headingParts.join(" ")}`),
+    );
+  }
+
+  if (state.headerNote) {
+    if (headingParts.length) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        replaceNamedGuildEmojis(state.headerNote, state.guildId),
+      ),
+    );
+  }
+
+  if (mediaUrls.length) {
+    if (headingParts.length || state.headerNote) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        mediaUrls.map((url) => new MediaGalleryItemBuilder().setURL(url)),
+      ),
+    );
+  }
+
+  if (state.buttonOneLabel) {
+    const button = new ButtonBuilder()
+      .setLabel(state.buttonOneLabel)
+      .setStyle(ButtonStyle.Secondary)
+      .setCustomId("embedtest_buy_open_regulamin");
+
+    if (buttonOneEmoji) {
+      button.setEmoji(buttonOneEmoji);
+    }
+
+    buttons.push(button);
+  }
+
+  if (state.buttonTwoLabel && isHttpUrl(state.buttonTwoUrl)) {
+    const button = new ButtonBuilder()
+      .setLabel(state.buttonTwoLabel)
+      .setStyle(ButtonStyle.Link)
+      .setURL(state.buttonTwoUrl);
+
+    if (buttonTwoEmoji) {
+      button.setEmoji(buttonTwoEmoji);
+    }
+
+    buttons.push(button);
+  }
+
+  if (buttons.length) {
+    if (headingParts.length || state.headerNote || mediaUrls.length) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(...buttons),
+    );
+  }
+
+  if (!container.components.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# Pusty panel regulaminu"),
+    );
+  }
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
+function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
+  const pages = getRegulationPanelPages(state);
+  const safeIndex = Math.max(
+    0,
+    Math.min(Number(pageIndex) || 0, pages.length - 1),
+  );
+  const page = pages[safeIndex] || pages[0];
+
+  const embed = new EmbedBuilder()
+    .setColor(state.accentColor || COLOR_BLUE)
+    .setTitle(
+      replaceNamedGuildEmojis(
+        page.title || state.title || "REGULAMIN",
+        state.guildId,
+      ),
+    )
+    .setDescription(
+      replaceNamedGuildEmojis(
+        page.body || "-# Ta strona regulaminu jest pusta.",
+        state.guildId,
+      ),
+    )
+    .setFooter({
+      text: `Strona ${safeIndex + 1}/${pages.length}`,
+    });
+
+  const components = [];
+  if (pages.length > 1) {
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(
+            `regulamin_page_${panelMessageId}_${Math.max(0, safeIndex - 1)}`,
+          )
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("⬅️")
+          .setDisabled(safeIndex === 0),
+        new ButtonBuilder()
+          .setCustomId(`regulamin_page_info_${panelMessageId}_${safeIndex}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setLabel(`${safeIndex + 1}/${pages.length}`)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(
+            `regulamin_page_${panelMessageId}_${Math.min(
+              pages.length - 1,
+              safeIndex + 1,
+            )}`,
+          )
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji("➡️")
+          .setDisabled(safeIndex === pages.length - 1),
+      ),
+    );
+  }
+
+  return {
+    embeds: [embed],
+    components,
+  };
+}
+
 function createDefaultEmbedTestState(
   guild,
   targetChannel,
@@ -8192,6 +8579,10 @@ function createDefaultEmbedTestState(
 }
 
 function buildEmbedTestMessagePayload(state) {
+  if (isRegulationEmbedState(state)) {
+    return buildRegulationPanelMessagePayload(state);
+  }
+
   const buttons = [];
   const headerLines = [];
   const mediaUrls = Array.isArray(state.mediaUrls)
@@ -8341,10 +8732,13 @@ function buildEmbedTestMessagePayload(state) {
 }
 
 function buildEmbedTestControls(state) {
+  const isRegulation = isRegulationEmbedState(state);
   const currentColor = getEmbedTestColorDef(state.accentColorKey);
   const colorSelect = new StringSelectMenuBuilder()
     .setCustomId(`embedtest_color_${state.messageId}`)
-    .setPlaceholder(`Kolor embeda: ${currentColor.label}`)
+    .setPlaceholder(
+      `${isRegulation ? "Kolor panelu" : "Kolor embeda"}: ${currentColor.label}`,
+    )
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
@@ -8388,9 +8782,19 @@ function buildEmbedTestControls(state) {
     ),
     new ActionRowBuilder().addComponents(colorSelect),
   ];
+
+  if (isRegulation) {
+    rows[0].components[1].setLabel("Strony 1-2");
+    rows[0].components[2].setLabel("Przyciski");
+    rows[0].components[4].setLabel("Opublikuj");
+    rows[1].components[0].setLabel("Strony 3-4");
+  }
+
+  return rows;
 }
 
 function buildEmbedTestControlPayload(state, statusLine) {
+  const isRegulation = isRegulationEmbedState(state);
   const jumpUrl = getDiscordMessageUrl(
     state.guildId,
     state.channelId,
@@ -8409,6 +8813,18 @@ function buildEmbedTestControlPayload(state, statusLine) {
         "> `🎨` × Kolor zmienisz z menu pod spodem",
     );
 
+  if (isRegulation) {
+    embed.setDescription(
+      "```\n" +
+        "📜 New Shop × REGULAMIN\n" +
+        "```\n" +
+        `> \`✅\` × ${statusLine}\n` +
+        `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
+        "> `🛠️` × Edytuj panel i strony przyciskami poniżej\n" +
+        "> `🎨` × Kolor panelu zmienisz z menu pod spodem",
+    );
+  }
+
   return {
     embeds: [embed],
     components: buildEmbedTestControls(state),
@@ -8416,6 +8832,7 @@ function buildEmbedTestControlPayload(state, statusLine) {
 }
 
 function buildEmbedTestPublishPrompt(state) {
+  const isRegulation = isRegulationEmbedState(state);
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(
@@ -8427,6 +8844,17 @@ function buildEmbedTestPublishPrompt(state) {
         "> `⏳` × Masz `2 min` na wysłanie kanału",
     );
 
+  if (isRegulation) {
+    embed.setDescription(
+      "```\n" +
+        "📤 New Shop × PUBLIKACJA REGULAMINU\n" +
+        "```\n" +
+        "> `📍` × Wyślij teraz na czacie kanał docelowy\n" +
+        "> `✍️` × Przykład: `#regulamin` albo ID kanału\n" +
+        "> `⏳` × Masz `2 min` na wysłanie kanału",
+    );
+  }
+
   return {
     embeds: [embed],
     components: [],
@@ -8435,6 +8863,7 @@ function buildEmbedTestPublishPrompt(state) {
 }
 
 function buildEmbedTestHeaderModal(state) {
+  const isRegulation = isRegulationEmbedState(state);
   const modal = new ModalBuilder()
     .setCustomId(`embedtest_modal_header_${state.messageId}`)
     .setTitle("Edytuj górę embeda");
@@ -8455,6 +8884,13 @@ function buildEmbedTestHeaderModal(state) {
     .setMaxLength(180)
     .setPlaceholder("-# Krótki dopisek pod tytułem");
 
+  if (isRegulation) {
+    modal.setTitle("Edytuj górę panelu");
+    noteInput
+      .setLabel("Opis panelu pod nagłówkiem")
+      .setPlaceholder("Krótka instrukcja pod tytułem panelu");
+  }
+
   setTextInputValueIfPresent(badgeInput, state.headerBadge);
   setTextInputValueIfPresent(noteInput, state.headerNote || "");
 
@@ -8467,6 +8903,7 @@ function buildEmbedTestHeaderModal(state) {
 }
 
 function buildEmbedTestContentModal(state) {
+  const isRegulation = isRegulationEmbedState(state);
   const modal = new ModalBuilder()
     .setCustomId(`embedtest_modal_content_${state.messageId}`)
     .setTitle("Edytuj embed testowy");
@@ -8511,6 +8948,15 @@ function buildEmbedTestContentModal(state) {
     .setMaxLength(1000)
     .setPlaceholder("Wpisz opis, pusty enter lub osobną linię -- na kreskę");
 
+  if (isRegulation) {
+    modal.setTitle("Edytuj strony 1-2");
+    titleInput.setLabel("Tytuł panelu");
+    cashTitleInput.setLabel("Tytuł strony 1");
+    cashBodyInput.setLabel("Treść strony 1");
+    itemsTitleInput.setLabel("Tytuł strony 2");
+    itemsBodyInput.setLabel("Treść strony 2");
+  }
+
   setTextInputValueIfPresent(titleInput, state.title);
   setTextInputValueIfPresent(cashTitleInput, state.cashSectionTitle);
   setTextInputValueIfPresent(cashBodyInput, state.cashBody);
@@ -8529,6 +8975,7 @@ function buildEmbedTestContentModal(state) {
 }
 
 function buildEmbedTestExtraContentModal(state) {
+  const isRegulation = isRegulationEmbedState(state);
   const modal = new ModalBuilder()
     .setCustomId(`embedtest_modal_content_extra_${state.messageId}`)
     .setTitle("Dodatkowe sekcje");
@@ -8565,6 +9012,14 @@ function buildEmbedTestExtraContentModal(state) {
     .setMaxLength(1000)
     .setPlaceholder("Możesz robić kolejne bloki i separatory");
 
+  if (isRegulation) {
+    modal.setTitle("Edytuj strony 3-4");
+    extraTitleInput.setLabel("Tytuł strony 3");
+    extraBodyInput.setLabel("Treść strony 3");
+    extraTwoTitleInput.setLabel("Tytuł strony 4");
+    extraTwoBodyInput.setLabel("Treść strony 4");
+  }
+
   setTextInputValueIfPresent(extraTitleInput, state.extraSectionTitle);
   setTextInputValueIfPresent(extraBodyInput, state.extraSectionBody);
   setTextInputValueIfPresent(extraTwoTitleInput, state.extraSectionTwoTitle);
@@ -8581,6 +9036,7 @@ function buildEmbedTestExtraContentModal(state) {
 }
 
 function buildEmbedTestButtonsModal(state) {
+  const isRegulation = isRegulationEmbedState(state);
   const modal = new ModalBuilder()
     .setCustomId(`embedtest_modal_buttons_${state.messageId}`)
     .setTitle("Edytuj przyciski");
@@ -8621,6 +9077,14 @@ function buildEmbedTestButtonsModal(state) {
     .setPlaceholder(
       "zakup / autorynek / mod / sprzedaz / odbior / pomoc / panel",
     );
+
+  if (isRegulation) {
+    modal.setTitle("Edytuj przyciski panelu");
+    buttonOneLabelInput.setLabel("Nazwa przycisku regulaminu");
+    buttonOneActionInput
+      .setLabel("Typ przycisku 1")
+      .setPlaceholder("regulamin");
+  }
 
   setTextInputValueIfPresent(buttonOneLabelInput, state.buttonOneLabel);
   setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
@@ -8685,6 +9149,15 @@ async function updateEmbedTestMessage(state) {
   if (!message) return false;
 
   await message.edit(buildEmbedTestMessagePayload(state));
+
+  if (isRegulationEmbedState(state) && state.persistPanel) {
+    regulationPanels.set(
+      state.messageId,
+      cloneRegulationPanelState(state, { persistPanel: true }),
+    );
+    scheduleSavePersistentState(true);
+  }
+
   return true;
 }
 
@@ -8696,7 +9169,23 @@ async function sendEmbedTestToTargetChannel(state, targetChannel) {
   }
 
   const sentMessage = await targetChannel.send(buildEmbedTestMessagePayload(state));
-  embedTestStates.delete(state.messageId);
+
+  if (isRegulationEmbedState(state)) {
+    regulationPanels.set(
+      sentMessage.id,
+      cloneRegulationPanelState(state, {
+        messageId: sentMessage.id,
+        channelId: targetChannel.id,
+        guildId: targetChannel.guild?.id || state.guildId,
+        persistPanel: true,
+      }),
+    );
+    scheduleSavePersistentState(true);
+  }
+
+  if (!isRegulationEmbedState(state)) {
+    embedTestStates.delete(state.messageId);
+  }
   pendingEmbedTestPublish.delete(
     getPendingEmbedTestPublishKey(state.guildId, state.ownerId),
   );
@@ -8826,6 +9315,115 @@ async function handleEmbedTestCommand(interaction) {
       flags: [MessageFlags.Ephemeral],
     });
   }
+}
+
+async function handleRegulaminWyslijCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetChannel =
+    interaction.options.getChannel("kanal") || interaction.channel;
+  const mediaAttachment = interaction.options.getAttachment("obrazek");
+
+  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+    await interaction.reply({
+      content: "> `❌` × **Wybierz** poprawny kanał tekstowy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (mediaAttachment && !normalizeEmbedTestAttachment(mediaAttachment)) {
+    await interaction.reply({
+      content:
+        "> `❌` × Załącznik w `/regulaminwyslij` musi być obrazem, gifem albo video.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const state = createDefaultRegulaminState(
+    interaction.guild,
+    targetChannel,
+    interaction.user.id,
+    mediaAttachment,
+  );
+
+  try {
+    await ensureEmbedTestEmojiCache(interaction.guild.id);
+    const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
+    state.messageId = sent.id;
+    embedTestStates.set(sent.id, state);
+
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(
+        state,
+        `Wysłałem panel regulaminu do <#${targetChannel.id}>`,
+      ),
+      flags: [MessageFlags.Ephemeral],
+    });
+  } catch (error) {
+    console.error("handleRegulaminWyslijCommand error:", error);
+    await interaction.reply({
+      content:
+        "> `❌` × Nie udało się wysłać panelu regulaminu. Sprawdź uprawnienia bota do kanału.",
+      flags: [MessageFlags.Ephemeral],
+    });
+  }
+}
+
+async function openRegulationPanelViewer(
+  interaction,
+  panelMessageId,
+  pageIndex = 0,
+  useUpdate = false,
+) {
+  const state = getRegulationPanelStateByMessageId(panelMessageId);
+
+  if (!state) {
+    const payload = {
+      content:
+        "> `❌` × Nie mogę już otworzyć tego regulaminu. Wyślij panel jeszcze raz.",
+      flags: [MessageFlags.Ephemeral],
+    };
+
+    if (useUpdate && typeof interaction.update === "function") {
+      await interaction.update({
+        embeds: [],
+        components: [],
+        content:
+          "> `❌` × Nie mogę już otworzyć tego regulaminu. Wyślij panel jeszcze raz.",
+      });
+      return;
+    }
+
+    await interaction.reply(payload);
+    return;
+  }
+
+  const payload = buildRegulationViewerPayload(state, panelMessageId, pageIndex);
+  if (useUpdate && typeof interaction.update === "function") {
+    await interaction.update(payload);
+    return;
+  }
+
+  await interaction.reply({
+    ...payload,
+    flags: [MessageFlags.Ephemeral],
+  });
 }
 
 function getSerializableMessageComponent(component) {
@@ -9301,10 +9899,15 @@ async function handleSprawdzEmbedTestCommand(interaction) {
     return;
   }
 
-  const reconstructedState = reconstructEmbedTestStateFromMessage(
-    foundMessage,
-    interaction.user.id,
-  );
+  const reconstructedState = regulationPanels.has(foundMessage.id)
+    ? cloneRegulationPanelState(regulationPanels.get(foundMessage.id), {
+        ownerId: interaction.user.id,
+        guildId: interaction.guild.id,
+        channelId: targetChannel.id,
+        messageId: foundMessage.id,
+        persistPanel: true,
+      })
+    : reconstructEmbedTestStateFromMessage(foundMessage, interaction.user.id);
   const existingState =
     reconstructedState || embedTestStates.get(foundMessage.id) || null;
 
@@ -9323,13 +9926,15 @@ async function handleSprawdzEmbedTestCommand(interaction) {
   existingState.channelId = targetChannel.id;
   embedTestStates.set(foundMessage.id, existingState);
 
-  await interaction.reply({
-    ...buildEmbedTestControlPayload(
-      existingState,
-      `Podpiąłem istniejący embed testowy z <#${targetChannel.id}>`,
-    ),
-    flags: [MessageFlags.Ephemeral],
-  });
+    await interaction.reply({
+      ...buildEmbedTestControlPayload(
+        existingState,
+        isRegulationEmbedState(existingState)
+          ? `Podpiąłem istniejący panel regulaminu z <#${targetChannel.id}>`
+          : `Podpiąłem istniejący embed testowy z <#${targetChannel.id}>`,
+      ),
+      flags: [MessageFlags.Ephemeral],
+    });
 }
 
 const TEST_PANEL_CATEGORY_OPTIONS = [
@@ -10620,7 +11225,9 @@ async function handleSelectMenu(interaction) {
     await interaction.update(
       buildEmbedTestControlPayload(
         state,
-        `Ustawiłem kolor embeda na ${selectedColor.label}`,
+        isRegulationEmbedState(state)
+          ? `Ustawiłem kolor panelu na ${selectedColor.label}`
+          : `Ustawiłem kolor embeda na ${selectedColor.label}`,
       ),
     );
     return;
@@ -11672,7 +12279,12 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      ...buildEmbedTestControlPayload(state, "Zaktualizowałem górę embeda"),
+      ...buildEmbedTestControlPayload(
+        state,
+        isRegulationEmbedState(state)
+          ? "Zaktualizowałem górę panelu regulaminu"
+          : "Zaktualizowałem górę embeda",
+      ),
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -11718,7 +12330,12 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      ...buildEmbedTestControlPayload(state, "Zaktualizowałem emoji embeda"),
+      ...buildEmbedTestControlPayload(
+        state,
+        isRegulationEmbedState(state)
+          ? "Zaktualizowałem emoji panelu regulaminu"
+          : "Zaktualizowałem emoji embeda",
+      ),
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -11767,7 +12384,12 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      ...buildEmbedTestControlPayload(state, "Zaktualizowałem treść embeda"),
+      ...buildEmbedTestControlPayload(
+        state,
+        isRegulationEmbedState(state)
+          ? "Zaktualizowałem strony regulaminu"
+          : "Zaktualizowałem treść embeda",
+      ),
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -11823,7 +12445,9 @@ async function handleModalSubmit(interaction) {
     await interaction.reply({
       ...buildEmbedTestControlPayload(
         state,
-        "Zaktualizowałem dodatkowe sekcje embeda",
+        isRegulationEmbedState(state)
+          ? "Zaktualizowałem strony 3-4 regulaminu"
+          : "Zaktualizowałem dodatkowe sekcje embeda",
       ),
       flags: [MessageFlags.Ephemeral],
     });
@@ -11868,6 +12492,7 @@ async function handleModalSubmit(interaction) {
       buttonOneActionInput,
       state.buttonOneAction || "zakup",
     );
+    const isRegulation = isRegulationEmbedState(state);
 
     if (buttonTwoUrl && !isHttpUrl(buttonTwoUrl)) {
       await interaction.reply({
@@ -11885,7 +12510,7 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    if (!parsedButtonOneAction) {
+    if (!parsedButtonOneAction && !isRegulation) {
       await interaction.reply({
         content:
           "> `❌` × Dla przycisku 1 wpisz jedną z akcji: `zakup`, `autorynek`, `mod`, `sprzedaz`, `odbior`, `pomoc` albo `panel`.",
@@ -11894,8 +12519,12 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    state.buttonOneLabel = buttonOneLabel;
-    state.buttonOneAction = parsedButtonOneAction.value;
+    state.buttonOneLabel = isRegulation
+      ? buttonOneLabel || "Zobacz regulamin"
+      : buttonOneLabel;
+    state.buttonOneAction = isRegulation
+      ? "regulamin"
+      : parsedButtonOneAction.value;
     state.buttonTwoLabel = buttonTwoLabel;
     state.buttonTwoUrl = buttonTwoUrl;
     embedTestStates.set(messageId, state);
@@ -11913,7 +12542,9 @@ async function handleModalSubmit(interaction) {
     await interaction.reply({
       ...buildEmbedTestControlPayload(
         state,
-        `Zaktualizowałem przyciski embeda, a Kup teraz otwiera: ${parsedButtonOneAction.label}`,
+        isRegulation
+          ? "Zaktualizowałem przyciski panelu regulaminu"
+          : `Zaktualizowałem przyciski embeda, a Kup teraz otwiera: ${parsedButtonOneAction.label}`,
       ),
       flags: [MessageFlags.Ephemeral],
     });
