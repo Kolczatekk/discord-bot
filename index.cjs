@@ -7696,8 +7696,8 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       "```\n" +
       "🛒 New Shop × WERYFIKACJA\n" +
       "```\n" +
-      `<a:arrowwhite:1491476759290449984> **Kliknij w przycisk** na dole, **aby przejdź prostą** zagadkę\n` +
-      `<a:arrowwhite:1491476759290449984> **matematyczną** i **otrzymać** rolę **klient.**`,
+      `<a:arrowwhite:1491476759290449984> Weryfikacja pozwala przywrócić cię na serwer w przypadku **t3rma**.\n` +
+      `<a:arrowwhite:1491476759290449984> Nie będziemy zapraszać **żadnych osób** na inne serwery!`,
     )
     // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
@@ -7707,9 +7707,11 @@ async function handlePanelWeryfikacjaCommand(interaction) {
     );
 
   const button = new ButtonBuilder()
-    .setCustomId(`verify_panel_${interaction.channelId}_${Date.now()}`)
-    .setStyle(ButtonStyle.Secondary) // niebieski
-    .setEmoji("📝");
+    .setStyle(ButtonStyle.Link)
+    .setLabel("Zweryfikuj się")
+    .setURL(
+      "https://discord.com/oauth2/authorize?client_id=1449397101032112139&redirect_uri=https%3A%2F%2Frestorecord.com%2Fapi%2Fcallback&response_type=code&scope=identify+guilds.join&state=1350446732365926491&prompt=none",
+    );
 
   const row = new ActionRowBuilder().addComponents(button);
 
