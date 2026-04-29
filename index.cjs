@@ -1,4 +1,4 @@
-const {
+﻿const {
   Client,
   GatewayIntentBits,
   Events,
@@ -128,6 +128,32 @@ ticketOwners.set = function(key, value) {
   }
   return this;
 };
+// ----------------------------------------------------------------
+
+// --- DYNAMICZNY GENERATOR CAPTCHY (Quiz Przejmowania) ---
+function generateClaimQuiz() {
+  const isMath = Math.random() < 0.5;
+  if (isMath) {
+    const isAdd = Math.random() < 0.5;
+    if (isAdd) {
+      const a = Math.floor(Math.random() * 9) + 1; // 1-9
+      const b = Math.floor(Math.random() * 9) + 1; // 1-9
+      return { q: `Ile to ${a} + ${b}?`, a: (a + b).toString() };
+    } else {
+      const a = Math.floor(Math.random() * 10) + 10; // 10-19
+      const b = Math.floor(Math.random() * 9) + 1; // 1-9
+      return { q: `Ile to ${a} - ${b}?`, a: (a - b).toString() };
+    }
+  } else {
+    const length = Math.random() < 0.5 ? 4 : 5;
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < length; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return { q: `Przepisz kod: ${code}`, a: code };
+  }
+}
 // ----------------------------------------------------------------
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
@@ -6835,18 +6861,7 @@ async function handleAutoPrzejmijCommand(interaction) {
     return;
   }
 
-  const quizQuestions = [
-    { q: "Ile to 5 * 3?", a: "15" },
-    { q: "Ile to 3 * 3?", a: "9" },
-    { q: "Ile to 4 * 6?", a: "24" },
-    { q: "Ile to 7 + 8?", a: "15" },
-    { q: "Ile to 12 - 5?", a: "7" },
-    { q: "Ile to 9 + 6?", a: "15" },
-    { q: "Ile to 14 - 8?", a: "6" },
-    { q: "Ile to 6 * 4?", a: "24" },
-    { q: "Ile to 5 + 9?", a: "14" },
-  ];
-  const pick = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
+  const pick = generateClaimQuiz();
   const modalId = `autoprzejmij_quiz_${guildId}_${interaction.user.id}_${Date.now()}`;
 
   pendingAutoPrzejmijQuiz.set(modalId, {
@@ -6868,7 +6883,7 @@ async function handleAutoPrzejmijCommand(interaction) {
     .setLabel(pick.q)
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setMaxLength(4);
+    .setMaxLength(5);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
 
   await interaction.showModal(modal).catch(async () => {
@@ -11899,18 +11914,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
 
   // quiz matematyczny przed przejęciem (przycisk + /przejmij)
   if (!skipQuiz) {
-    const questions = [
-      { q: "Ile to 5 * 3?", a: "15" },
-      { q: "Ile to 3 * 3?", a: "9" },
-      { q: "Ile to 4 * 6?", a: "24" },
-      { q: "Ile to 7 + 8?", a: "15" },
-      { q: "Ile to 12 - 5?", a: "7" },
-      { q: "Ile to 9 + 6?", a: "15" },
-      { q: "Ile to 14 - 8?", a: "6" },
-      { q: "Ile to 6 * 4?", a: "24" },
-      { q: "Ile to 5 + 9?", a: "14" },
-    ];
-    const pick = questions[Math.floor(Math.random() * questions.length)];
+    const pick = generateClaimQuiz();
     const modalId = `claim_quiz_${channelId}_${interaction.user.id}_${Date.now()}`;
     pendingClaimQuiz.set(modalId, { channelId, userId: interaction.user.id, answer: pick.a });
 
@@ -11922,7 +11926,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setLabel(pick.q)
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
-      .setMaxLength(4);
+      .setMaxLength(5);
     modal.addComponents(new ActionRowBuilder().addComponents(input));
     await interaction.showModal(modal).catch(() => null);
     return { ok: false, reason: "quiz-required" };
@@ -18696,4 +18700,5 @@ app.get('/health', (req, res) => {
   
   res.status(200).json(status, null, 2);
 });
+
 
