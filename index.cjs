@@ -95,6 +95,40 @@ const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
+
+// --- NOWA LOGIKA: PING SPRZEDAWCY PO 5 MINUTACH BRAKU PRZEJĘCIA ---
+const originalTicketOwnersSet = ticketOwners.set.bind(ticketOwners);
+ticketOwners.set = function(key, value) {
+  const wasNotPresent = !ticketOwners.has(key);
+  originalTicketOwnersSet(key, value);
+  
+  if (wasNotPresent && value && !value.claimedBy && value.ticketTypeLabel) {
+    const openedAt = value.openedAt || Date.now();
+    const timeSinceOpened = Date.now() - openedAt;
+    const timeRemaining = (5 * 60 * 1000) - timeSinceOpened;
+    
+    if (timeRemaining > 0) {
+      const type = value.ticketTypeLabel;
+      if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
+        setTimeout(async () => {
+          const ticketData = ticketOwners.get(key);
+          if (ticketData && !ticketData.claimedBy) {
+            try {
+              const channel = client.channels.cache.get(key);
+              if (channel) {
+                await channel.send("<@&1350786945944391733> Nikt nie przejął ticketa od 5 minut!").catch(() => null);
+              }
+            } catch (err) {
+              console.error("Błąd pingu po 5 min:", err);
+            }
+          }
+        }, timeRemaining);
+      }
+    }
+  }
+  return this;
+};
+// ----------------------------------------------------------------
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
