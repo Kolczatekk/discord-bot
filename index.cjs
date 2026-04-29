@@ -1,4 +1,4 @@
-﻿const {
+const {
   Client,
   GatewayIntentBits,
   Events,
@@ -18529,9 +18529,6 @@ async function loginWithRetry(maxRetries = 5) {
 
 // Start login
 validateBotToken().finally(() => loginWithRetry());
-
-const express = require('express');
-const app = express();
 
 function getVideoContentType(filePath) {
   const ext = path.extname(filePath || "").toLowerCase();
