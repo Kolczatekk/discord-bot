@@ -7748,8 +7748,8 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       "```\n" +
       "🛒 New Shop × WERYFIKACJA\n" +
       "```\n" +
-      "<a:arrowwhite:1491476759290449984>  Weryfikacja pozwala **przywrócić cię na serwer** po **t3rmie**.\n" +
-      "<a:alert:1474431227972026469>  **Nie będziemy zapraszać** żadnych osób na **inne serwery!**"
+      "> <a:arrowwhite:1491476759290449984>  Weryfikacja pozwala **przywrócić cię na serwer** po __**t3rmie**__.\n" +
+      "> <a:alert:1474431227972026469>   **Nie będziemy zapraszać** żadnych osób na **inne serwery!**"
     )
     // jeśli plik lokalny załadowany - użyj attachment://..., w przeciwnym wypadku fallback na zdalny URL
     .setImage(
