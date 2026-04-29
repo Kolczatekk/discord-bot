@@ -1,4 +1,4 @@
-﻿const {
+const {
   Client,
   GatewayIntentBits,
   Events,
@@ -13098,7 +13098,7 @@ async function handleModalSubmit(interaction) {
       return;
     }
     const answer = (interaction.fields.getTextInputValue("claim_answer") || "").trim();
-    if (answer !== data.answer) {
+    if (answer.toLowerCase() !== data.answer.toLowerCase()) {
       await interaction.reply({ content: "> `❌` × Zła odpowiedź. Spróbuj ponownie.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
       pendingClaimQuiz.delete(cid);
       return;
@@ -13120,7 +13120,7 @@ async function handleModalSubmit(interaction) {
     }
 
     const answer = (interaction.fields.getTextInputValue("autoprzejmij_answer") || "").trim();
-    if (answer !== data.answer) {
+    if (answer.toLowerCase() !== data.answer.toLowerCase()) {
       pendingAutoPrzejmijQuiz.delete(cid);
       await interaction.reply({
         content: "> `❌` × Zla odpowiedz captcha. Sprobuj ponownie.",
