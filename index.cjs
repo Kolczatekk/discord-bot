@@ -116,7 +116,7 @@ ticketOwners.set = function(key, value) {
             try {
               const channel = client.channels.cache.get(key);
               if (channel) {
-                await channel.send("<@&1350786945944391733> Nikt nie przejął ticketa od 5 minut!").catch(() => null);
+                await channel.send("<@&1350786945944391733>\n<a:arrowwhite:1491476759290449984> Weryfikacja pozwala przywrócić cię na serwer po t3rm.\n<a:alertownik2:1477688955221835807> Nie będziemy zapraszać żadnych osób na inne serwery!").catch(() => null);
               }
             } catch (err) {
               console.error("Błąd pingu po 5 min:", err);
