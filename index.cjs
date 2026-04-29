@@ -1,4 +1,4 @@
-const {
+﻿const {
   Client,
   GatewayIntentBits,
   Events,
@@ -37,6 +37,24 @@ try {
   console.warn("[ENV] Nie udało się załadować .env:", err?.message || err);
 }
 const db = require("./database.js");
+
+// ==== EXPRESS SERVER (RENDER COMPATIBILITY) ====
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+app.get('/', (req, res) => {
+  res.send("Bot is running!");
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[HTTP] Serwer Express pomyślnie uruchomiony na porcie ${PORT} (0.0.0.0)!`);
+});
+// ===============================================
 
 const client = new Client({
   intents: [
@@ -18647,7 +18665,3 @@ app.get('/health', (req, res) => {
   res.status(200).json(status, null, 2);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[HTTP] Status endpoint nasłuchuje na porcie ${PORT}`);
-});
