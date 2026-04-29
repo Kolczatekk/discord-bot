@@ -18644,10 +18644,10 @@ app.get('/health', (req, res) => {
     guilds: client.isReady() ? client.guilds.cache.size : 0
   };
   
-  res.status(isHealthy ? 200 : 503).json(status, null, 2);
+  res.status(200).json(status, null, 2);
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`[HTTP] Status endpoint nasłuchuje na porcie ${PORT}`);
 });
