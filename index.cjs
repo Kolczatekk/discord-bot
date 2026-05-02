@@ -7032,7 +7032,6 @@ async function handleAdminOdprzejmij(interaction) {
     .setRequired(true);
   modal.addComponents(new ActionRowBuilder().addComponents(powInput));
   await interaction.showModal(modal);
-});
 }
 
 function replaceEmbedAliasTokens(text = "") {
@@ -18626,20 +18625,6 @@ try {
   console.error("[WS_TEST] Błąd tworzenia WebSocket:", err.message);
 }
 
-// Prosta funkcja retry z backoffem i obsługą 429 + diagnostyka
-async function loginWithRetry(maxRetries = 5) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const attempt = i + 1;
-      console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
-
-      const slowLoginWarning = setTimeout(() => {
-        console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
-      }, 30000);
-
-      const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
-
-      await Promise.race([
 client.on("messageDelete", async (message) => {
   if (!message.guild || message.author?.bot) return;
   if (!isTicketChannel(message.channel)) return;
@@ -18693,7 +18678,21 @@ client.on("messageCreate", async (message) => {
   await logCh.send({ embeds: [embed], files }).catch(() => null);
 });
 
-client.login(process.env.BOT_TOKEN), hardTimeout]);
+// Prosta funkcja retry z backoffem i obsługą 429 + diagnostyka
+async function loginWithRetry(maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const attempt = i + 1;
+      console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
+
+      const slowLoginWarning = setTimeout(() => {
+        console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
+      }, 30000);
+
+      const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
+
+      await Promise.race([
+        client.login(process.env.BOT_TOKEN), hardTimeout]);
 
       clearTimeout(slowLoginWarning);
 
