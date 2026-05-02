@@ -2842,6 +2842,14 @@ const DEFAULT_NAMES = {
 
 const commands = [
   new SlashCommandBuilder()
+    .setName("zaproszenia")
+    .setDescription("Sprawdź szczegółowe logi zaproszeń (Tylko dla właściciela)")
+    .addUserOption((option) =>
+      option.setName("nick").setDescription("Użytkownik do sprawdzenia").setRequired(true),
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("panelkalkulator")
     .setDescription("Wyślij panel kalkulatora waluty na kanał")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -3794,9 +3802,9 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
-const ANARCHIA_LIFESTEAL_RATE = 6500;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 7000;
-const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 200;
+const ANARCHIA_LIFESTEAL_RATE = 7000;
+const ANARCHIA_LIFESTEAL_BULK_RATE = 7500;
+const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 100;
 const ANARCHIA_BOXPVP_RATE = 750000;
 const PYK_MC_RATE = 6000;
 const DONUT_SMP_RATE = 3_500_000;
@@ -5284,24 +5292,7 @@ async function handleButtonInteraction(interaction) {
   // KONKURSY: obsługa przycisków konkursowych
   if (customId.startsWith("konkurs_join_")) {
     const msgId = customId.replace("konkurs_join_", "");
-    
-    const modal = new ModalBuilder()
-      .setCustomId(`konkurs_join_modal_${msgId}`)
-      .setTitle("Dołącz do konkursu");
-
-const nickInput = new TextInputBuilder()
-  .setCustomId("konkurs_nick")
-  .setLabel("Twój nick z Minecraft (opcjonalnie)")
-  .setStyle(TextInputStyle.Short)
-  .setRequired(false) // <- to sprawia, że pole jest opcjonalne
-  .setMaxLength(20)
-  .setPlaceholder("Przykład: KosiaraWTF");
-
-
-    const row1 = new ActionRowBuilder().addComponents(nickInput);
-    modal.addComponents(row1);
-
-    await interaction.showModal(modal);
+    await handleKonkursJoinDirect(interaction, msgId);
     return;
   }
 
@@ -6044,6 +6035,9 @@ async function handleSlashCommand(interaction) {
           `> \`🎁\` × Wejdź na kanał <#${FREE_KASA_CHANNEL_ID}> i kliknij przycisk \`Losuj nagrodę\`.`,
         flags: [MessageFlags.Ephemeral],
       });
+      break;
+    case "zaproszenia":
+      await handleAdminZaproszeniaCommand(interaction);
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
@@ -11479,6 +11473,110 @@ async function handleLegitRepUstawCommand(interaction) {
 }
 
 // ----------------- /sprawdz-kogo-zaprosil handler -----------------
+async function handleAdminZaproszeniaCommand(interaction) {
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień (Tylko właściciel).",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+  
+  const targetUser = interaction.options.getUser("nick");
+  const targetId = targetUser.id;
+  const guild = interaction.guild;
+  
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  
+  try {
+    const { data: allInvites, error } = await supabase
+      .from("invites")
+      .select("*")
+      .eq("guild_id", guild.id)
+      .eq("inviter_id", targetId);
+      
+    if (error) throw error;
+    
+    const inMemoryInvited = new Set();
+    for (const [key, inviterId] of inviterOfMember.entries()) {
+      if (inviterId === targetId && key.startsWith(`${guild.id}:`)) {
+        inMemoryInvited.add(key.split(":")[1]);
+      }
+    }
+    for (const [key, inviterId] of leaveRecords.entries()) {
+      if (inviterId === targetId && key.startsWith(`${guild.id}:`)) {
+        inMemoryInvited.add(key.split(":")[1]);
+      }
+    }
+    
+    const allUserIds = new Set(allInvites ? allInvites.map(i => i.invited_user_id) : []);
+    for (const id of inMemoryInvited) allUserIds.add(id);
+
+    if (allUserIds.size === 0) {
+      await interaction.editReply({
+        content: `> \`ℹ️\` × **Użytkownik** <@${targetId}> **nie zaprosił żadnych osób**.`,
+      });
+      return;
+    }
+
+    const members = await guild.members.fetch();
+    const CLIENT_ROLE_ID = guild.roles.cache.find((r) => normalize(r.name).includes(normalize("klient")))?.id;
+    
+    const verified = [];
+    const unverified = [];
+    const left = [];
+    
+    for (const uid of allUserIds) {
+      const mem = members.get(uid);
+      if (mem) {
+        if (CLIENT_ROLE_ID && mem.roles.cache.has(CLIENT_ROLE_ID)) {
+          verified.push(uid);
+        } else {
+          unverified.push(uid);
+        }
+      } else {
+        left.push(uid);
+      }
+    }
+    
+    let report = `**Szczegółowe logi zaproszeń dla <@${targetId}>**\n\n`;
+    
+    report += `> \`✅\` **Zweryfikowani (Klient) [${verified.length}]:**\n`;
+    if (verified.length > 0) {
+      report += verified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (verified.length > 40 ? "..." : "");
+    } else {
+      report += "Brak";
+    }
+    report += "\n\n";
+    
+    report += `> \`⏳\` **Niezweryfikowani (na serwerze) [${unverified.length}]:**\n`;
+    if (unverified.length > 0) {
+      report += unverified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (unverified.length > 40 ? "..." : "");
+    } else {
+      report += "Brak";
+    }
+    report += "\n\n";
+    
+    report += `> \`❌\` **Wyszli z serwera [${left.length}]:**\n`;
+    if (left.length > 0) {
+      report += left.slice(0, 40).map(u => `<@${u}>`).join(", ") + (left.length > 40 ? "..." : "");
+    } else {
+      report += "Brak";
+    }
+    
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(report.substring(0, 4096));
+      
+    await interaction.editReply({ embeds: [embed] });
+  } catch (err) {
+    console.error("Zaproszenia logs error:", err);
+    await interaction.editReply({
+      content: "> `❌` × Wystąpił błąd podczas pobierania zaproszeń.",
+    });
+  }
+}
+
 async function handleSprawdzKogoZaprosilCommand(interaction) {
   // Sprawdź czy właściciel
   if (interaction.user.id !== interaction.guild.ownerId) {
@@ -17093,7 +17191,7 @@ async function handleKonkursCreateModal(interaction) {
   }
 }
 
-async function handleKonkursJoinModal(interaction, msgId) {
+async function handleKonkursJoinDirect(interaction, msgId) {
   const contest = contests.get(msgId);
   if (!contest) {
     await interaction.reply({
@@ -17140,11 +17238,6 @@ async function handleKonkursJoinModal(interaction, msgId) {
   }
 
   let nick = "";
-  try {
-    nick = (interaction.fields.getTextInputValue("konkurs_nick") || "").trim();
-  } catch (e) {
-    nick = "";
-  }
 
   let participantsMap = contestParticipants.get(msgId);
   if (!participantsMap) {
