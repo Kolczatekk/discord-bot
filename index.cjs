@@ -6018,7 +6018,7 @@ async function handleButtonInteraction(interaction) {
       .setCustomId("powod_odprzejmij")
       .setLabel("Dlaczego chcesz zwolnić ticket?")
       .setStyle(2)
-      .setPlaceholder("Brak odpowiedzi")
+      .setPlaceholder("Przykład: Brak odpowiedzi")
       .setRequired(true);
     modal.addComponents(new ActionRowBuilder().addComponents(powInput));
     await interaction.showModal(modal);
@@ -12196,18 +12196,14 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       title: "Ticket przejęty",
       icon: "🟢",
       color: 0x57f287,
-      summary: "Ticket został przejęty przez obsługę.",
+      summary: null,
       ticketChannel: ch,
       ownerId: ticketData.userId,
       actorId: interaction.user.id,
       claimedById: claimerId,
       ticketMeta: ticketData,
       statusLabel: "PRZEJĘTY",
-      detailLines: [
-        przejetaKategoria
-          ? `Przeniesiono do kategorii: ${przejetaKategoria.name}`
-          : "Nie udało się odnaleźć kategorii przejętych.",
-      ],
+      detailLines: [],
     }).catch((err) => console.error("ticket claim log error:", err));
 
     if (!isBtn) {
@@ -12420,21 +12416,15 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           title: "Ticket zwolniony",
           icon: "🟡",
           color: COLOR_YELLOW,
-          summary: "Ticket został zwolniony i wrócił do statusu otwartego.",
+          summary: null,
           ticketChannel: ch,
           ownerId: ticketData.userId,
           actorId: interaction.user.id,
           claimedById: previousClaimerId,
           ticketMeta: ticketData,
           statusLabel: "OTWARTY",
-          detailLines: [
-            ticketData.originalCategoryId
-              ? `Przywrócono kategorię: <#${ticketData.originalCategoryId}>`
-              : null,
-            backupAttachment
-              ? "Dodano załącznik z historią wiadomości po przejęciu."
-              : null,
-          ],
+          reason: reason || null,
+          detailLines: [],
           files: backupAttachment ? [backupAttachment] : [],
         }).catch(() => null);
       }
@@ -15021,9 +15011,9 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      // Wzorzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer]
+      // Wzórzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer - opcjonalny]
       const mentionPattern = /<@!?\d+>|@\S+/;
-      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(.+\s.+)$/i;
+      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(\S+.*)/i;
       const hasMention = mentionPattern.test(messageContent);
       const isValidRep = repPattern.test(messageContent);
 
@@ -18161,7 +18151,7 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta, extra
       title: "Ticket zamknięty",
       icon: "🔴",
       color: COLOR_RED,
-      summary: "Ticket został zamknięty i zapisany w logach wraz z transkryptem.",
+      summary: null,
       ticketChannel,
       ownerId: openerId,
       actorId: closedById,
@@ -18170,10 +18160,7 @@ async function archiveTicketOnClose(ticketChannel, closedById, ticketMeta, extra
       ticketTypeLabel: guessTicketTypeLabel(ticketChannel, ticketMeta),
       statusLabel: "ZAMKNIĘTY",
       formInfo: ticketMeta?.formInfo,
-      detailLines: [
-        extra.closeMethod ? `Sposób zamknięcia: ${extra.closeMethod}` : null,
-        "Transkrypt rozmowy został dodany jako załącznik.",
-      ],
+      detailLines: [],
       reason: extra.reason || null,
       messageCount: messages.length,
       participantsText,
