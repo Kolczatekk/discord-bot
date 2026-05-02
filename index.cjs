@@ -4343,6 +4343,12 @@ async function handleModalSubmit(interaction) {
   
   const id = interaction.customId;
 
+  if (id === "modal_odprzejmij") {
+    const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
+    await ticketUnclaimCommon(interaction, interaction.channel.id, null, reason);
+    return;
+  }
+
   // --- ILE OTRZYMAM ---
   if (id === "modal_ile_otrzymam") {
     const kwotaStr = interaction.fields.getTextInputValue("kwota");
@@ -7007,24 +7013,26 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
 }
 
 async function handleAdminOdprzejmij(interaction) {
-  // Sprawdź uprawnienia przed sprawdzaniem kanału
   if (!isAdminOrSeller(interaction.member)) {
-    await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    await interaction.reply({ content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] });
     return;
   }
-
-  const channel = interaction.channel;
-  if (!isTicketChannel(channel)) {
-    await interaction.reply({
-      content: "> `❌` × **Użyj** komendy w kanale **ticketu**.",
-      flags: [MessageFlags.Ephemeral],
-    });
+  if (!isTicketChannel(interaction.channel)) {
+    await interaction.reply({ content: "> `❌` × **Użyj** komendy w kanale **ticketu**.", flags: [MessageFlags.Ephemeral] });
     return;
   }
-  await ticketUnclaimCommon(interaction, channel.id, null, { reason: null });
+  
+  const modal = new ModalBuilder()
+    .setCustomId("modal_odprzejmij")
+    .setTitle("Zwalnianie ticketu");
+  const powInput = new TextInputBuilder()
+    .setCustomId("powod_odprzejmij")
+    .setLabel("Dlaczego chcesz zwolnić ticket?")
+    .setStyle(2)
+    .setRequired(true);
+  modal.addComponents(new ActionRowBuilder().addComponents(powInput));
+  await interaction.showModal(modal);
+});
 }
 
 function replaceEmbedAliasTokens(text = "") {
@@ -12159,7 +12167,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       `<@${claimerId}>`;
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`✅\` × Ticket został przejęty przez ${publicClaimerLabel}`);
+      .setDescription(`> \`✅\` × Ticket został przejęty przez: ${publicClaimerLabel}`);
 
     try {
       const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
@@ -12201,7 +12209,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
   }
 }
 
-async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null) {
+async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null, reason = "Brak podanego powodu") {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
 
   if (!isAdminOrSeller(interaction.member)) {
@@ -12447,7 +12455,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`🔓\` × Ticket został zwolniony przez <@${interaction.user.id}>`);
+      .setDescription(`> \`🔓\` × Ticket został zwolniony przez: <@${interaction.user.id}>\n> Powód: ${reason}`);
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
@@ -18631,7 +18639,61 @@ async function loginWithRetry(maxRetries = 5) {
 
       const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
 
-      await Promise.race([client.login(process.env.BOT_TOKEN), hardTimeout]);
+      await Promise.race([
+client.on("messageDelete", async (message) => {
+  if (!message.guild || message.author?.bot) return;
+  if (!isTicketChannel(message.channel)) return;
+  const logCh = await getLogiTicketChannel(message.guild);
+  if (!logCh) return;
+  const content = message.content || "[Brak treści]";
+  const attachments = message.attachments.map(a => a.url).join("\n") || "Brak załączników";
+  const embed = new EmbedBuilder()
+    .setColor(0xff0000)
+    .setTitle("🗑️ Wiadomość usunięta w tickecie")
+    .addFields(
+      { name: "Autor", value: `${message.author.tag} (<@${message.author.id}>)` },
+      { name: "Kanał", value: `<#${message.channel.id}>` },
+      { name: "Treść", value: content.substring(0, 1024) },
+      { name: "Załączniki", value: attachments.substring(0, 1024) }
+    )
+    .setTimestamp();
+  
+  const files = [];
+  if (message.attachments.size > 0) {
+    message.attachments.forEach(att => {
+      files.push({ attachment: att.url, name: att.name || "zalacznik.png" });
+    });
+  }
+
+  await logCh.send({ embeds: [embed], files }).catch(() => null);
+});
+
+
+client.on("messageCreate", async (message) => {
+  if (!message.guild || message.author?.bot) return;
+  if (!isTicketChannel(message.channel)) return;
+  if (message.attachments.size === 0) return;
+  const logCh = await getLogiTicketChannel(message.guild);
+  if (!logCh) return;
+  
+  const files = [];
+  message.attachments.forEach(att => {
+    files.push({ attachment: att.url, name: att.name || "zalacznik.png" });
+  });
+  
+  const embed = new EmbedBuilder()
+    .setColor(0x00ff00)
+    .setTitle("🖼️ Przesłano załącznik w tickecie")
+    .addFields(
+      { name: "Autor", value: `${message.author.tag} (<@${message.author.id}>)` },
+      { name: "Kanał", value: `<#${message.channel.id}>` }
+    )
+    .setTimestamp();
+    
+  await logCh.send({ embeds: [embed], files }).catch(() => null);
+});
+
+client.login(process.env.BOT_TOKEN), hardTimeout]);
 
       clearTimeout(slowLoginWarning);
 
