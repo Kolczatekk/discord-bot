@@ -4343,9 +4343,10 @@ async function handleModalSubmit(interaction) {
   
   const id = interaction.customId;
 
-  if (id === "modal_odprzejmij") {
+  if (id.startsWith("modal_odprzejmij")) {
     const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
-    await ticketUnclaimCommon(interaction, interaction.channel.id, null, reason);
+    const expectedClaimer = id.split("_")[2] || null;
+    await ticketUnclaimCommon(interaction, interaction.channel.id, expectedClaimer, reason);
     return;
   }
 
@@ -6007,8 +6008,19 @@ async function handleButtonInteraction(interaction) {
   if (customId.startsWith("ticket_unclaim_")) {
     const parts = customId.split("_");
     const channelId = parts[2];
-    const expectedClaimer = parts[3] || null;
-    await ticketUnclaimCommon(interaction, channelId, expectedClaimer, { reason: null });
+    const expectedClaimer = parts[3] || "";
+    
+    const modalId = expectedClaimer ? `modal_odprzejmij_${expectedClaimer}` : "modal_odprzejmij";
+    const modal = new ModalBuilder()
+      .setCustomId(modalId)
+      .setTitle("Zwalnianie ticketu");
+    const powInput = new TextInputBuilder()
+      .setCustomId("powod_odprzejmij")
+      .setLabel("Dlaczego chcesz zwolnić ticket?")
+      .setStyle(2)
+      .setRequired(true);
+    modal.addComponents(new ActionRowBuilder().addComponents(powInput));
+    await interaction.showModal(modal);
     return;
   }
 }
