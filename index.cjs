@@ -4346,7 +4346,7 @@ async function handleModalSubmit(interaction) {
   if (id.startsWith("modal_odprzejmij")) {
     const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
     const expectedClaimer = id.split("_")[2] || null;
-    await ticketUnclaimCommon(interaction, interaction.channel.id, expectedClaimer, reason);
+    await ticketUnclaimCommon(interaction, interaction.channelId || interaction.channel?.id, expectedClaimer, reason);
     return;
   }
 
@@ -12470,7 +12470,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
-      await interaction.deleteReply().catch(() => null);
+      await interaction.editReply({ content: "> `✅` × Pomyślnie zwolniono ticket.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
     }
   } catch (err) {
     console.error("Błąd przy unclaim:", err);
