@@ -96,39 +96,7 @@ const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId,
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
 
-// --- NOWA LOGIKA: PING SPRZEDAWCY PO 5 MINUTACH BRAKU PRZEJĘCIA ---
-const originalTicketOwnersSet = ticketOwners.set.bind(ticketOwners);
-ticketOwners.set = function(key, value) {
-  const wasNotPresent = !ticketOwners.has(key);
-  originalTicketOwnersSet(key, value);
-  
-  if (wasNotPresent && value && !value.claimedBy && value.ticketTypeLabel) {
-    const openedAt = value.openedAt || Date.now();
-    const timeSinceOpened = Date.now() - openedAt;
-    const timeRemaining = (5 * 60 * 1000) - timeSinceOpened;
-    
-    if (timeRemaining > 0) {
-      const type = value.ticketTypeLabel;
-      if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
-        setTimeout(async () => {
-          const ticketData = ticketOwners.get(key);
-          if (ticketData && !ticketData.claimedBy) {
-            try {
-              const channel = client.channels.cache.get(key);
-              if (channel) {
-                await channel.send("<@&1350786945944391733>").catch(() => null);
-              }
-            } catch (err) {
-              console.error("Błąd pingu po 5 min:", err);
-            }
-          }
-        }, timeRemaining);
-      }
-    }
-  }
-  return this;
-};
-// ----------------------------------------------------------------
+// (Usunięto nadpisywanie ticketOwners.set, timer 5 min od pierwszej wiadomosci jest w Events.MessageCreate)
 
 // --- DYNAMICZNY GENERATOR CAPTCHY (Quiz Przejmowania) ---
 function generateClaimQuiz() {
@@ -11149,24 +11117,31 @@ async function handleTicketZakonczCommand(interaction) {
     content: repMessage,
   });
 
-  // Oznacz właściciela ticketu na kanale legit-rep i usuń ping po chwili
+  // Oznacz właściciela ticketu na kanałach do opinii/repa i usuń ping po chwili
   try {
-    const legitRepChannel = await interaction.guild.channels
-      .fetch(legitRepChannelId)
-      .catch(() => null);
+    const channelsToPing = [
+      legitRepChannelId,
+      "1350446732365926494", // legit-react
+      "1449783959306375198"  // opinie klientów
+    ];
 
-    if (legitRepChannel && legitRepChannel.isTextBased()) {
-      const pingMessage = await legitRepChannel.send({
-        content: `<@${ticketOwnerId}>`,
-        allowedMentions: { users: [ticketOwnerId] },
-      });
-
-      setTimeout(() => {
-        pingMessage.delete().catch(() => null);
-      }, LEGIT_REP_PING_DELETE_DELAY_MS);
+    for (const chId of channelsToPing) {
+      const ch = await interaction.guild.channels.fetch(chId).catch(() => null);
+      if (ch && ch.isTextBased()) {
+        const pingMessage = await ch.send({
+          content: `<@${ticketOwnerId}>`,
+          allowedMentions: { users: [ticketOwnerId] },
+        }).catch(() => null);
+        
+        if (pingMessage) {
+          setTimeout(() => {
+            pingMessage.delete().catch(() => null);
+          }, LEGIT_REP_PING_DELETE_DELAY_MS);
+        }
+      }
     }
   } catch (err) {
-    console.error("Nie udało się wysłać pingu na legit-rep:", err);
+    console.error("Nie udało się wysłać pingów:", err);
   }
 
   // Zapisz informację o oczekiwaniu na +rep dla tego ticketu
@@ -14518,6 +14493,28 @@ async function handleModalSubmit(interaction) {
 // message create handler: enforce channel restrictions and keep existing legitcheck behavior
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
+
+  // --- NOWA LOGIKA: PING SPRZEDAWCY PO 5 MIN OD 1 WIADOMOŚCI KLIENTA ---
+  const ticketData = ticketOwners.get(message.channel.id);
+  if (ticketData && ticketData.userId === message.author.id && !ticketData.claimedBy && !ticketData.firstMessageReceived) {
+    ticketData.firstMessageReceived = true;
+    ticketOwners.set(message.channel.id, ticketData);
+    
+    const type = ticketData.ticketTypeLabel;
+    if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
+      setTimeout(async () => {
+        const currentTicketData = ticketOwners.get(message.channel.id);
+        if (currentTicketData && !currentTicketData.claimedBy) {
+          try {
+            await message.channel.send("<@&1350786945944391733>").catch(() => null);
+          } catch (err) {
+            console.error("Błąd pingu po 5 min od pierwszej wiadomości:", err);
+          }
+        }
+      }, 5 * 60 * 1000);
+    }
+  }
+  // ----------------------------------------------------------------------
 
   if (
     message.guild &&
