@@ -11536,7 +11536,8 @@ async function handleAdminZaproszeniaCommand(interaction) {
     }
 
     const members = await guild.members.fetch();
-    const CLIENT_ROLE_ID = guild.roles.cache.find((r) => normalize(r.name).includes(normalize("klient")))?.id;
+    const normFn = (s = "") => (s).toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const CLIENT_ROLE_ID = guild.roles.cache.find((r) => normFn(r.name).includes(normFn("klient")))?.id;
     
     const verified = [];
     const unverified = [];
@@ -17764,9 +17765,14 @@ async function handleKonkursLeave(interaction, msgId) {
 
 // --- Obsługa anulowania opuszczenia konkursu ---
 async function handleKonkursCancelLeave(interaction, msgId) {
+  const cancelEmbed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription("> `📋` × Anulowano");
+
   await interaction.update({
-    content: "> `📋` × Anulowano",
+    embeds: [cancelEmbed],
     components: [],
+    content: "",
   });
 }
 
