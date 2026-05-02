@@ -11489,13 +11489,20 @@ async function handleAdminZaproszeniaCommand(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
   
   try {
-    const { data: allInvites, error } = await supabase
-      .from("invites")
-      .select("*")
-      .eq("guild_id", guild.id)
-      .eq("inviter_id", targetId);
-      
-    if (error) throw error;
+    let allInvites = [];
+    try {
+      const { data, error } = await db.supabase
+        .from("invites")
+        .select("*")
+        .eq("guild_id", guild.id)
+        .eq("inviter_id", targetId);
+        
+      if (!error && data) {
+        allInvites = data;
+      }
+    } catch (e) {
+      console.error("Supabase fail in zaproszenia command:", e);
+    }
     
     const inMemoryInvited = new Set();
     for (const [key, inviterId] of inviterOfMember.entries()) {
@@ -11509,12 +11516,21 @@ async function handleAdminZaproszeniaCommand(interaction) {
       }
     }
     
-    const allUserIds = new Set(allInvites ? allInvites.map(i => i.invited_user_id) : []);
+    const allUserIds = new Set(allInvites.map(i => i.invited_user_id));
     for (const id of inMemoryInvited) allUserIds.add(id);
 
-    if (allUserIds.size === 0) {
+    // Patrzymy "do tyłu" używając Discord Invites API
+    const invites = await guild.invites.fetch().catch(() => new Map());
+    let totalUses = 0;
+    invites.forEach(inv => {
+      if (inv.inviter?.id === targetId) {
+        totalUses += (inv.uses || 0);
+      }
+    });
+
+    if (allUserIds.size === 0 && totalUses === 0) {
       await interaction.editReply({
-        content: `> \`ℹ️\` × **Użytkownik** <@${targetId}> **nie zaprosił żadnych osób**.`,
+        content: `> \`ℹ️\` × **Użytkownik** <@${targetId}> **nie zaprosił żadnych osób** (ani teraz, ani w przeszłości wg linków).`,
       });
       return;
     }
@@ -11541,27 +11557,34 @@ async function handleAdminZaproszeniaCommand(interaction) {
     
     let report = `**Szczegółowe logi zaproszeń dla <@${targetId}>**\n\n`;
     
-    report += `> \`✅\` **Zweryfikowani (Klient) [${verified.length}]:**\n`;
-    if (verified.length > 0) {
-      report += verified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (verified.length > 40 ? "..." : "");
+    if (allUserIds.size === 0 && totalUses > 0) {
+       report += `> \`ℹ️\` × **Brak logów szczegółowych z dawnych miesięcy.** Bot zaczął zbierać szczegóły (kto dokładnie wszedł) niedawno.\n\n`;
+       report += `> \`🔢\` × **Z historii starych linków Discorda wynika, że zaprosił łącznie: ${totalUses} osób**.\n`;
     } else {
-      report += "Brak";
-    }
-    report += "\n\n";
-    
-    report += `> \`⏳\` **Niezweryfikowani (na serwerze) [${unverified.length}]:**\n`;
-    if (unverified.length > 0) {
-      report += unverified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (unverified.length > 40 ? "..." : "");
-    } else {
-      report += "Brak";
-    }
-    report += "\n\n";
-    
-    report += `> \`❌\` **Wyszli z serwera [${left.length}]:**\n`;
-    if (left.length > 0) {
-      report += left.slice(0, 40).map(u => `<@${u}>`).join(", ") + (left.length > 40 ? "..." : "");
-    } else {
-      report += "Brak";
+      report += `> \`✅\` **Zweryfikowani (Klient) [${verified.length}]:**\n`;
+      if (verified.length > 0) {
+        report += verified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (verified.length > 40 ? "..." : "");
+      } else {
+        report += "Brak";
+      }
+      report += "\n\n";
+      
+      report += `> \`⏳\` **Niezweryfikowani (na serwerze) [${unverified.length}]:**\n`;
+      if (unverified.length > 0) {
+        report += unverified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (unverified.length > 40 ? "..." : "");
+      } else {
+        report += "Brak";
+      }
+      report += "\n\n";
+      
+      report += `> \`❌\` **Wyszli z serwera [${left.length}]:**\n`;
+      if (left.length > 0) {
+        report += left.slice(0, 40).map(u => `<@${u}>`).join(", ") + (left.length > 40 ? "..." : "");
+      } else {
+        report += "Brak";
+      }
+      
+      report += `\n\n> \`🔢\` **Suma starych zaproszeń (z linków Discorda):** ${totalUses} użyć.`;
     }
     
     const embed = new EmbedBuilder()
@@ -11572,7 +11595,7 @@ async function handleAdminZaproszeniaCommand(interaction) {
   } catch (err) {
     console.error("Zaproszenia logs error:", err);
     await interaction.editReply({
-      content: "> `❌` × Wystąpił błąd podczas pobierania zaproszeń.",
+      content: `> \`❌\` × Wystąpił błąd podczas pobierania zaproszeń: ${err.message}`,
     });
   }
 }
@@ -17249,12 +17272,12 @@ async function handleKonkursJoinDirect(interaction, msgId) {
   if (participantsMap.has(userId)) {
     // Użytkownik już jest zapisany - pytaj czy chce opuścić
     const leaveBtn = new ButtonBuilder()
-      .setCustomId(`confirm_leave_${msgId}`)
+      .setCustomId(`konkurs_leave_${msgId}`)
       .setLabel("Opuść Konkurs")
       .setStyle(ButtonStyle.Danger);
 
     const cancelBtn = new ButtonBuilder()
-      .setCustomId(`cancel_leave_${msgId}`)
+      .setCustomId(`konkurs_cancel_leave_${msgId}`)
       .setLabel("Anuluj")
       .setStyle(ButtonStyle.Secondary);
 
@@ -17262,7 +17285,7 @@ async function handleKonkursJoinDirect(interaction, msgId) {
 
     const questionEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription("> \`❓\` × Już wziąłeś udział w tym konkursie!");
+      .setDescription("> \`❓\` × Już wziąłeś udział w tym konkursie! Czy chcesz go opuścić?");
 
     await interaction.reply({
       embeds: [questionEmbed],
