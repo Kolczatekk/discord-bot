@@ -12801,6 +12801,14 @@ async function handleModalSubmit(interaction) {
 
   const cid = interaction.customId || "";
 
+  // --- ODPRZEJMIJ MODAL ---
+  if (cid.startsWith("modal_odprzejmij")) {
+    const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
+    const expectedClaimer = cid.split("_")[2] || null;
+    await ticketUnclaimCommon(interaction, interaction.channelId || interaction.channel?.id, expectedClaimer, reason);
+    return;
+  }
+
   const embedTestHeaderMatch = cid.match(/^embedtest_modal_header_(\d+)$/);
   if (embedTestHeaderMatch) {
     const [, messageId] = embedTestHeaderMatch;
