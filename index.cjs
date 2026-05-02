@@ -6018,6 +6018,7 @@ async function handleButtonInteraction(interaction) {
       .setCustomId("powod_odprzejmij")
       .setLabel("Dlaczego chcesz zwolnić ticket?")
       .setStyle(2)
+      .setPlaceholder("Brak odpowiedzi")
       .setRequired(true);
     modal.addComponents(new ActionRowBuilder().addComponents(powInput));
     await interaction.showModal(modal);
@@ -12466,8 +12467,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`🔓\` × Ticket został zwolniony przez: <@${interaction.user.id}>\n> Powód: ${reason}`);
-
+      .setDescription(`> \`🔓\` × Ticket został zwolniony przez: <@${interaction.user.id}>\n> Powód: **${reason}**`);
     await ch.send({ embeds: [publicEmbed] }).catch(() => null);
     if (!isBtn) {
       await interaction.editReply({ content: "> `✅` × Pomyślnie zwolniono ticket.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
