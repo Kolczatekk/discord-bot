@@ -102,28 +102,6 @@ function appendBrandFooterToContainer(container, guildId) {
   );
 }
 
-if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
-  const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
-
-  EmbedBuilder.prototype.toJSON = function (...args) {
-    const data = originalEmbedBuilderToJSON.apply(this, args);
-
-    if (data && typeof data === "object") {
-      delete data.timestamp;
-      data.footer = getBrandFooterObject();
-    }
-
-    return data;
-  };
-
-  Object.defineProperty(EmbedBuilder.prototype, "__newShopFooterPatchApplied", {
-    value: true,
-    enumerable: false,
-    configurable: false,
-    writable: false,
-  });
-}
-
 /*
   In-memory stores
 */
@@ -6415,7 +6393,7 @@ async function handleRozliczenieZakonczCommand(interaction) {
         `> \`🚫\` **Od teraz do czasu zapłaty nie macie dostępu do ticketów**`
       )
       .setTimestamp()
-      .setFooter({ text: "Raport tygodniowy" });
+      .setFooter(getBrandFooterObject());
 
     const sentMessage = await logsChannel.send({ embeds: [reportEmbed] });
 
@@ -6511,7 +6489,7 @@ async function handleStatusBotaCommand(interaction) {
         { name: "💬 Kanały", value: status.channels.toString(), inline: true }
       )
       .setTimestamp()
-      .setFooter({ text: "Bot Monitoring System" });
+      .setFooter(getBrandFooterObject());
 
     await interaction.reply({ embeds: [embed] });
   } catch (err) {
@@ -8793,7 +8771,8 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
 
   const embed = new EmbedBuilder()
     .setColor(state.accentColor || COLOR_BLUE)
-    .setDescription(descriptionParts.join("\n"));
+    .setDescription(descriptionParts.join("\n"))
+    .setFooter(getBrandFooterObject());
 
   const components = [];
   if (pages.length > 1) {
@@ -17662,7 +17641,7 @@ async function handleEndGiveawaysCommand(interaction) {
     .setColor(endedContests.length > 0 ? COLOR_BLUE : COLOR_RED)
     .setTitle("🏁 Zakończono wszystkie konkursy")
     .setTimestamp()
-    .setFooter({ text: `Wykonane przez: ${interaction.user.tag}` });
+    .setFooter(getBrandFooterObject());
 
   let description = "";
   
@@ -18272,7 +18251,7 @@ async function sendRozliczeniaMessage() {
       .setDescription(
         "> \`ℹ️\` **Jeżeli sprzedajecie coś na shopie, wysyłacie tutaj kwotę, za którą dokonaliście sprzedaży. Na koniec każdego tygodnia w niedzielę rano macie czas do godziny 20:00, aby rozliczyć się i zapłacić 10% od łącznej sumy sprzedaży z __całego tygodnia.__**"
       )
-      .setFooter({ text: "Użyj komendy /rozliczenie aby dodać sprzedaż" })
+      .setFooter(getBrandFooterObject())
       .setTimestamp();
 
     await channel.send({ embeds: [embed] });
@@ -18651,7 +18630,7 @@ async function sendStatusReport(channel) {
       { name: "💬 Kanały", value: status.channels.toString(), inline: true }
     )
     .setTimestamp()
-    .setFooter({ text: "Bot Monitoring System" });
+    .setFooter(getBrandFooterObject());
 
   await channel.send({ embeds: [embed] });
 }
