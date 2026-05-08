@@ -67,6 +67,63 @@ const client = new Client({
   ]
 });
 
+const BRAND_FOOTER_COMPONENT_TEXT = ":NewShop: \u00A9 2026 New Shop";
+const BRAND_FOOTER_TEXT = "\u00A9 2026 New Shop";
+
+function getBrandFooterIconUrl() {
+  return typeof client.user?.displayAvatarURL === "function"
+    ? client.user.displayAvatarURL()
+    : undefined;
+}
+
+function getBrandFooterObject() {
+  const iconUrl = getBrandFooterIconUrl();
+  return iconUrl
+    ? { text: BRAND_FOOTER_TEXT, icon_url: iconUrl }
+    : { text: BRAND_FOOTER_TEXT };
+}
+
+function getBrandFooterCaption(guildId) {
+  const resolved = guildId
+    ? replaceNamedGuildEmojis(BRAND_FOOTER_COMPONENT_TEXT, guildId)
+    : BRAND_FOOTER_COMPONENT_TEXT;
+  return `-# ${resolved}`;
+}
+
+function appendBrandFooterToContainer(container, guildId) {
+  if (!container) return;
+
+  if (container.components.length) {
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(getBrandFooterCaption(guildId)),
+  );
+}
+
+if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
+  const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
+
+  EmbedBuilder.prototype.toJSON = function (...args) {
+    const data = originalEmbedBuilderToJSON.apply(this, args);
+
+    if (data && typeof data === "object") {
+      delete data.timestamp;
+      data.footer = getBrandFooterObject();
+    }
+
+    return data;
+  };
+
+  Object.defineProperty(EmbedBuilder.prototype, "__newShopFooterPatchApplied", {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+}
+
 /*
   In-memory stores
 */
@@ -7155,6 +7212,7 @@ function buildSendMessageCardPayload({
   mediaUrls,
   includeDate,
   fileUrls,
+  guildId,
 }) {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   const trimmedBody = (bodyText || "").trim();
@@ -7181,7 +7239,7 @@ function buildSendMessageCardPayload({
     );
   }
 
-  if (includeDate) {
+  if (false && includeDate) {
     if (bodyParts.length || mediaUrls.length) {
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     }
@@ -7198,6 +7256,8 @@ function buildSendMessageCardPayload({
       new TextDisplayBuilder().setContent("-# (brak treści)"),
     );
   }
+
+  appendBrandFooterToContainer(container, guildId);
 
   return {
     components: [container],
@@ -7293,6 +7353,7 @@ async function handleSendMessageCommand(interaction) {
         mediaUrls,
         includeDate,
         fileUrls,
+        guildId: interaction.guildId,
       });
 
       if (pingMode === "zpingiem" && pingContent) {
@@ -8695,6 +8756,8 @@ function buildRegulationPanelMessagePayload(state) {
     );
   }
 
+  appendBrandFooterToContainer(container, state.guildId);
+
   return {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
@@ -9074,6 +9137,8 @@ function buildEmbedTestMessagePayload(state) {
       new TextDisplayBuilder().setContent("-# Pusty embed testowy"),
     );
   }
+
+  appendBrandFooterToContainer(container, state.guildId);
 
   return {
     components: [container],
@@ -18276,7 +18341,7 @@ client.on('messageCreate', async (message) => {
             description: `Na kanale <#${ROZLICZENIA_CHANNEL_ID}> można używać tylko komend rozliczeń!\n\n` +
                      `**Dostępne komendy:**\n` +
                      `• \`/rozliczenie [kwota]\` - dodaj sprzedaż`,
-            footer: { text: "NewShop 5k$-1zł🏷️-×┃procenty-sell" }
+            footer: getBrandFooterObject()
           }]
         });
       } catch (err) {
@@ -18332,11 +18397,7 @@ async function sendMonitoringEmbed(title, description, color) {
         title: title,
         description: description,
         color: color,
-        timestamp: new Date().toISOString(),
-        footer: {
-          text: "Bot Monitoring System",
-          icon_url: client.user?.displayAvatarURL()
-        }
+        footer: getBrandFooterObject()
       }]
     });
 
@@ -18887,5 +18948,3 @@ app.get('/health', (req, res) => {
   
   res.status(200).json(status, null, 2);
 });
-
-
