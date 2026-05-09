@@ -114,6 +114,14 @@ function appendBrandFooterToContainer(container, guildId) {
 if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
   const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
 
+  /**
+   * Pozwala wyłączyć automatyczną stopkę brandową dla konkretnego embeda.
+   */
+  EmbedBuilder.prototype.setNoBrandFooter = function() {
+    this._noBrandFooter = true;
+    return this;
+  };
+
   EmbedBuilder.prototype.toJSON = function (...args) {
     const data = originalEmbedBuilderToJSON.apply(this, args);
 
@@ -121,8 +129,8 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
       // Automatycznie usuwamy timestamp z każdego embeda (według starej logiki)
       delete data.timestamp;
       
-      // Ustawiamy stopkę NEW SHOP jeśli nie została ustawiona
-      if (!data.footer) {
+      // Ustawiamy stopkę NEW SHOP jeśli nie została ustawiona I nie została jawnie wyłączona
+      if (!data.footer && !this._noBrandFooter) {
         data.footer = getBrandFooterObject();
       }
     }
@@ -17059,6 +17067,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
 
         const instructionInviteEmbed = new EmbedBuilder()
           .setColor(0xffffff)
+          .setNoBrandFooter()
           .setDescription(
             "`📩` × Użyj **komendy** </sprawdz-zaproszenia:1464015495932940398>, aby sprawdzić swoje **zaproszenia**"
           );
@@ -17314,38 +17323,12 @@ async function handleHelpCommand(interaction) {
   try {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("\`📋\` × Spis komend")
-      .setDescription(
-        [
-          "**`Komendy ogólne:`**",
-          "> \`🎁\` × </drop:1464015494876102748> Wylosuj zniżke na zakupy!",
-          "> \`📩\` × </sprawdz-zaproszenia:1464015495932940398> Sprawdź swoje zaproszenia",
-          "> \`⭐\` × </opinia:1464015495392133321> Podziel się opinią o naszym sklepie",
-          "> \`📋\` × </help:1464015495392133316> — Pokaż tę wiadomość",
-        ].join("\n"),
-      )
-
-    // reply ephemeral so tylko użytkownik widzi
-    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-  } catch (err) {
-    console.error("handleHelpCommand error:", err);
-    try {
-      await interaction.reply({
-        content: "> `❌` × **Błąd** podczas wyświetlania **pomocy**.",
-        flags: [MessageFlags.Ephemeral],
-      });
-    } catch (e) { }
-  }
-}
-
-async function handleHelpCommand(interaction) {
-  try {
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
+      .setNoBrandFooter()
       .setTitle("`📋` × Spis komend")
       .setDescription(
         [
           "**`Komendy ogólne:`**",
+          "> `🎁` × </drop:1464015494876102748> Wylosuj zniżke na zakupy!",
           "> `📩` × </sprawdz-zaproszenia:1464015495932940398> Sprawdź swoje zaproszenia",
           "> `⭐` × </opinia:1464015495392133321> Podziel się opinią o naszym sklepie",
           "> `📋` × </help:1464015495392133316> — Pokaż tę wiadomość",
