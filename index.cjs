@@ -117,12 +117,12 @@ function appendBrandFooterToContainer(container, guildId) {
  */
 function sanitizeBranding(text) {
   if (!text || typeof text !== "string") return text || "";
-  // Bardzo agresywne usuwanie wszystkiego, co przypomina stopkę New Shop
+  // Najbardziej agresywne usuwanie wszystkiego, co zawiera "New Shop" i rok
   return text
     .replace(/(-#\s*)?(<:[A-Za-z0-9_]+:\d+>\s*)?[©\u00A9]\s*202[0-9]\s*New\s*Shop/gi, "")
-    .replace(/[©\u00A9]\s*202[0-9]\s*New\s*Shop/gi, "")
+    .replace(/.*[©\u00A9]\s*202[0-9]\s*New\s*Shop.*/gi, "")
     .replace(/[-\s#]*[©\u00A9]\s*202[0-9]\s*New\s*Shop[-\s#]*/gi, "")
-    .replace(/\n\s*_{3,}\s*$/g, "") // Usuń separator na samym końcu jeśli został po stopce
+    .replace(/\n\s*_{3,}\s*$/g, "")
     .replace(/\n\s*-{3,}\s*$/g, "")
     .replace(/\n\s*\n\s*$/g, "\n")
     .trim();
@@ -8971,7 +8971,7 @@ function buildRegulationPanelMessagePayload(state) {
   }
 
   if (buttons.length) {
-    if (headingParts.length || state.headerNote || mediaUrls.length) {
+    if (container.components.length > 0) {
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     }
 
@@ -10974,6 +10974,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   let state = embedTestStates.get(targetMessage.id) || regulationPanels.get(targetMessage.id);
   
   if (state) {
+    state.headerNote = sanitizeBranding(state.headerNote);
     state.cashBody = sanitizeBranding(state.cashBody);
     state.itemsBody = sanitizeBranding(state.itemsBody);
     state.extraSectionBody = sanitizeBranding(state.extraSectionBody);
@@ -10991,6 +10992,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     if (targetMessage.flags.has(MessageFlags.IsComponentsV2)) {
       state = reconstructEmbedTestStateFromMessage(targetMessage, interaction.user.id);
       if (state) {
+        state.headerNote = sanitizeBranding(state.headerNote);
         state.cashBody = sanitizeBranding(state.cashBody);
         state.itemsBody = sanitizeBranding(state.itemsBody);
         state.extraSectionBody = sanitizeBranding(state.extraSectionBody);
