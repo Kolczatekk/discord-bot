@@ -8888,7 +8888,7 @@ function getRegulationPanelStateByMessageId(messageId) {
   return null;
 }
 
-function buildRegulationPanelMessagePayload(state) {
+function buildRegulationPanelMessagePayload(state, skipFooter = false) {
   const buttons = [];
   const mediaUrls = Array.isArray(state.mediaUrls)
     ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
@@ -8986,7 +8986,9 @@ function buildRegulationPanelMessagePayload(state) {
     );
   }
 
-  appendBrandFooterToContainer(container, state.guildId);
+  if (!skipFooter) {
+    appendBrandFooterToContainer(container, state.guildId);
+  }
 
   return {
     components: [container],
@@ -9234,7 +9236,7 @@ function createDefaultEmbedTestState(
 
 function buildEmbedTestMessagePayload(state, skipFooter = false) {
   if (isRegulationEmbedState(state)) {
-    return buildRegulationPanelMessagePayload(state);
+    return buildRegulationPanelMessagePayload(state, skipFooter);
   }
 
   const buttons = [];
