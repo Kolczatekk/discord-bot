@@ -912,6 +912,14 @@ function buildPersistentStateData() {
     }
   }
 
+  // Convert embedTestStates to plain object
+  const embedTestStatesObj = {};
+  if (typeof embedTestStates !== "undefined" && embedTestStates instanceof Map) {
+    for (const [messageId, state] of embedTestStates.entries()) {
+      embedTestStatesObj[messageId] = state;
+    }
+  }
+
   const regulationPanelsObj = {};
   if (
     typeof regulationPanels !== "undefined" &&
@@ -948,6 +956,8 @@ function buildPersistentStateData() {
     activeCodes: Object.fromEntries(activeCodes),
     guildInvites: guildInvitesObj,
     inviterOfMember: inviterOfMemberObj,
+    embedTestStates: embedTestStatesObj,
+    regulationPanels: regulationPanelsObj,
     inviterRateLimit: inviterRateLimitObj,
     leaveRecords: leaveRecordsObj,
     verificationRoles: verificationRolesObj,
@@ -2448,6 +2458,21 @@ async function loadPersistentState() {
         });
       }
       console.log(`[state] Wczytano weeklySales ze snapshotu: ${weeklySales.size} użytkowników`);
+    }
+
+    if (
+      botStateData.embedTestStates &&
+      typeof botStateData.embedTestStates === "object"
+    ) {
+      for (const [messageId, state] of Object.entries(
+        botStateData.embedTestStates,
+      )) {
+        if (!state || typeof state !== "object") continue;
+        embedTestStates.set(messageId, state);
+      }
+      console.log(
+        `[state] Wczytano embedTestStates: ${embedTestStates.size} stanów`,
+      );
     }
 
     if (
@@ -9794,6 +9819,15 @@ async function publishEmbedTestToChannel(interaction, state, targetChannel) {
 
   try {
     const sentMessage = await sendEmbedTestToTargetChannel(state, targetChannel);
+    if (sentMessage) {
+      // Zapisujemy stan dla wysłanej wiadomości, aby można było ją później aktualizować
+      embedTestStates.set(sentMessage.id, {
+        ...state,
+        messageId: sentMessage.id,
+        channelId: targetChannel.id,
+      });
+      scheduleSavePersistentState(true);
+    }
     if (!sentMessage) {
       await interaction.reply({
         content: "> `❌` × Wybierz poprawny kanał, na który bot może wysłać wiadomość.",
@@ -10857,7 +10891,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   }
 
   // 2. Szukamy źródła (Source): stan skojarzony z wiadomością LUB importujemy ze starej wiadomości
-  let state = embedTestStates.get(targetMessage.id);
+  let state = embedTestStates.get(targetMessage.id) || regulationPanels.get(targetMessage.id);
   
   if (!state) {
     // Próba importu z istniejącego embeda
