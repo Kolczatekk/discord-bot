@@ -10572,21 +10572,30 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
   state.extraSectionTwoTitle = "";
   state.extraSectionTwoBody = "";
 
-  if (cashSection) {
-    state.cashSectionTitle = cashSection.title || "";
-    state.cashBody = cashSection.body || "";
-  }
-  if (itemsSection) {
-    state.itemsSectionTitle = itemsSection.title || "";
-    state.itemsBody = itemsSection.body || "";
-  }
-  if (extraSection) {
-    state.extraSectionTitle = extraSection.title || "";
-    state.extraSectionBody = extraSection.body || "";
-  }
-  if (extraSectionTwo) {
-    state.extraSectionTwoTitle = extraSectionTwo.title || "";
-    state.extraSectionTwoBody = extraSectionTwo.body || "";
+  if (sections.length === 0) {
+    // nothing to do
+  } else if (sections.length === 1) {
+    // Single section — simple case
+    state.cashSectionTitle = sections[0].title || "";
+    state.cashBody = sections[0].body || "";
+  } else {
+    // Multiple sections — check if they have distinct titles
+    // If they do, keep them separated (user intentionally structured it)
+    // If they don't have titles, merge all into cashBody to avoid ghost sections
+    const allHaveTitles = sections.every(s => s.title);
+    if (allHaveTitles && sections.length <= 4) {
+      if (sections[0]) { state.cashSectionTitle = sections[0].title || ""; state.cashBody = sections[0].body || ""; }
+      if (sections[1]) { state.itemsSectionTitle = sections[1].title || ""; state.itemsBody = sections[1].body || ""; }
+      if (sections[2]) { state.extraSectionTitle = sections[2].title || ""; state.extraSectionBody = sections[2].body || ""; }
+      if (sections[3]) { state.extraSectionTwoTitle = sections[3].title || ""; state.extraSectionTwoBody = sections[3].body || ""; }
+    } else {
+      // Merge all sections into cashBody with separators
+      const merged = sections
+        .map(s => [s.title ? `### ${s.title}` : null, s.body].filter(Boolean).join("\n"))
+        .join("\n\n--\n\n");
+      state.cashSectionTitle = sections[0]?.title || "";
+      state.cashBody = merged;
+    }
   }
 
   // Usunięto starą logikę secondaryButton na rzecz zunifikowanej powyżej
