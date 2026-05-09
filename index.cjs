@@ -16916,7 +16916,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
           `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
           `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`
         )
-        .enableBrandFooter();
+        .setBrandFooter();
 
       if (avatarUrl) {
         welcomeEmbed.setThumbnail(avatarUrl);
