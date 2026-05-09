@@ -16905,34 +16905,27 @@ client.on(Events.GuildMemberAdd, async (member) => {
     if (ch || member.guild.systemChannel) {
       const targetCh = ch || member.guild.systemChannel;
       
-      const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "```\n" +
-          "👋 New Shop × LOBBY\n" +
-          "```"
-        )
-      );
-      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
+      const avatarUrl = member.displayAvatarURL({ extension: "png", forceStatic: false, size: 256 })
+        || member.user.displayAvatarURL({ extension: "png", size: 256 });
+
+      const welcomeEmbed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n👋 New Shop × LOBBY\n```\n" +
           `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
           `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
           `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`
         )
-      );
+        .enableBrandFooter();
 
-      // ContainerBuilder nie obsługuje setThumbnail, usuwamy to aby uniknąć błędu
-      // Można by użyć MediaGalleryBuilder jeśli miniatura byłaby wymagana
+      if (avatarUrl) {
+        welcomeEmbed.setThumbnail(avatarUrl);
+      }
 
-      // Przywrócono stopkę dla Lobby zgodnie z nową prośbą (bez roku)
-      appendBrandFooterToContainer(container, member.guild.id);
-
-      await targetCh.send({ 
-        content: `<@${member.id}>`, 
-        components: [container],
-        flags: MessageFlags.IsComponentsV2
-      }).catch(() => null);
+      await targetCh.send({
+        content: `<@${member.id}>`,
+        embeds: [welcomeEmbed],
+      }).catch((err) => console.error("[lobby] Błąd wysyłania powitania:", err));
     }
   } catch (err) {
     console.error("Błąd wysyłania powitania / invite tracking:", err);
