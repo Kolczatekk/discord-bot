@@ -6992,7 +6992,6 @@ async function handlePanelKalkulatorCommand(interaction) {
     return;
   }
 
-  // Sprawdź czy właściciel
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
       content: "> `❗` × Brak wymaganych uprawnień.",
@@ -7001,14 +7000,15 @@ async function handlePanelKalkulatorCommand(interaction) {
     return;
   }
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
       "```\n" +
       "🧮 New Shop × Kalkulator\n" +
       "```\n" +
-      "> <a:arrowwhite:1491476759290449984> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**",
-    );
+      "> <a:arrowwhite:1491476759290449984> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**"
+    )
+  );
 
   const typeSelect = new StringSelectMenuBuilder()
     .setCustomId("kalkulator_typ")
@@ -7017,14 +7017,18 @@ async function handlePanelKalkulatorCommand(interaction) {
     .setMaxValues(1)
     .addOptions(KALKULATOR_MODE_OPTIONS);
 
-  const row = new ActionRowBuilder().addComponents(typeSelect);
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(typeSelect));
+  appendBrandFooterToContainer(container, interaction.guildId);
 
   await interaction.reply({
     content: "> `✅` × **Panel** kalkulatora został wysłany na ten **kanał**.",
     flags: [MessageFlags.Ephemeral],
   });
 
-  await interaction.channel.send({ embeds: [embed], components: [row] });
+  await interaction.channel.send({ 
+    components: [container],
+    flags: MessageFlags.IsComponentsV2
+  });
 }
 
 function buildKalkulatorModal(typ) {
@@ -10826,7 +10830,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   if (!targetMessage) {
     try {
       const fetched = await targetChannel.messages.fetch({ limit: 50 });
-      targetMessage = fetched.find(m => m.author.id === client.user.id && m.embeds.length > 0) || null;
+      targetMessage = fetched.find(m => m.author.id === client.user.id && (m.embeds.length > 0 || m.flags.has(MessageFlags.IsComponentsV2))) || null;
     } catch (e) {}
   }
 
@@ -10838,24 +10842,44 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     return;
   }
 
-  // 2. Szukamy źródła (Source): stan skojarzony z wiadomością LUB najnowszy aktywny draft usera
+  // 2. Szukamy źródła (Source): stan skojarzony z wiadomością LUB importujemy ze starej wiadomości
   let state = embedTestStates.get(targetMessage.id);
+  
   if (!state) {
-    // Jeśli brak stanu dla tego konkretnego komunikatu, szukamy najnowszego aktywnego draftu właściciela globalnie
-    let latestDraft = null;
-    for (const s of embedTestStates.values()) {
-      if (s.ownerId === interaction.user.id) {
-        latestDraft = s;
+    // Próba importu z istniejącego embeda
+    const embed = targetMessage.embeds[0];
+    if (embed) {
+      state = {
+        guildId: interaction.guildId,
+        ownerId: interaction.user.id,
+        title: embed.title || "",
+        // Importujemy opis do sekcji cashBody, bo description nie jest bezpośrednio renderowane
+        cashBody: embed.description || "",
+        accentColor: embed.color || COLOR_BLUE,
+        thumbnail: embed.thumbnail?.url || null,
+        image: embed.image?.url || null,
+        footer: embed.footer?.text || "",
+        footerIcon: embed.footer?.iconURL || null,
+        messageId: targetMessage.id,
+        channelId: targetChannel.id
+      };
+    } else {
+      // Jeśli brak embeda (czysty kontener), szukamy najnowszego aktywnego draftu właściciela globalnie
+      let latestDraft = null;
+      for (const s of embedTestStates.values()) {
+        if (s.ownerId === interaction.user.id) {
+          latestDraft = s;
+        }
       }
-    }
-    if (latestDraft) {
-      state = { ...latestDraft }; // Klonujemy draft
+      if (latestDraft) {
+        state = { ...latestDraft };
+      }
     }
   }
 
   if (!state) {
     await interaction.reply({
-      content: "> `❌` × Nie znalazłem aktywnego draftu embedtest, który mógłbym zastosować. Najpierw użyj `/embedtest`.",
+      content: "> `❌` × Nie znalazłem aktywnego draftu ani treści do zaimportowania. Użyj najpierw `/embedtest`.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -10870,13 +10894,12 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   // 3. Budujemy payload z wybranego stanu
   const payload = buildEmbedTestMessagePayload(state);
 
-  // 4. Przenosimy funkcjonalne przyciski ze starej wiadomości
-  // Zgodnie z prośbą: "jeżeli stary embed miał przyciski to robi embedtest z przyciskami"
+  // 4. Przenosimy funkcjonalne przyciski ze starej wiadomości DO ŚRODKA embeda
   const originalButtons = [];
   if (targetMessage.components && targetMessage.components.length > 0) {
     targetMessage.components.forEach(row => {
-      row.components.forEach(comp => {
-        // comp.type === 2 to Button. CustomId zaczynające się od 'embedtest_' to przyciski edycji/zakupu draftu
+      const comps = row.components || (row.type === 1 ? row.components : [row]);
+      comps.forEach(comp => {
         if (comp.type === 2 || comp.type === "BUTTON") {
           const cid = comp.customId || "";
           if (!cid.startsWith("embedtest_")) {
@@ -10888,10 +10911,8 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   }
 
   if (originalButtons.length > 0) {
-    // Payload components to tablica z ContainerBuilderem (index 0)
     const container = payload.components[0];
     if (container && typeof container.addActionRowComponents === "function") {
-      // Chunk na max 5 przycisków w rzędzie
       for (let i = 0; i < originalButtons.length; i += 5) {
         const chunk = originalButtons.slice(i, i + 5);
         container.addActionRowComponents(new ActionRowBuilder().addComponents(...chunk));
@@ -10925,7 +10946,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   await targetMessage.delete().catch(() => null);
 
   await interaction.reply({
-    content: `> \`✅\` × Zaktualizowałem embed na wzór najnowszego draftu (zachowując ew. oryginalne przyciski): ${getDiscordMessageUrl(interaction.guildId, targetChannel.id, sent.id)}`,
+    content: `> \`✅\` × Zaktualizowałem embed na wzór embedtest (przyciski przeniesione do środka): ${getDiscordMessageUrl(interaction.guildId, targetChannel.id, sent.id)}`,
     flags: [MessageFlags.Ephemeral],
   });
 }
@@ -11371,11 +11392,14 @@ function getModalStringSelectValueSafe(interaction, customId) {
 }
 
 function buildTicketPanelPayload() {
-  const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
-    "```\n" +
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
       "🛒 New Shop × TICKET\n" +
       "```\n" +
-      "`📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!",
+      "> `📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!"
+    )
   );
 
   const selectMenu = new StringSelectMenuBuilder()
@@ -11383,9 +11407,12 @@ function buildTicketPanelPayload() {
     .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .addOptions(PANEL_CATEGORY_OPTIONS);
 
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(selectMenu));
+  appendBrandFooterToContainer(container, null); // Guild ID null here, it will use global markup
+
   return {
-    embeds: [embed],
-    components: [new ActionRowBuilder().addComponents(selectMenu)],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2
   };
 }
 
@@ -16740,42 +16767,33 @@ client.on(Events.GuildMemberAdd, async (member) => {
     }
 
     // Send welcome embed (no inviter details here)
-    if (ch) {
-      const embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
+    if (ch || member.guild.systemChannel) {
+      const targetCh = ch || member.guild.systemChannel;
+      
+      const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
           "```\n" +
           "👋 New Shop × LOBBY\n" +
           "```\n" +
           `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
           `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
-          `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`,
+          `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`
         )
-        .setThumbnail(
-          member.displayAvatarURL({ extension: 'png', forceStatic: false, size: 256 }) || member.user.displayAvatarURL({ extension: 'png', size: 256 })
-        )
-        .setTimestamp();
+      );
 
-      await ch.send({ content: `<@${member.id}>`, embeds: [embed] });
-    } else if (member.guild.systemChannel) {
-      const embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
-          "```\n" +
-          "👋 New Shop × LOBBY\n" +
-          "```\n" +
-          `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
-          `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
-          `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`,
-        )
-        .setThumbnail(
-          member.displayAvatarURL({ extension: 'png', forceStatic: false, size: 256 }) || member.user.displayAvatarURL({ extension: 'png', size: 256 })
-        )
-        .setTimestamp();
+      const avatarUrl = member.displayAvatarURL({ extension: 'png', forceStatic: false, size: 256 }) || member.user.displayAvatarURL({ extension: 'png', size: 256 });
+      if (avatarUrl) {
+        container.setThumbnail(avatarUrl);
+      }
 
-      await member.guild.systemChannel
-        .send({ content: `<@${member.id}>`, embeds: [embed] })
-        .catch(() => null);
+      appendBrandFooterToContainer(container, member.guild.id);
+
+      await targetCh.send({ 
+        content: `<@${member.id}>`, 
+        components: [container],
+        flags: MessageFlags.IsComponentsV2
+      }).catch(() => null);
     }
   } catch (err) {
     console.error("Błąd wysyłania powitania / invite tracking:", err);
