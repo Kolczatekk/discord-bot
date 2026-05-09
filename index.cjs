@@ -118,8 +118,13 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
     const data = originalEmbedBuilderToJSON.apply(this, args);
 
     if (data && typeof data === "object") {
+      // Automatycznie usuwamy timestamp z każdego embeda (według starej logiki)
       delete data.timestamp;
-      data.footer = getBrandFooterObject();
+      
+      // Ustawiamy stopkę NEW SHOP jeśli nie została ustawiona
+      if (!data.footer) {
+        data.footer = getBrandFooterObject();
+      }
     }
 
     return data;
@@ -16711,7 +16716,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
           `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`,
         )
         .setThumbnail(
-          member.user.displayAvatarURL({ dynamic: true, size: 256 }),
+          member.displayAvatarURL({ extension: 'png', forceStatic: false, size: 256 }) || member.user.displayAvatarURL({ extension: 'png', size: 256 })
         )
         .setTimestamp();
 
@@ -16728,7 +16733,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
           `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`,
         )
         .setThumbnail(
-          member.user.displayAvatarURL({ dynamic: true, size: 256 }),
+          member.displayAvatarURL({ extension: 'png', forceStatic: false, size: 256 }) || member.user.displayAvatarURL({ extension: 'png', size: 256 })
         )
         .setTimestamp();
 
