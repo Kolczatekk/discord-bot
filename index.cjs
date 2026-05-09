@@ -73,7 +73,6 @@ const NEWSHOP_EMOJI_MARKUP = `<:${NEWSHOP_EMOJI_NAME}:${NEWSHOP_EMOJI_ID}>`;
 const BRAND_FOOTER_COMPONENT_TEXT = `${NEWSHOP_EMOJI_MARKUP} \u00A9 2026 New Shop`;
 const BRAND_FOOTER_TEXT = "\u00A9 2026 New Shop";
 const BRAND_FOOTER_ICON_URL = `https://cdn.discordapp.com/emojis/${NEWSHOP_EMOJI_ID}.png?size=64&quality=lossless`;
-const BRAND_FOOTER_DIVIDER = "-# ━━━━━━━━━━━━━━━━━━━━━";
 
 function getBrandFooterIconUrl() {
   return BRAND_FOOTER_ICON_URL;
@@ -112,17 +111,6 @@ function appendBrandFooterToContainer(container, guildId) {
   );
 }
 
-function appendBrandFooterDividerToEmbedData(data) {
-  if (!data || typeof data !== "object") return;
-
-  const description = typeof data.description === "string" ? data.description : "";
-  if (description.includes(BRAND_FOOTER_DIVIDER)) return;
-
-  data.description = description
-    ? `${description}\n\n${BRAND_FOOTER_DIVIDER}`
-    : BRAND_FOOTER_DIVIDER;
-}
-
 if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
   const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
 
@@ -131,7 +119,6 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
 
     if (data && typeof data === "object") {
       delete data.timestamp;
-      appendBrandFooterDividerToEmbedData(data);
       data.footer = getBrandFooterObject();
     }
 
@@ -7882,14 +7869,40 @@ async function handlePanelWeryfikacjaCommand(interaction) {
     );
 
   const row = new ActionRowBuilder().addComponents(button);
+  const verificationMediaUrl = attachment
+    ? "attachment://standard_1.gif"
+    : "https://cdn.discordapp.com/attachments/1449367698374004869/1450192787894046751/standard_1.gif";
+  const verificationContainer = new ContainerBuilder()
+    .setAccentColor(COLOR_BLUE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+          "🛒 New Shop × WERYFIKACJA\n" +
+          "```",
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "> <a:arrowwhite:1491476759290449984> Weryfikacja pozwala **przywrócić cię na serwer** po __**t3rmie**__.\n" +
+          "> <a:arrowwhite:1491476759290449984> **Nie będziemy zapraszać** żadnych osób na **inne serwery!**",
+      ),
+    )
+    .addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(verificationMediaUrl),
+      ),
+    );
+
+  appendBrandFooterToContainer(verificationContainer, guildId);
 
   try {
     // Defer reply na początku, aby uniknąć Unknown interaction
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const sendOptions = {
-      embeds: [embed],
-      components: [row],
+      components: [verificationContainer, row],
+      flags: MessageFlags.IsComponentsV2,
       allowedMentions: { roles: [roleId] },
     };
     if (attachment) sendOptions.files = [attachment];
