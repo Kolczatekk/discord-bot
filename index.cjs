@@ -8772,15 +8772,18 @@ function setRegulationPagesOnState(state, pages) {
       : [{ title: "", body: "" }];
   const [first = {}, second = {}, third = {}, fourth = {}] = normalizedPages;
 
-  state.pages = normalizedPages;
+  state.pages = normalizedPages.map(p => ({
+    ...p,
+    body: sanitizeBranding(p.body)
+  }));
   state.cashSectionTitle = first.title || "";
-  state.cashBody = first.body || "";
+  state.cashBody = sanitizeBranding(first.body || "");
   state.itemsSectionTitle = second.title || "";
-  state.itemsBody = second.body || "";
+  state.itemsBody = sanitizeBranding(second.body || "");
   state.extraSectionTitle = third.title || "";
-  state.extraSectionBody = third.body || "";
+  state.extraSectionBody = sanitizeBranding(third.body || "");
   state.extraSectionTwoTitle = fourth.title || "";
-  state.extraSectionTwoBody = fourth.body || "";
+  state.extraSectionTwoBody = sanitizeBranding(fourth.body || "");
   return state;
 }
 
@@ -9363,6 +9366,9 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
   }
 
   if (buttons.length) {
+    if (container.components.length > 0) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
     container.addActionRowComponents(
       new ActionRowBuilder().addComponents(...buttons),
     );
@@ -10972,6 +10978,12 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     state.itemsBody = sanitizeBranding(state.itemsBody);
     state.extraSectionBody = sanitizeBranding(state.extraSectionBody);
     state.extraSectionTwoBody = sanitizeBranding(state.extraSectionTwoBody);
+    if (Array.isArray(state.pages)) {
+      state.pages = state.pages.map(p => ({
+        ...p,
+        body: sanitizeBranding(p.body)
+      }));
+    }
   }
 
   if (!state) {
