@@ -10391,6 +10391,15 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     }
   }
 
+  state.cashSectionTitle = "";
+  state.cashBody = "";
+  state.itemsSectionTitle = "";
+  state.itemsBody = "";
+  state.extraSectionTitle = "";
+  state.extraSectionBody = "";
+  state.extraSectionTwoTitle = "";
+  state.extraSectionTwoBody = "";
+
   if (cashSection) {
     state.cashSectionTitle = cashSection.title || "";
     state.cashBody = cashSection.body || "";
