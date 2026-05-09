@@ -10821,54 +10821,95 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     return;
   }
 
-  const { message, state } = await findEmbedTestStateForOwnerCommand(
-    interaction,
-    targetChannel,
-  );
+  // 1. Szukamy celu (Target): najpierw embedtest, potem jakikolwiek ostatni embed bota na kanale
+  let targetMessage = await findLatestEmbedTestMessage(targetChannel);
+  if (!targetMessage) {
+    try {
+      const fetched = await targetChannel.messages.fetch({ limit: 50 });
+      targetMessage = fetched.find(m => m.author.id === client.user.id && m.embeds.length > 0) || null;
+    } catch (e) {}
+  }
 
-  if (!message || !state) {
-    const legacyModyMessage = await findLatestLegacyModyPanelMessage(targetChannel);
-    if (legacyModyMessage) {
-      const sent = await resendLegacyModyPanelMessage(
-        legacyModyMessage,
-        targetChannel,
-      );
-
-      await interaction.reply({
-        content:
-          `> \`✅\` × Odświeżyłem panel modów w nowym wydaniu: ${getDiscordMessageUrl(
-            interaction.guildId,
-            targetChannel.id,
-            sent.id,
-          )}`,
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
+  if (!targetMessage) {
     await interaction.reply({
-      content:
-        "> `❌` × Nie znalazłem aktywnego embedtestu ani panelu modów na tym kanale.",
+      content: "> `❌` × Nie znalazłem żadnego embeda bota do zaktualizowania na tym kanale.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  const mediaFiles = getEmbedTestMediaFilesFromMessage(message);
+  // 2. Szukamy źródła (Source): stan skojarzony z wiadomością LUB najnowszy aktywny draft usera
+  let state = embedTestStates.get(targetMessage.id);
+  if (!state) {
+    // Jeśli brak stanu dla tego konkretnego komunikatu, szukamy najnowszego aktywnego draftu właściciela globalnie
+    let latestDraft = null;
+    for (const s of embedTestStates.values()) {
+      if (s.ownerId === interaction.user.id) {
+        latestDraft = s;
+      }
+    }
+    if (latestDraft) {
+      state = { ...latestDraft }; // Klonujemy draft
+    }
+  }
+
+  if (!state) {
+    await interaction.reply({
+      content: "> `❌` × Nie znalazłem aktywnego draftu embedtest, który mógłbym zastosować. Najpierw użyj `/embedtest`.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  // Zachowaj media ze starej wiadomości jeśli istnieją
+  const mediaFiles = getEmbedTestMediaFilesFromMessage(targetMessage);
   if (mediaFiles.length) {
     applyEmbedTestMediaFilesToState(state, mediaFiles);
   }
 
-  const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
+  // 3. Budujemy payload z wybranego stanu
+  const payload = buildEmbedTestMessagePayload(state);
+
+  // 4. Przenosimy funkcjonalne przyciski ze starej wiadomości
+  // Zgodnie z prośbą: "jeżeli stary embed miał przyciski to robi embedtest z przyciskami"
+  const originalButtons = [];
+  if (targetMessage.components && targetMessage.components.length > 0) {
+    targetMessage.components.forEach(row => {
+      row.components.forEach(comp => {
+        // comp.type === 2 to Button. CustomId zaczynające się od 'embedtest_' to przyciski edycji/zakupu draftu
+        if (comp.type === 2 || comp.type === "BUTTON") {
+          const cid = comp.customId || "";
+          if (!cid.startsWith("embedtest_")) {
+            originalButtons.push(ButtonBuilder.from(comp));
+          }
+        }
+      });
+    });
+  }
+
+  if (originalButtons.length > 0) {
+    // Payload components to tablica z ContainerBuilderem (index 0)
+    const container = payload.components[0];
+    if (container && typeof container.addActionRowComponents === "function") {
+      // Chunk na max 5 przycisków w rzędzie
+      for (let i = 0; i < originalButtons.length; i += 5) {
+        const chunk = originalButtons.slice(i, i + 5);
+        container.addActionRowComponents(new ActionRowBuilder().addComponents(...chunk));
+      }
+    }
+  }
+
+  // 5. Wyślij nowe, usuń stare, zaktualizuj stan
+  const sent = await targetChannel.send(payload);
   delete state.mediaFiles;
 
   state.messageId = sent.id;
   state.channelId = targetChannel.id;
-  embedTestStates.delete(message.id);
+  embedTestStates.delete(targetMessage.id);
   embedTestStates.set(sent.id, state);
 
-  if (isRegulationEmbedState(state) || regulationPanels.has(message.id)) {
-    regulationPanels.delete(message.id);
+  if (isRegulationEmbedState(state) || regulationPanels.has(targetMessage.id)) {
+    regulationPanels.delete(targetMessage.id);
     regulationPanels.set(
       sent.id,
       cloneRegulationPanelState(state, {
@@ -10881,15 +10922,10 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     scheduleSavePersistentState(true);
   }
 
-  await message.delete().catch(() => null);
+  await targetMessage.delete().catch(() => null);
 
   await interaction.reply({
-    content:
-      `> \`✅\` × Wysłałem embedtest ponownie w nowym wydaniu: ${getDiscordMessageUrl(
-        interaction.guildId,
-        targetChannel.id,
-        sent.id,
-      )}`,
+    content: `> \`✅\` × Zaktualizowałem embed na wzór najnowszego draftu (zachowując ew. oryginalne przyciski): ${getDiscordMessageUrl(interaction.guildId, targetChannel.id, sent.id)}`,
     flags: [MessageFlags.Ephemeral],
   });
 }
