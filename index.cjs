@@ -117,13 +117,13 @@ function appendBrandFooterToContainer(container, guildId) {
  */
 function sanitizeBranding(text) {
   if (!text || typeof text !== "string") return text || "";
-  // Agresywne usuwanie stopki brandingowej w różnych wariantach
+  // Bardzo agresywne usuwanie wszystkiego, co przypomina stopkę New Shop
   return text
-    .replace(/-#\s*<:[A-Za-z0-9_]+:\d+>\s*[©\u00A9]\s*2026\s*New\s*Shop/gi, "")
-    .replace(/<:[A-Za-z0-9_]+:\d+>\s*[©\u00A9]\s*2026\s*New\s*Shop/gi, "")
-    .replace(/[-\s#]*[©\u00A9]\s*2026\s*New\s*Shop[-\s#]*/gi, "")
-    // Usuwamy też ewentualne kreski separatorów, które mogły zostać po starej stopce
-    .replace(/_{3,}|-{3,}/g, "")
+    .replace(/(-#\s*)?(<:[A-Za-z0-9_]+:\d+>\s*)?[©\u00A9]\s*202[0-9]\s*New\s*Shop/gi, "")
+    .replace(/[©\u00A9]\s*202[0-9]\s*New\s*Shop/gi, "")
+    .replace(/[-\s#]*[©\u00A9]\s*202[0-9]\s*New\s*Shop[-\s#]*/gi, "")
+    .replace(/\n\s*_{3,}\s*$/g, "") // Usuń separator na samym końcu jeśli został po stopce
+    .replace(/\n\s*-{3,}\s*$/g, "")
     .replace(/\n\s*\n\s*$/g, "\n")
     .trim();
 }
@@ -10967,25 +10967,42 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   // 2. Szukamy źródła (Source): stan skojarzony z wiadomością LUB importujemy ze starej wiadomości
   let state = embedTestStates.get(targetMessage.id) || regulationPanels.get(targetMessage.id);
   
+  if (state) {
+    state.cashBody = sanitizeBranding(state.cashBody);
+    state.itemsBody = sanitizeBranding(state.itemsBody);
+    state.extraSectionBody = sanitizeBranding(state.extraSectionBody);
+    state.extraSectionTwoBody = sanitizeBranding(state.extraSectionTwoBody);
+  }
+
   if (!state) {
     // Próba importu z istniejącego embeda
-    const embed = targetMessage.embeds[0];
-    if (embed) {
-      state = {
-        guildId: interaction.guildId,
-        ownerId: interaction.user.id,
-        title: embed.title || "",
-        // Importujemy opis do sekcji cashBody, bo description nie jest bezpośrednio renderowane
-        // Czyścimy branding, aby nie było duplikatów stopki
-        cashBody: sanitizeBranding(embed.description || ""),
-        accentColor: embed.color || COLOR_BLUE,
-        thumbnail: embed.thumbnail?.url || null,
-        image: embed.image?.url || null,
-        footer: sanitizeBranding(embed.footer?.text || ""),
-        footerIcon: embed.footer?.iconURL || null,
-        messageId: targetMessage.id,
-        channelId: targetChannel.id
-      };
+    if (targetMessage.flags.has(MessageFlags.IsComponentsV2)) {
+      state = reconstructEmbedTestStateFromMessage(targetMessage, interaction.user.id);
+      if (state) {
+        state.cashBody = sanitizeBranding(state.cashBody);
+        state.itemsBody = sanitizeBranding(state.itemsBody);
+        state.extraSectionBody = sanitizeBranding(state.extraSectionBody);
+        state.extraSectionTwoBody = sanitizeBranding(state.extraSectionTwoBody);
+      }
+    } else {
+      const embed = targetMessage.embeds[0];
+      if (embed) {
+        state = {
+          guildId: interaction.guildId,
+          ownerId: interaction.user.id,
+          title: embed.title || "",
+          // Importujemy opis do sekcji cashBody, bo description nie jest bezpośrednio renderowane
+          // Czyścimy branding, aby nie było duplikatów stopki
+          cashBody: sanitizeBranding(embed.description || ""),
+          accentColor: embed.color || COLOR_BLUE,
+          thumbnail: embed.thumbnail?.url || null,
+          image: embed.image?.url || null,
+          footer: sanitizeBranding(embed.footer?.text || ""),
+          footerIcon: embed.footer?.iconURL || null,
+          messageId: targetMessage.id,
+          channelId: targetChannel.id
+        };
+      }
     }
   }
 
@@ -13846,58 +13863,32 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    const buttonTwoUrl = interaction.fields
-      .getTextInputValue("button_two_url")
-      .trim();
-    const buttonOneActionInput = interaction.fields
-      .getTextInputValue("button_one_action")
-      .trim();
+    const buttonOneActionInput = interaction.fields.getTextInputValue("button_one_action").trim();
+    const buttonTwoActionInput = interaction.fields.getTextInputValue("button_two_action").trim();
 
-    const buttonOneLabel = interaction.fields
-      .getTextInputValue("button_one_label")
-      .trim();
-    const buttonTwoLabel = interaction.fields
-      .getTextInputValue("button_two_label")
-      .trim();
-    const parsedButtonOneAction = parseEmbedTestPrimaryButtonActionInput(
-      buttonOneActionInput,
-      state.buttonOneAction || "zakup",
-    );
-    const isRegulation = isRegulationEmbedState(state);
+    const buttonOneLabel = interaction.fields.getTextInputValue("button_one_label").trim();
+    const buttonTwoLabel = interaction.fields.getTextInputValue("button_two_label").trim();
 
-    if (buttonTwoUrl && !isHttpUrl(buttonTwoUrl)) {
-      await interaction.reply({
-        content: "> `❌` × Link przycisku 2 musi zaczynać się od `http` lub `https`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
+    const parsedAction1 = parseEmbedTestPrimaryButtonActionInput(buttonOneActionInput, state.buttonOneAction);
+    const parsedAction2 = parseEmbedTestPrimaryButtonActionInput(buttonTwoActionInput, state.buttonTwoAction);
 
-    if (buttonTwoUrl && !buttonTwoLabel) {
-      await interaction.reply({
-        content: "> `❌` × Jeśli przycisk 2 ma link, podaj też jego nazwę.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
+    state.buttonOneLabel = buttonOneLabel;
+    state.buttonOneAction = parsedAction1.value;
+    state.buttonOneUrl = parsedAction1.url || null;
 
-    if (!parsedButtonOneAction && !isRegulation) {
-      await interaction.reply({
-        content:
-          "> `❌` × Dla przycisku 1 wpisz jedną z akcji: `zakup`, `autorynek`, `mod`, `sprzedaz`, `odbior`, `pomoc` albo `panel`.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    state.buttonOneLabel = isRegulation
-      ? buttonOneLabel || "Zobacz regulamin"
-      : buttonOneLabel;
-    state.buttonOneAction = isRegulation
-      ? "regulamin"
-      : parsedButtonOneAction.value;
     state.buttonTwoLabel = buttonTwoLabel;
-    state.buttonTwoUrl = buttonTwoUrl;
+    state.buttonTwoAction = parsedAction2.value;
+    state.buttonTwoUrl = parsedAction2.url || null;
+
+    if (state.buttonOneAction === "link" && !state.buttonOneUrl) {
+      await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 1 (np. https://...).", flags: [MessageFlags.Ephemeral] });
+      return;
+    }
+    if (state.buttonTwoAction === "link" && !state.buttonTwoUrl) {
+      await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 2 (np. https://...).", flags: [MessageFlags.Ephemeral] });
+      return;
+    }
+
     embedTestStates.set(messageId, state);
 
     const updated = await updateEmbedTestMessage(state);
@@ -13911,12 +13902,7 @@ async function handleModalSubmit(interaction) {
     }
 
     await interaction.reply({
-      ...buildEmbedTestControlPayload(
-        state,
-        isRegulation
-          ? "Zaktualizowałem przyciski panelu regulaminu"
-          : `Zaktualizowałem przyciski embeda, a Kup teraz otwiera: ${parsedButtonOneAction.label}`,
-      ),
+      ...buildEmbedTestControlPayload(state, "Zaktualizowałem przyciski embeda"),
       flags: [MessageFlags.Ephemeral],
     });
     return;
