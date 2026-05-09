@@ -111,6 +111,20 @@ function appendBrandFooterToContainer(container, guildId) {
   );
 }
 
+/**
+ * Usuwa z tekstu stopkę brandingową "© 2026 New Shop" oraz jej warianty,
+ * aby uniknąć duplikacji przy imporcie/aktualizacji starych embedów.
+ */
+function sanitizeBranding(text) {
+  if (!text || typeof text !== "string") return text || "";
+  return text
+    .replace(/<:[A-Za-z0-9_]+:\d+>\s*[©\u00A9]\s*2026\s*New\s*Shop/gi, "")
+    .replace(/[©\u00A9]\s*2026\s*New\s*Shop/gi, "")
+    .replace(/-#\s*/g, "")
+    .replace(/\n\s*\n\s*$/g, "\n")
+    .trim();
+}
+
 if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
   const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
 
@@ -5471,200 +5485,204 @@ async function handleButtonInteraction(interaction) {
     return;
   }
 
-  if (customId.startsWith("mody_videos_")) {
-    try {
-      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-    } catch (err) {
-      // Interaction token already expired or already acknowledged.
-      console.warn("[mody] Nie udało się potwierdzić interakcji przycisku:", err?.code || err);
-      return;
-    }
+async function handleModyVideosAction(interaction) {
+  try {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  } catch (err) {
+    // Interaction token already expired or already acknowledged.
+    console.warn("[mody] Nie udało się potwierdzić interakcji przycisku:", err?.code || err);
+    return;
+  }
 
-    const resolvedVideos = [];
-    const seenKeys = new Set();
-    const seenUrls = new Set();
+  const resolvedVideos = [];
+  const seenKeys = new Set();
+  const seenUrls = new Set();
 
-    const addResolvedVideo = (videoCfg, url, labelFallback = "Nagranie") => {
-      if (!isHttpUrl(url)) return;
-      const key = videoCfg?.key ? `key:${videoCfg.key}` : `url:${url}`;
-      if (seenKeys.has(key) || seenUrls.has(url)) return;
-      seenKeys.add(key);
-      seenUrls.add(url);
-      resolvedVideos.push({
-        videoCfg: videoCfg || null,
-        url,
-        labelFallback,
+  const addResolvedVideo = (videoCfg, url, labelFallback = "Nagranie") => {
+    if (!isHttpUrl(url)) return;
+    const key = videoCfg?.key ? `key:${videoCfg.key}` : `url:${url}`;
+    if (seenKeys.has(key) || seenUrls.has(url)) return;
+    seenKeys.add(key);
+    seenUrls.add(url);
+    resolvedVideos.push({
+      videoCfg: videoCfg || null,
+      url,
+      labelFallback,
+    });
+  };
+
+  // 1) Najpierw bierzemy video z wiadomości panelu (to najszybsza ścieżka).
+  const fromCurrentMessage = collectVideoLinksFromMessage(interaction.message);
+  for (const item of fromCurrentMessage) {
+    const cfgFromAttachment =
+      (item?.key && MODS_VIDEO_FILES.find((v) => v.key === item.key)) ||
+      getModsVideoConfigByFilename(item?.label || "");
+    addResolvedVideo(
+      cfgFromAttachment,
+      item?.url || "",
+      item?.modName || item?.label || "Nagranie",
+    );
+  }
+
+  // 2) Dołóż źródła z resolvera z preferencją Discord CDN (slow-scan + fallbacki).
+  for (const videoCfg of MODS_VIDEO_FILES) {
+    const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
+      allowSlowScan: true,
+    });
+    addResolvedVideo(
+      videoCfg,
+      url,
+      videoCfg.modName || videoCfg.label || "Nagranie",
+    );
+  }
+
+  if (resolvedVideos.length > 0) {
+    const MAX_VIDEO_MESSAGES = 10;
+    resolvedVideos.sort((a, b) => {
+      const rankA = getModsVideoOrderRank(a.videoCfg);
+      const rankB = getModsVideoOrderRank(b.videoCfg);
+      if (rankA !== rankB) return rankA - rankB;
+      const keyA = a.videoCfg?.key || a.labelFallback || "";
+      const keyB = b.videoCfg?.key || b.labelFallback || "";
+      return keyA.localeCompare(keyB, "pl");
+    });
+    const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
+    let sentAtLeastOneVideo = false;
+    let firstResponseSent = false;
+
+    const sendVideoMessage = async ({ content, files }) => {
+      if (!firstResponseSent) {
+        await interaction.editReply({
+          content,
+          files,
+          embeds: [],
+          components: [],
+        });
+        firstResponseSent = true;
+        return;
+      }
+      await interaction.followUp({
+        content,
+        files,
+        flags: [MessageFlags.Ephemeral],
       });
     };
 
-    // 1) Najpierw bierzemy video z wiadomości panelu (to najszybsza ścieżka).
-    const fromCurrentMessage = collectVideoLinksFromMessage(interaction.message);
-    for (const item of fromCurrentMessage) {
-      const cfgFromAttachment =
-        (item?.key && MODS_VIDEO_FILES.find((v) => v.key === item.key)) ||
-        getModsVideoConfigByFilename(item?.label || "");
-      addResolvedVideo(
-        cfgFromAttachment,
-        item?.url || "",
-        item?.modName || item?.label || "Nagranie",
-      );
-    }
+    for (let i = 0; i < videosToSend.length; i += 1) {
+      const video = videosToSend[i];
+      const videoCfg = video.videoCfg || null;
+      const caption = getModsVideoCaption(videoCfg, video.labelFallback || "Nagranie");
+      const localPath = resolveLocalModsVideoPath(videoCfg);
+      let sentThisVideo = false;
 
-    // 2) Dołóż źródła z resolvera z preferencją Discord CDN (slow-scan + fallbacki).
-    for (const videoCfg of MODS_VIDEO_FILES) {
-      const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
-        allowSlowScan: true,
-      });
-      addResolvedVideo(
-        videoCfg,
-        url,
-        videoCfg.modName || videoCfg.label || "Nagranie",
-      );
-    }
+      if (localPath) {
+        let size = 0;
+        try {
+          size = fs.statSync(localPath).size || 0;
+        } catch {
+          size = 0;
+        }
 
-    if (resolvedVideos.length > 0) {
-      const MAX_VIDEO_MESSAGES = 10;
-      resolvedVideos.sort((a, b) => {
-        const rankA = getModsVideoOrderRank(a.videoCfg);
-        const rankB = getModsVideoOrderRank(b.videoCfg);
-        if (rankA !== rankB) return rankA - rankB;
-        const keyA = a.videoCfg?.key || a.labelFallback || "";
-        const keyB = b.videoCfg?.key || b.labelFallback || "";
-        return keyA.localeCompare(keyB, "pl");
-      });
-      const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
-      let sentAtLeastOneVideo = false;
-      let firstResponseSent = false;
-
-      const sendVideoMessage = async ({ content, files }) => {
-        if (!firstResponseSent) {
-          await interaction.editReply({
-            content,
-            files,
-            embeds: [],
-            components: [],
+        if (size > 0 && size <= DISCORD_MAX_UPLOAD_BYTES) {
+          const ext = path.extname(localPath) || ".mp4";
+          const baseName =
+            (videoCfg?.key || `video_${i + 1}`)
+              .toString()
+              .replace(/[^a-z0-9_-]/gi, "_") || `video_${i + 1}`;
+          const attachment = new AttachmentBuilder(localPath, {
+            name: `${baseName}${ext.toLowerCase()}`,
           });
-          firstResponseSent = true;
-          return;
-        }
-        await interaction.followUp({
-          content,
-          files,
-          flags: [MessageFlags.Ephemeral],
-        });
-      };
 
-      for (let i = 0; i < videosToSend.length; i += 1) {
-        const video = videosToSend[i];
-        const videoCfg = video.videoCfg || null;
-        const caption = getModsVideoCaption(videoCfg, video.labelFallback || "Nagranie");
-        const localPath = resolveLocalModsVideoPath(videoCfg);
-        let sentThisVideo = false;
-
-        if (localPath) {
-          let size = 0;
-          try {
-            size = fs.statSync(localPath).size || 0;
-          } catch {
-            size = 0;
-          }
-
-          if (size > 0 && size <= DISCORD_MAX_UPLOAD_BYTES) {
-            const ext = path.extname(localPath) || ".mp4";
-            const baseName =
-              (videoCfg?.key || `video_${i + 1}`)
-                .toString()
-                .replace(/[^a-z0-9_-]/gi, "_") || `video_${i + 1}`;
-            const attachment = new AttachmentBuilder(localPath, {
-              name: `${baseName}${ext.toLowerCase()}`,
-            });
-
-            try {
-              await sendVideoMessage({
-                content: caption,
-                files: [attachment],
-              });
-              sentAtLeastOneVideo = true;
-              sentThisVideo = true;
-              continue;
-            } catch (err) {
-              console.warn(
-                `[mody] Nie udało się wysłać pliku ${path.basename(localPath)}; próbuję link fallback.`,
-                err?.code || err?.message || err,
-              );
-            }
-          }
-        }
-
-        // Fallback: jeśli lokalny plik jest niedostępny/za duży, wyślij caption + link.
-        if (!sentThisVideo && isHttpUrl(video.url)) {
           try {
             await sendVideoMessage({
-              content: `${caption}\n${video.url}`,
+              content: caption,
+              files: [attachment],
             });
             sentAtLeastOneVideo = true;
             sentThisVideo = true;
+            continue;
           } catch (err) {
             console.warn(
-              "[mody] Nie udało się wysłać fallback linku:",
+              `[mody] Nie udało się wysłać pliku ${path.basename(localPath)}; próbuję link fallback.`,
               err?.code || err?.message || err,
             );
           }
         }
+      }
 
-        if (!sentThisVideo) {
+      // Fallback: jeśli lokalny plik jest niedostępny/za duży, wyślij caption + link.
+      if (!sentThisVideo && isHttpUrl(video.url)) {
+        try {
+          await sendVideoMessage({
+            content: `${caption}\n${video.url}`,
+          });
+          sentAtLeastOneVideo = true;
+          sentThisVideo = true;
+        } catch (err) {
           console.warn(
-            `[mody] Pominięto video ${videoCfg?.key || video.labelFallback || i + 1} (brak pliku <= limit i brak działającego URL).`,
+            "[mody] Nie udało się wysłać fallback linku:",
+            err?.code || err?.message || err,
           );
         }
       }
 
-      if (!sentAtLeastOneVideo) {
-        const failMsg =
-          "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.";
-        if (!firstResponseSent) {
-          await interaction.editReply({ content: failMsg, embeds: [], components: [] });
-        } else {
-          await interaction.followUp({
-            content: failMsg,
-            flags: [MessageFlags.Ephemeral],
-          });
-        }
+      if (!sentThisVideo) {
+        console.warn(
+          `[mody] Pominięto video ${videoCfg?.key || video.labelFallback || i + 1} (brak pliku <= limit i brak działającego URL).`,
+        );
       }
-      return;
     }
 
-    const localVideo =
-      MODS_VIDEO_FILES
-        .map((cfg) => ({
-          cfg,
-          localPath: resolveLocalModsVideoPath(cfg),
-        }))
-        .find((item) => !!item.localPath) || null;
-
-    if (localVideo) {
-      let videoSize = 0;
-      try {
-        videoSize = fs.statSync(localVideo.localPath).size || 0;
-      } catch {
-        videoSize = 0;
+    if (!sentAtLeastOneVideo) {
+      const failMsg =
+        "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.";
+      if (!firstResponseSent) {
+        await interaction.editReply({ content: failMsg, embeds: [], components: [] });
+      } else {
+        await interaction.followUp({
+          content: failMsg,
+          flags: [MessageFlags.Ephemeral],
+        });
       }
+    }
+    return;
+  }
 
-      const sizeMb = (videoSize / 1024 / 1024).toFixed(1);
-      const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
-      await interaction.editReply({
-        content:
-          `> \`❌\` × Nie mam publicznego linku do **${path.basename(localVideo.localPath)}**.\n` +
-          `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
-          `> \`✅\` × Ustaw URL w env \`${localVideo.cfg.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
-      });
-      return;
+  const localVideo =
+    MODS_VIDEO_FILES
+      .map((cfg) => ({
+        cfg,
+        localPath: resolveLocalModsVideoPath(cfg),
+      }))
+      .find((item) => !!item.localPath) || null;
+
+  if (localVideo) {
+    let videoSize = 0;
+    try {
+      videoSize = fs.statSync(localVideo.localPath).size || 0;
+    } catch {
+      videoSize = 0;
     }
 
+    const sizeMb = (videoSize / 1024 / 1024).toFixed(1);
+    const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
     await interaction.editReply({
       content:
-        "> `❌` × Nie znaleziono żadnych nagrań modów ani linków do nich.",
+        `> \`❌\` × Nie mam publicznego linku do **${path.basename(localVideo.localPath)}**.\n` +
+        `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
+        `> \`✅\` × Ustaw URL w env \`${localVideo.cfg.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
     });
+    return;
+  }
+
+  await interaction.editReply({
+    content:
+      "> `❌` × Nie znaleziono żadnych nagrań modów ani linków do nich.",
+  });
+}
+
+  if (customId.startsWith("mody_videos_")) {
+    await handleModyVideosAction(interaction);
     return;
   }
 
@@ -5710,7 +5728,7 @@ async function handleButtonInteraction(interaction) {
   }
 
   const embedTestBuyOpenMatch = customId.match(
-    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin))?$/,
+    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin|nagrania))?$/,
   );
   if (embedTestBuyOpenMatch) {
     const action = embedTestBuyOpenMatch[1] || "zakup";
@@ -5742,6 +5760,9 @@ async function handleButtonInteraction(interaction) {
         break;
       case "regulamin":
         await openRegulationPanelViewer(interaction, interaction.message?.id || "");
+        break;
+      case "nagrania":
+        await handleModyVideosAction(interaction);
         break;
       default:
         await showZakupModal(interaction);
@@ -7938,7 +7959,9 @@ async function handlePanelWeryfikacjaCommand(interaction) {
       new MediaGalleryBuilder().addItems(
         new MediaGalleryItemBuilder().setURL(verificationMediaUrl),
       ),
-    );
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addActionRowComponents(row);
 
   appendBrandFooterToContainer(verificationContainer, guildId);
 
@@ -7947,7 +7970,7 @@ async function handlePanelWeryfikacjaCommand(interaction) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const sendOptions = {
-      components: [verificationContainer, row],
+      components: [verificationContainer],
       flags: MessageFlags.IsComponentsV2,
       allowedMentions: { roles: [roleId] },
     };
@@ -8187,6 +8210,12 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
     label: "Regulamin",
     description: "Otwiera przeglądarkę regulaminu",
     emoji: "📜",
+  },
+  {
+    value: "nagrania",
+    label: "Nagrania",
+    description: "Wyświetla nagrania modów",
+    emoji: "🎥",
   },
 ];
 
@@ -8450,18 +8479,24 @@ function appendEmbedTestSectionToContainer(
     return false;
   }
 
+  let dividerAdded = false;
   if (addLeadingSeparator) {
     container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    dividerAdded = true;
   }
 
   let hasVisibleContent = false;
+  let hasAnyComponent = false;
 
   for (const part of sectionParts) {
     if (!part) continue;
 
     if (part.type === "separator") {
-      if (hasVisibleContent) {
+      // Dodaj separator jeśli mamy już jakąś treść LUB jeśli to początek sekcji (ale nie podwójnie)
+      if (!dividerAdded || hasVisibleContent) {
         container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+        dividerAdded = true;
+        hasAnyComponent = true;
       }
       continue;
     }
@@ -8471,10 +8506,12 @@ function appendEmbedTestSectionToContainer(
         new TextDisplayBuilder().setContent(part.content),
       );
       hasVisibleContent = true;
+      hasAnyComponent = true;
+      dividerAdded = false;
     }
   }
 
-  return hasVisibleContent;
+  return hasAnyComponent;
 }
 
 function isEmbedTestPublishTarget(channel) {
@@ -10107,8 +10144,11 @@ function collectEmbedTestMessageData(node, collector) {
   }
 
   if (typeof node.content === "string" && node.content.trim()) {
-    collector.texts.push(node.content);
-    collector.sequence.push({ type: "text", content: node.content });
+    // Skip brand footer to avoid duplication during reconstruction/edit
+    if (!node.content.includes("© 2026 New Shop")) {
+      collector.texts.push(node.content);
+      collector.sequence.push({ type: "text", content: node.content });
+    }
   }
 
   if (typeof node.label === "string" && (node.custom_id || node.url)) {
@@ -10919,11 +10959,12 @@ async function handleAktualizacjaEmbedCommand(interaction) {
         ownerId: interaction.user.id,
         title: embed.title || "",
         // Importujemy opis do sekcji cashBody, bo description nie jest bezpośrednio renderowane
-        cashBody: embed.description || "",
+        // Czyścimy branding, aby nie było duplikatów stopki
+        cashBody: sanitizeBranding(embed.description || ""),
         accentColor: embed.color || COLOR_BLUE,
         thumbnail: embed.thumbnail?.url || null,
         image: embed.image?.url || null,
-        footer: embed.footer?.text || "",
+        footer: sanitizeBranding(embed.footer?.text || ""),
         footerIcon: embed.footer?.iconURL || null,
         messageId: targetMessage.id,
         channelId: targetChannel.id
@@ -16850,7 +16891,12 @@ client.on(Events.GuildMemberAdd, async (member) => {
         new TextDisplayBuilder().setContent(
           "```\n" +
           "👋 New Shop × LOBBY\n" +
-          "```\n" +
+          "```"
+        )
+      );
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
           `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
           `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
           `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`
