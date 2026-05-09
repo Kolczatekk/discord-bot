@@ -13894,24 +13894,38 @@ async function handleModalSubmit(interaction) {
     const buttonOneLabel = interaction.fields.getTextInputValue("button_one_label").trim();
     const buttonTwoLabel = interaction.fields.getTextInputValue("button_two_label").trim();
 
-    const parsedAction1 = parseEmbedTestPrimaryButtonActionInput(buttonOneActionInput, state.buttonOneAction);
-    const parsedAction2 = parseEmbedTestPrimaryButtonActionInput(buttonTwoActionInput, state.buttonTwoAction);
+    // Przycisk 1 — jeśli brak nazwy, usuń przycisk
+    if (!buttonOneLabel) {
+      state.buttonOneLabel = "";
+      state.buttonOneAction = "";
+      state.buttonOneUrl = null;
+    } else {
+      const parsedAction1 = parseEmbedTestPrimaryButtonActionInput(buttonOneActionInput, state.buttonOneAction);
+      state.buttonOneLabel = buttonOneLabel;
+      state.buttonOneAction = parsedAction1.value;
+      state.buttonOneUrl = parsedAction1.url || null;
 
-    state.buttonOneLabel = buttonOneLabel;
-    state.buttonOneAction = parsedAction1.value;
-    state.buttonOneUrl = parsedAction1.url || null;
-
-    state.buttonTwoLabel = buttonTwoLabel;
-    state.buttonTwoAction = parsedAction2.value;
-    state.buttonTwoUrl = parsedAction2.url || null;
-
-    if (state.buttonOneAction === "link" && !state.buttonOneUrl) {
-      await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 1 (np. https://...).", flags: [MessageFlags.Ephemeral] });
-      return;
+      if (state.buttonOneAction === "link" && !state.buttonOneUrl) {
+        await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 1 (np. https://...).", flags: [MessageFlags.Ephemeral] });
+        return;
+      }
     }
-    if (state.buttonTwoAction === "link" && !state.buttonTwoUrl) {
-      await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 2 (np. https://...).", flags: [MessageFlags.Ephemeral] });
-      return;
+
+    // Przycisk 2 — jeśli brak nazwy, usuń przycisk
+    if (!buttonTwoLabel) {
+      state.buttonTwoLabel = "";
+      state.buttonTwoAction = "";
+      state.buttonTwoUrl = null;
+    } else {
+      const parsedAction2 = parseEmbedTestPrimaryButtonActionInput(buttonTwoActionInput, state.buttonTwoAction);
+      state.buttonTwoLabel = buttonTwoLabel;
+      state.buttonTwoAction = parsedAction2.value;
+      state.buttonTwoUrl = parsedAction2.url || null;
+
+      if (state.buttonTwoAction === "link" && !state.buttonTwoUrl) {
+        await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 2 (np. https://...).", flags: [MessageFlags.Ephemeral] });
+        return;
+      }
     }
 
     embedTestStates.set(messageId, state);
