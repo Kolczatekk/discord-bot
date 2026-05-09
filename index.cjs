@@ -16902,6 +16902,17 @@ client.on(Events.GuildMemberAdd, async (member) => {
     }
 
     // Send welcome embed (no inviter details here)
+    // Ensure channels are in cache before searching
+    await member.guild.channels.fetch().catch(() => null);
+    const ch =
+      member.guild.channels.cache.find(
+        (c) =>
+          c.type === ChannelType.GuildText &&
+          (c.name === "👋-×┃lobby" || c.name.toLowerCase().includes("lobby")),
+      ) || null;
+
+    console.log(`[lobby] Szukam kanału lobby. Znaleziono: ${ch ? ch.name : "brak"}. SystemChannel: ${member.guild.systemChannel?.name || "brak"}`);
+
     if (ch || member.guild.systemChannel) {
       const targetCh = ch || member.guild.systemChannel;
       
@@ -16926,6 +16937,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
         content: `<@${member.id}>`,
         embeds: [welcomeEmbed],
       }).catch((err) => console.error("[lobby] Błąd wysyłania powitania:", err));
+    } else {
+      console.warn(`[lobby] Nie znaleziono kanału lobby ani systemChannel dla guild ${member.guild.id}`);
     }
   } catch (err) {
     console.error("Błąd wysyłania powitania / invite tracking:", err);
