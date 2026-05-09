@@ -117,10 +117,13 @@ function appendBrandFooterToContainer(container, guildId) {
  */
 function sanitizeBranding(text) {
   if (!text || typeof text !== "string") return text || "";
+  // Agresywne usuwanie stopki brandingowej w różnych wariantach
   return text
+    .replace(/-#\s*<:[A-Za-z0-9_]+:\d+>\s*[©\u00A9]\s*2026\s*New\s*Shop/gi, "")
     .replace(/<:[A-Za-z0-9_]+:\d+>\s*[©\u00A9]\s*2026\s*New\s*Shop/gi, "")
-    .replace(/[©\u00A9]\s*2026\s*New\s*Shop/gi, "")
-    .replace(/-#\s*/g, "")
+    .replace(/[-\s#]*[©\u00A9]\s*2026\s*New\s*Shop[-\s#]*/gi, "")
+    // Usuwamy też ewentualne kreski separatorów, które mogły zostać po starej stopce
+    .replace(/_{3,}|-{3,}/g, "")
     .replace(/\n\s*\n\s*$/g, "\n")
     .trim();
 }
@@ -8217,6 +8220,12 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
     description: "Wyświetla nagrania modów",
     emoji: "🎥",
   },
+  {
+    value: "link",
+    label: "Link zewnętrzny",
+    description: "Otwiera link w przeglądarce",
+    emoji: "🔗",
+  },
 ];
 
 const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
@@ -8252,8 +8261,16 @@ function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+  if (isHttpUrl(input)) {
+    return { value: "link", label: "Link", url: input };
+  }
+
   if (!normalized) {
     return getEmbedTestPrimaryButtonActionDef(fallback);
+  }
+
+  if (normalized === "link" || normalized === "url") {
+    return { value: "link", label: "Link" };
   }
 
   const directMatch = EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS.find(
@@ -9201,6 +9218,7 @@ function createDefaultEmbedTestState(
     buttonOneUrl: buyUrl,
     buttonTwoLabel: "Płatności",
     buttonTwoEmoji: "💳",
+    buttonTwoAction: "link",
     buttonTwoUrl: paymentsUrl,
     mediaUrls: mediaFile
       ? [`attachment://${mediaFile.name}`]
@@ -9265,31 +9283,29 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
     headerLines.push(replaceNamedGuildEmojis(state.headerNote, state.guildId));
   }
 
-  if (state.buttonOneLabel) {
-    const button = new ButtonBuilder()
-      .setLabel(state.buttonOneLabel)
+  const createBtn = (label, emoji, action, url) => {
+    if (!label) return null;
+    if (action === "link" && isHttpUrl(url)) {
+      const b = new ButtonBuilder()
+        .setLabel(label)
+        .setStyle(ButtonStyle.Link)
+        .setURL(url);
+      if (emoji) b.setEmoji(emoji);
+      return b;
+    }
+    const b = new ButtonBuilder()
+      .setLabel(label)
       .setStyle(ButtonStyle.Secondary)
-      .setCustomId(`embedtest_buy_open_${state.buttonOneAction || "zakup"}`);
+      .setCustomId(`embedtest_buy_open_${action || "zakup"}`);
+    if (emoji) b.setEmoji(emoji);
+    return b;
+  };
 
-    if (buttonOneEmoji) {
-      button.setEmoji(buttonOneEmoji);
-    }
+  const btn1 = createBtn(state.buttonOneLabel, buttonOneEmoji, state.buttonOneAction, state.buttonOneUrl);
+  if (btn1) buttons.push(btn1);
 
-    buttons.push(button);
-  }
-
-  if (state.buttonTwoLabel && isHttpUrl(state.buttonTwoUrl)) {
-    const button = new ButtonBuilder()
-      .setLabel(state.buttonTwoLabel)
-      .setStyle(ButtonStyle.Link)
-      .setURL(state.buttonTwoUrl);
-
-    if (buttonTwoEmoji) {
-      button.setEmoji(buttonTwoEmoji);
-    }
-
-    buttons.push(button);
-  }
+  const btn2 = createBtn(state.buttonTwoLabel, buttonTwoEmoji, state.buttonTwoAction, state.buttonTwoUrl);
+  if (btn2) buttons.push(btn2);
 
   const container = new ContainerBuilder().setAccentColor(
     state.accentColor || COLOR_BLUE,
@@ -9708,9 +9724,6 @@ function buildEmbedTestButtonsModal(state) {
   const modal = new ModalBuilder()
     .setCustomId(`embedtest_modal_buttons_${state.messageId}`)
     .setTitle("Edytuj przyciski");
-  const currentPrimaryButtonAction = getEmbedTestPrimaryButtonActionDef(
-    state.buttonOneAction,
-  );
 
   const buttonOneLabelInput = new TextInputBuilder()
     .setCustomId("button_one_label")
@@ -9720,6 +9733,14 @@ function buildEmbedTestButtonsModal(state) {
     .setMaxLength(80)
     .setPlaceholder("np. Kup teraz");
 
+  const buttonOneActionInput = new TextInputBuilder()
+    .setCustomId("button_one_action")
+    .setLabel("Akcja / Link 1")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(400)
+    .setPlaceholder("zakup / nagrania / https://...");
+
   const buttonTwoLabelInput = new TextInputBuilder()
     .setCustomId("button_two_label")
     .setLabel("Nazwa przycisku 2")
@@ -9728,45 +9749,28 @@ function buildEmbedTestButtonsModal(state) {
     .setMaxLength(80)
     .setPlaceholder("np. Płatności");
 
-  const buttonTwoUrlInput = new TextInputBuilder()
-    .setCustomId("button_two_url")
-    .setLabel("Link przycisku 2")
+  const buttonTwoActionInput = new TextInputBuilder()
+    .setCustomId("button_two_action")
+    .setLabel("Akcja / Link 2")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(400)
-    .setPlaceholder("https://...");
-
-  const buttonOneActionInput = new TextInputBuilder()
-    .setCustomId("button_one_action")
-    .setLabel("Co otwiera przycisk 1")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder(
-      "zakup / autorynek / mod / sprzedaz / odbior / pomoc / panel",
-    );
+    .setPlaceholder("zakup / nagrania / https://...");
 
   if (isRegulation) {
     modal.setTitle("Edytuj przyciski panelu");
-    buttonOneLabelInput.setLabel("Nazwa przycisku regulaminu");
-    buttonOneActionInput
-      .setLabel("Typ przycisku 1")
-      .setPlaceholder("regulamin");
   }
 
   setTextInputValueIfPresent(buttonOneLabelInput, state.buttonOneLabel);
+  setTextInputValueIfPresent(buttonOneActionInput, state.buttonOneUrl || state.buttonOneAction);
   setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
-  setTextInputValueIfPresent(buttonTwoUrlInput, state.buttonTwoUrl);
-  setTextInputValueIfPresent(
-    buttonOneActionInput,
-    currentPrimaryButtonAction.value,
-  );
+  setTextInputValueIfPresent(buttonTwoActionInput, state.buttonTwoUrl || state.buttonTwoAction);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(buttonOneLabelInput),
     new ActionRowBuilder().addComponents(buttonOneActionInput),
     new ActionRowBuilder().addComponents(buttonTwoLabelInput),
-    new ActionRowBuilder().addComponents(buttonTwoUrlInput),
+    new ActionRowBuilder().addComponents(buttonTwoActionInput),
   );
 
   return modal;
@@ -10144,10 +10148,10 @@ function collectEmbedTestMessageData(node, collector) {
   }
 
   if (typeof node.content === "string" && node.content.trim()) {
-    // Skip brand footer to avoid duplication during reconstruction/edit
-    if (!node.content.includes("© 2026 New Shop")) {
-      collector.texts.push(node.content);
-      collector.sequence.push({ type: "text", content: node.content });
+    const sanitized = sanitizeBranding(node.content);
+    if (sanitized) {
+      collector.texts.push(sanitized);
+      collector.sequence.push({ type: "text", content: sanitized });
     }
   }
 
@@ -10379,16 +10383,36 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     applyEmbedTestMediaFilesToState(state, messageMediaFiles);
   }
 
-  const primaryButton = collector.buttons.find((button) =>
-    String(button.customId || "").startsWith("embedtest_buy_open_"),
+  const embedTestButtons = collector.buttons.filter(b => 
+    String(b.customId || "").startsWith("embedtest_buy_open_") || b.url
   );
-  if (primaryButton) {
-    state.buttonOneLabel = primaryButton.label || state.buttonOneLabel;
-    state.buttonOneEmoji = formatEmbedTestButtonEmojiValue(primaryButton.emoji);
-    const actionMatch = String(primaryButton.customId).match(
-      /^embedtest_buy_open(?:_(.+))?$/,
-    );
-    state.buttonOneAction = actionMatch?.[1] || "zakup";
+
+  if (embedTestButtons[0]) {
+    const b = embedTestButtons[0];
+    state.buttonOneLabel = b.label || state.buttonOneLabel;
+    state.buttonOneEmoji = formatEmbedTestButtonEmojiValue(b.emoji);
+    if (b.url) {
+      state.buttonOneAction = "link";
+      state.buttonOneUrl = b.url;
+    } else {
+      const match = String(b.customId).match(/^embedtest_buy_open(?:_(.+))?$/);
+      state.buttonOneAction = match?.[1] || "zakup";
+      state.buttonOneUrl = null;
+    }
+  }
+
+  if (embedTestButtons[1]) {
+    const b = embedTestButtons[1];
+    state.buttonTwoLabel = b.label || state.buttonTwoLabel;
+    state.buttonTwoEmoji = formatEmbedTestButtonEmojiValue(b.emoji);
+    if (b.url) {
+      state.buttonTwoAction = "link";
+      state.buttonTwoUrl = b.url;
+    } else {
+      const match = String(b.customId).match(/^embedtest_buy_open(?:_(.+))?$/);
+      state.buttonTwoAction = match?.[1] || "zakup";
+      state.buttonTwoUrl = null;
+    }
   }
 
   const isRegulationPanel = state.buttonOneAction === "regulamin";
@@ -10557,15 +10581,8 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     state.extraSectionTwoBody = extraSectionTwo.body || "";
   }
 
-  const secondaryButton = collector.buttons.find(
-    (button) => button.url && button.label !== state.buttonOneLabel,
-  );
-  if (secondaryButton) {
-    state.buttonTwoLabel = secondaryButton.label || state.buttonTwoLabel;
-    state.buttonTwoEmoji = formatEmbedTestButtonEmojiValue(secondaryButton.emoji);
-    state.buttonTwoUrl = secondaryButton.url || state.buttonTwoUrl;
-  }
-
+  // Usunięto starą logikę secondaryButton na rzecz zunifikowanej powyżej
+  
   if (isRegulationPanel) {
     return cloneRegulationPanelState(state, {
       ownerId,
@@ -11659,7 +11676,7 @@ function buildTicketCloseConfirmEmbed(actionLabel) {
         "🎫 New Shop × ZAMYKANIE\n" +
         "```\n" +
         `> \`⚠️\` × ${actionLabel}\n` +
-        "> \`⏳\` × Potwierdź w `30s`",
+        "> `⏳\` × Potwierdź w `30s`",
     );
 }
 
@@ -13165,46 +13182,46 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     }
   } catch (err) {
     console.error("Błąd przy unclaim:", err);
-    await replyEphemeral("> \`❌\` Wystąpił błąd podczas odprzejmowania ticketu.");
+    await replyEphemeral("> \`❌` Wystąpił błąd podczas odprzejmowania ticketu.");
   }
 }
 
 async function showSprzedazModal(interaction) {
-  const itemInput = new TextInputBuilder()
-    .setCustomId("co_sprzedac")
-    .setPlaceholder("Przykład: 100k$")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
-
-  const serverSelect = new StringSelectMenuBuilder()
-    .setCustomId("sprzedaz_server")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(TEST_PANEL_SERVER_OPTIONS);
-
-  const payoutSelect = new StringSelectMenuBuilder()
-    .setCustomId("sprzedaz_payout")
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(PAYOUT_OPTIONS);
-
   const modal = new ModalBuilder()
     .setCustomId("modal_sprzedaz")
     .setTitle("Informacje dot. zgłoszenia.")
     .addLabelComponents(
       new LabelBuilder()
         .setLabel("Co chcesz sprzedać?")
-        .setTextInputComponent(itemInput),
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId("co_sprzedac")
+            .setPlaceholder("Przykład: 100k$")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+        ),
       new LabelBuilder()
         .setLabel("Na jakim serwerze?")
-        .setStringSelectMenuComponent(serverSelect),
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId("sprzedaz_server")
+            .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
+            .setRequired(true)
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(TEST_PANEL_SERVER_OPTIONS)
+        ),
       new LabelBuilder()
         .setLabel("Forma wypłaty")
-        .setStringSelectMenuComponent(payoutSelect),
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId("sprzedaz_payout")
+            .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
+            .setRequired(true)
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(PAYOUT_OPTIONS)
+        ),
     );
 
   await interaction.showModal(modal);
@@ -16903,10 +16920,8 @@ client.on(Events.GuildMemberAdd, async (member) => {
         )
       );
 
-      const avatarUrl = member.displayAvatarURL({ extension: 'png', forceStatic: false, size: 256 }) || member.user.displayAvatarURL({ extension: 'png', size: 256 });
-      if (avatarUrl) {
-        container.setThumbnail(avatarUrl);
-      }
+      // ContainerBuilder nie obsługuje setThumbnail, usuwamy to aby uniknąć błędu
+      // Można by użyć MediaGalleryBuilder jeśli miniatura byłaby wymagana
 
       // Przywrócono stopkę dla Lobby zgodnie z nową prośbą (bez roku)
       appendBrandFooterToContainer(container, member.guild.id);
