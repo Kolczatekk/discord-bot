@@ -3957,8 +3957,8 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
-const ANARCHIA_LIFESTEAL_RATE = 7000;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 7500;
+const ANARCHIA_LIFESTEAL_RATE = 6500;
+const ANARCHIA_LIFESTEAL_BULK_RATE = 7000;
 const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 100;
 const ANARCHIA_BOXPVP_RATE = 750000;
 const PYK_MC_RATE = 6000;
