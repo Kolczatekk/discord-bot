@@ -73,6 +73,7 @@ const NEWSHOP_EMOJI_MARKUP = `<:${NEWSHOP_EMOJI_NAME}:${NEWSHOP_EMOJI_ID}>`;
 const BRAND_FOOTER_COMPONENT_TEXT = `${NEWSHOP_EMOJI_MARKUP} \u00A9 2026 New Shop`;
 const BRAND_FOOTER_TEXT = "\u00A9 2026 New Shop";
 const BRAND_FOOTER_ICON_URL = `https://cdn.discordapp.com/emojis/${NEWSHOP_EMOJI_ID}.png?size=64&quality=lossless`;
+const BRAND_FOOTER_DIVIDER = "-# ━━━━━━━━━━━━━━━━━━━━━";
 
 function getBrandFooterIconUrl() {
   return BRAND_FOOTER_ICON_URL;
@@ -111,6 +112,17 @@ function appendBrandFooterToContainer(container, guildId) {
   );
 }
 
+function appendBrandFooterDividerToEmbedData(data) {
+  if (!data || typeof data !== "object") return;
+
+  const description = typeof data.description === "string" ? data.description : "";
+  if (description.includes(BRAND_FOOTER_DIVIDER)) return;
+
+  data.description = description
+    ? `${description}\n\n${BRAND_FOOTER_DIVIDER}`
+    : BRAND_FOOTER_DIVIDER;
+}
+
 if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
   const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
 
@@ -119,6 +131,7 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
 
     if (data && typeof data === "object") {
       delete data.timestamp;
+      appendBrandFooterDividerToEmbedData(data);
       data.footer = getBrandFooterObject();
     }
 
