@@ -16566,14 +16566,6 @@ async function handleZresetujCzasCommand(interaction) {
 // ----------------- Welcome message system + Invite tracking & protections -----------------
 client.on(Events.GuildMemberAdd, async (member) => {
   try {
-    // find channel by exact name or containing 'lobby'
-    const ch =
-      member.guild.channels.cache.find(
-        (c) =>
-          c.type === ChannelType.GuildText &&
-          (c.name === "👋-×┃lobby" || c.name.toLowerCase().includes("lobby")),
-      ) || null;
-
     // --- Robust invite detection ---
     let inviterId = null;
     let countThisInvite = false;
