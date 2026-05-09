@@ -67,19 +67,28 @@ const client = new Client({
   ]
 });
 
-const BRAND_FOOTER_COMPONENT_TEXT = ":NewShop: \u00A9 2026 New Shop";
+const NEWSHOP_EMOJI_ID = "1502672633026707667";
+const NEWSHOP_EMOJI_NAME = "NewShop";
+const NEWSHOP_EMOJI_MARKUP = `<:${NEWSHOP_EMOJI_NAME}:${NEWSHOP_EMOJI_ID}>`;
+const BRAND_FOOTER_COMPONENT_TEXT = `${NEWSHOP_EMOJI_MARKUP} \u00A9 2026 New Shop`;
 const BRAND_FOOTER_TEXT = "\u00A9 2026 New Shop";
+const BRAND_FOOTER_ICON_URL = `https://cdn.discordapp.com/emojis/${NEWSHOP_EMOJI_ID}.png?size=64&quality=lossless`;
 
 function getBrandFooterIconUrl() {
-  return typeof client.user?.displayAvatarURL === "function"
-    ? client.user.displayAvatarURL()
-    : undefined;
+  return BRAND_FOOTER_ICON_URL;
 }
 
 function getBrandFooterObject() {
   const iconUrl = getBrandFooterIconUrl();
   return iconUrl
     ? { text: BRAND_FOOTER_TEXT, icon_url: iconUrl }
+    : { text: BRAND_FOOTER_TEXT };
+}
+
+function getBrandFooterBuilderObject() {
+  const iconUrl = getBrandFooterIconUrl();
+  return iconUrl
+    ? { text: BRAND_FOOTER_TEXT, iconURL: iconUrl }
     : { text: BRAND_FOOTER_TEXT };
 }
 
@@ -100,6 +109,28 @@ function appendBrandFooterToContainer(container, guildId) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(getBrandFooterCaption(guildId)),
   );
+}
+
+if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
+  const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
+
+  EmbedBuilder.prototype.toJSON = function (...args) {
+    const data = originalEmbedBuilderToJSON.apply(this, args);
+
+    if (data && typeof data === "object") {
+      delete data.timestamp;
+      data.footer = getBrandFooterObject();
+    }
+
+    return data;
+  };
+
+  Object.defineProperty(EmbedBuilder.prototype, "__newShopFooterPatchApplied", {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
 }
 
 /*
@@ -433,6 +464,12 @@ const inviterRateLimit = new Map(); // guildId -> Map<inviterId, [timestamps]> t
 // track members who left so we can undo "leave" counters if they rejoin
 const leaveRecords = new Map(); // key = `${guildId}:${memberId}` -> inviterId
 const recentDeletedInvites = new Map(); // guildId -> [{ code, inviterId, deletedAt, uses }]
+
+function getStoredInviterId(record) {
+  if (!record) return null;
+  if (typeof record === "string") return record;
+  return typeof record.inviterId === "string" ? record.inviterId : null;
+}
 
 function rememberDeletedInvite(invite) {
   if (!invite?.guild?.id || !invite.code) return;
@@ -3278,6 +3315,30 @@ const commands = [
         .setDescription(
           "Kanał z istniejącym embedem testowym. Jeśli nie podasz, użyty zostanie aktualny kanał.",
         )
+        .setRequired(false)
+        .addChannelTypes(ChannelType.GuildText),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("zaaktualizuj-film")
+    .setDescription("Podmień film/obraz w najbliższym embedtest na nowy plik")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addChannelOption((o) =>
+      o
+        .setName("kanal")
+        .setDescription("Kanał z embedtestem. Jeśli nie podasz, użyty zostanie aktualny kanał.")
+        .setRequired(false)
+        .addChannelTypes(ChannelType.GuildText),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("aktualizacja-embed")
+    .setDescription("Usuń i wyślij ponownie najbliższy embedtest w aktualnym wydaniu")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addChannelOption((o) =>
+      o
+        .setName("kanal")
+        .setDescription("Kanał z embedtestem. Jeśli nie podasz, użyty zostanie aktualny kanał.")
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildText),
     )
@@ -6162,6 +6223,12 @@ async function handleSlashCommand(interaction) {
     case "sprawdzembedtest":
       await handleSprawdzEmbedTestCommand(interaction);
       break;
+    case "zaaktualizuj-film":
+      await handleZaaktualizujFilmCommand(interaction);
+      break;
+    case "aktualizacja-embed":
+      await handleAktualizacjaEmbedCommand(interaction);
+      break;
     case "mody":
       await handleModyCommand(interaction);
       break;
@@ -6393,7 +6460,7 @@ async function handleRozliczenieZakonczCommand(interaction) {
         `> \`🚫\` **Od teraz do czasu zapłaty nie macie dostępu do ticketów**`
       )
       .setTimestamp()
-      .setFooter(getBrandFooterObject());
+      .setFooter(getBrandFooterBuilderObject());
 
     const sentMessage = await logsChannel.send({ embeds: [reportEmbed] });
 
@@ -6489,7 +6556,7 @@ async function handleStatusBotaCommand(interaction) {
         { name: "💬 Kanały", value: status.channels.toString(), inline: true }
       )
       .setTimestamp()
-      .setFooter(getBrandFooterObject());
+      .setFooter(getBrandFooterBuilderObject());
 
     await interaction.reply({ embeds: [embed] });
   } catch (err) {
@@ -8052,6 +8119,7 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
 ];
 
 const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
+  newshop: NEWSHOP_EMOJI_MARKUP,
   gg: "<:anarchia_gg:1469444521308852324>",
   kasa: "<:kasa_2:1476700165082710178>",
   kasa_2: "<:kasa_2:1476700165082710178>",
@@ -8419,6 +8487,61 @@ function normalizeEmbedTestAttachment(attachment) {
   };
 }
 
+function sanitizeEmbedTestMediaFilename(name = "embedtest-media.mp4") {
+  const raw = String(name || "embedtest-media.mp4").trim();
+  const extMatch = raw.match(/\.([a-z0-9]{2,5})$/i);
+  const ext = extMatch ? extMatch[0].toLowerCase() : ".mp4";
+  const base = raw
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+
+  return `${base || "embedtest_media"}${ext}`;
+}
+
+function createEmbedTestMediaFileFromAttachment(attachment) {
+  const normalized = normalizeEmbedTestAttachment(attachment);
+  if (!normalized) return null;
+
+  const name = sanitizeEmbedTestMediaFilename(normalized.name || "embedtest-media.mp4");
+  return {
+    url: normalized.url,
+    name,
+    contentType: normalized.contentType || null,
+  };
+}
+
+function getEmbedTestMediaFilesFromMessage(message) {
+  if (!message?.attachments?.size) return [];
+
+  const files = [];
+  for (const attachment of message.attachments.values()) {
+    const mediaFile = createEmbedTestMediaFileFromAttachment(attachment);
+    if (mediaFile) files.push(mediaFile);
+  }
+  return files;
+}
+
+function applyEmbedTestMediaFilesToState(state, mediaFiles = []) {
+  const validFiles = Array.isArray(mediaFiles)
+    ? mediaFiles.filter((file) => file?.url && file?.name)
+    : [];
+
+  state.mediaFiles = validFiles;
+  state.mediaUrls = validFiles.map((file) => `attachment://${file.name}`);
+}
+
+function getEmbedTestPayloadFiles(state) {
+  return Array.isArray(state?.mediaFiles)
+    ? state.mediaFiles
+        .filter((file) => file?.url && file?.name)
+        .map((file) => ({ attachment: file.url, name: file.name }))
+    : [];
+}
+
 function isRegulationEmbedState(state) {
   return state?.variant === "regulamin";
 }
@@ -8738,6 +8861,7 @@ function buildRegulationPanelMessagePayload(state) {
 
   return {
     components: [container],
+    files: getEmbedTestPayloadFiles(state),
     flags: MessageFlags.IsComponentsV2,
   };
 }
@@ -8772,7 +8896,7 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
   const embed = new EmbedBuilder()
     .setColor(state.accentColor || COLOR_BLUE)
     .setDescription(descriptionParts.join("\n"))
-    .setFooter(getBrandFooterObject());
+    .setFooter(getBrandFooterBuilderObject());
 
   const components = [];
   if (pages.length > 1) {
@@ -8936,6 +9060,9 @@ function createDefaultEmbedTestState(
     paymentsChannel?.id || targetChannel.id,
   );
   const normalizedMediaAttachment = normalizeEmbedTestAttachment(mediaAttachment);
+  const mediaFile = mediaAttachment
+    ? createEmbedTestMediaFileFromAttachment(mediaAttachment)
+    : null;
 
   return {
     ownerId,
@@ -8966,7 +9093,12 @@ function createDefaultEmbedTestState(
     buttonTwoLabel: "Płatności",
     buttonTwoEmoji: "💳",
     buttonTwoUrl: paymentsUrl,
-    mediaUrls: normalizedMediaAttachment ? [normalizedMediaAttachment.url] : [],
+    mediaUrls: mediaFile
+      ? [`attachment://${mediaFile.name}`]
+      : normalizedMediaAttachment
+        ? [normalizedMediaAttachment.url]
+        : [],
+    mediaFiles: mediaFile ? [mediaFile] : [],
   };
 }
 
@@ -9121,6 +9253,7 @@ function buildEmbedTestMessagePayload(state) {
 
   return {
     components: [container],
+    files: getEmbedTestPayloadFiles(state),
     flags: MessageFlags.IsComponentsV2,
   };
 }
@@ -9556,6 +9689,7 @@ async function updateEmbedTestMessage(state) {
   if (!message) return false;
 
   await message.edit(buildEmbedTestMessagePayload(state));
+  delete state.mediaFiles;
 
   if (isRegulationEmbedState(state) && state.persistPanel) {
     regulationPanels.set(
@@ -9576,6 +9710,7 @@ async function sendEmbedTestToTargetChannel(state, targetChannel) {
   }
 
   const sentMessage = await targetChannel.send(buildEmbedTestMessagePayload(state));
+  delete state.mediaFiles;
 
   if (isRegulationEmbedState(state)) {
     regulationPanels.set(
@@ -9704,6 +9839,7 @@ async function handleEmbedTestCommand(interaction) {
   try {
     await ensureEmbedTestEmojiCache(interaction.guild.id);
     const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
+    delete state.mediaFiles;
     state.messageId = sent.id;
     embedTestStates.set(sent.id, state);
 
@@ -9772,6 +9908,7 @@ async function handleRegulaminWyslijCommand(interaction) {
   try {
     await ensureEmbedTestEmojiCache(interaction.guild.id);
     const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
+    delete state.mediaFiles;
     state.messageId = sent.id;
     state.persistPanel = true;
     embedTestStates.set(sent.id, state);
@@ -10097,6 +10234,11 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     state.mediaUrls = [...new Set(collector.mediaUrls)];
   }
 
+  const messageMediaFiles = getEmbedTestMediaFilesFromMessage(message);
+  if (messageMediaFiles.length) {
+    applyEmbedTestMediaFilesToState(state, messageMediaFiles);
+  }
+
   const primaryButton = collector.buttons.find((button) =>
     String(button.customId || "").startsWith("embedtest_buy_open_"),
   );
@@ -10418,6 +10560,224 @@ async function handleSprawdzEmbedTestCommand(interaction) {
       ),
       flags: [MessageFlags.Ephemeral],
     });
+}
+
+function getEditableEmbedTestStateFromMessage(message, ownerId, targetChannel) {
+  const liveState = embedTestStates.get(message.id) || null;
+  const storedRegulationState = regulationPanels.has(message.id)
+    ? cloneRegulationPanelState(regulationPanels.get(message.id), {
+        ownerId,
+        guildId: message.guild.id,
+        channelId: targetChannel.id,
+        messageId: message.id,
+        persistPanel: true,
+      })
+    : null;
+
+  if (!liveState && !storedRegulationState && isRegulationPanelMessage(message)) {
+    return null;
+  }
+
+  const reconstructedState =
+    liveState || storedRegulationState
+      ? null
+      : reconstructEmbedTestStateFromMessage(message, ownerId);
+
+  const state = liveState || storedRegulationState || reconstructedState || null;
+  if (!state) return null;
+
+  state.messageId = message.id;
+  state.ownerId = ownerId;
+  state.guildId = message.guild.id;
+  state.channelId = targetChannel.id;
+  return state;
+}
+
+async function findEmbedTestStateForOwnerCommand(interaction, targetChannel) {
+  const foundMessage = await findLatestEmbedTestMessage(targetChannel);
+  if (!foundMessage) {
+    return { message: null, state: null };
+  }
+
+  const state = getEditableEmbedTestStateFromMessage(
+    foundMessage,
+    interaction.user.id,
+    targetChannel,
+  );
+
+  return { message: foundMessage, state };
+}
+
+async function handleZaaktualizujFilmCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetChannel =
+    interaction.options.getChannel("kanal") || interaction.channel;
+
+  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+    await interaction.reply({
+      content: "> `❌` × **Wybierz** poprawny kanał tekstowy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const { message, state } = await findEmbedTestStateForOwnerCommand(
+    interaction,
+    targetChannel,
+  );
+
+  if (!message || !state) {
+    await interaction.reply({
+      content:
+        "> `❌` × Nie znalazłem aktywnego embedtestu na tym kanale albo nie da się go odtworzyć.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.reply({
+    content:
+      `> \`🎬\` × Znalazłem embedtest: ${getDiscordMessageUrl(
+        interaction.guildId,
+        targetChannel.id,
+        message.id,
+      )}\n` +
+      "> `📎` × Wyślij teraz **jeden filmik / gif / obraz** na tym kanale. Podmienię nim stary plik w embedzie.",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  const filter = (msg) =>
+    msg.author?.id === interaction.user.id &&
+    msg.channelId === interaction.channelId &&
+    msg.attachments?.size > 0;
+
+  const collected = await interaction.channel
+    .awaitMessages({ filter, max: 1, time: 120_000, errors: ["time"] })
+    .catch(() => null);
+
+  const uploadMessage = collected?.first?.() || null;
+  const attachment = uploadMessage?.attachments?.find((att) =>
+    !!normalizeEmbedTestAttachment(att),
+  );
+
+  if (!attachment) {
+    await interaction.followUp({
+      content: "> `❌` × Nie dostałem poprawnego filmu, gifa ani obrazu w ciągu 2 minut.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const mediaFile = createEmbedTestMediaFileFromAttachment(attachment);
+  applyEmbedTestMediaFilesToState(state, [mediaFile]);
+  embedTestStates.set(message.id, state);
+
+  const payload = buildEmbedTestMessagePayload(state);
+  await message.edit({ ...payload, attachments: [] });
+  delete state.mediaFiles;
+
+  await interaction.followUp({
+    content:
+      "> `✅` × Podmieniłem film/obraz w embedteście. Nie usuwaj wiadomości z wysłanym plikiem, dopóki Discord nie przetworzy załącznika.",
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
+async function handleAktualizacjaEmbedCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetChannel =
+    interaction.options.getChannel("kanal") || interaction.channel;
+
+  if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+    await interaction.reply({
+      content: "> `❌` × **Wybierz** poprawny kanał tekstowy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const { message, state } = await findEmbedTestStateForOwnerCommand(
+    interaction,
+    targetChannel,
+  );
+
+  if (!message || !state) {
+    await interaction.reply({
+      content:
+        "> `❌` × Nie znalazłem aktywnego embedtestu na tym kanale albo nie da się go odtworzyć.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const mediaFiles = getEmbedTestMediaFilesFromMessage(message);
+  if (mediaFiles.length) {
+    applyEmbedTestMediaFilesToState(state, mediaFiles);
+  }
+
+  const sent = await targetChannel.send(buildEmbedTestMessagePayload(state));
+  delete state.mediaFiles;
+
+  state.messageId = sent.id;
+  state.channelId = targetChannel.id;
+  embedTestStates.delete(message.id);
+  embedTestStates.set(sent.id, state);
+
+  if (isRegulationEmbedState(state) || regulationPanels.has(message.id)) {
+    regulationPanels.delete(message.id);
+    regulationPanels.set(
+      sent.id,
+      cloneRegulationPanelState(state, {
+        messageId: sent.id,
+        channelId: targetChannel.id,
+        guildId: interaction.guild.id,
+        persistPanel: true,
+      }),
+    );
+    scheduleSavePersistentState(true);
+  }
+
+  await message.delete().catch(() => null);
+
+  await interaction.reply({
+    content:
+      `> \`✅\` × Wysłałem embedtest ponownie w nowym wydaniu: ${getDiscordMessageUrl(
+        interaction.guildId,
+        targetChannel.id,
+        sent.id,
+      )}`,
+    flags: [MessageFlags.Ephemeral],
+  });
 }
 
 const TEST_PANEL_CATEGORY_OPTIONS = [
@@ -11569,12 +11929,14 @@ async function handleAdminZaproszeniaCommand(interaction) {
     }
     
     const inMemoryInvited = new Set();
-    for (const [key, inviterId] of inviterOfMember.entries()) {
+    for (const [key, storedInvite] of inviterOfMember.entries()) {
+      const inviterId = getStoredInviterId(storedInvite);
       if (inviterId === targetId && key.startsWith(`${guild.id}:`)) {
         inMemoryInvited.add(key.split(":")[1]);
       }
     }
-    for (const [key, inviterId] of leaveRecords.entries()) {
+    for (const [key, storedInvite] of leaveRecords.entries()) {
+      const inviterId = getStoredInviterId(storedInvite);
       if (inviterId === targetId && key.startsWith(`${guild.id}:`)) {
         inMemoryInvited.add(key.split(":")[1]);
       }
@@ -11601,7 +11963,9 @@ async function handleAdminZaproszeniaCommand(interaction) {
 
     const members = await guild.members.fetch();
     const normFn = (s = "") => (s).toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const CLIENT_ROLE_ID = guild.roles.cache.find((r) => normFn(r.name).includes(normFn("klient")))?.id;
+    const CLIENT_ROLE_ID =
+      verificationRoles.get(guild.id) ||
+      guild.roles.cache.find((r) => normFn(r.name).includes(normFn("klient")))?.id;
     
     const verified = [];
     const unverified = [];
@@ -16156,6 +16520,34 @@ client.on(Events.GuildMemberAdd, async (member) => {
         vanityCode: usedVanityCode || null,
     });
 
+    if (inviterId) {
+      db.supabase
+        .from("invites")
+        .upsert(
+          {
+            guild_id: member.guild.id,
+            inviter_id: inviterId,
+            invited_user_id: member.id,
+            status: "joined",
+            counted: !!(
+              inviterId &&
+              countThisInvite &&
+              !isFakeAccount &&
+              (inviterId !== ownerId || countOwnerInvites)
+            ),
+            is_fake: !!isFakeAccount,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "guild_id,invited_user_id" },
+        )
+        .then(({ error }) => {
+          if (error) console.warn("[invites] Nie udało się zapisać szczegółu invite:", error.message || error);
+        })
+        .catch((error) =>
+          console.warn("[invites] Błąd zapisu szczegółu invite:", error?.message || error),
+        );
+    }
+
     // persist join/invite state
     scheduleSavePersistentState(true); // Natychmiastowy zapis
 
@@ -16312,6 +16704,21 @@ client.on(Events.GuildMemberRemove, async (member) => {
 
       // Zapisz do leaveRecords na wypadek powrotu
       leaveRecords.set(key, inviterId);
+
+      db.supabase
+        .from("invites")
+        .update({
+          status: "left",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("guild_id", member.guild.id)
+        .eq("invited_user_id", member.id)
+        .then(({ error }) => {
+          if (error) console.warn("[invites] Nie udało się oznaczyć wyjścia:", error.message || error);
+        })
+        .catch((error) =>
+          console.warn("[invites] Błąd oznaczania wyjścia:", error?.message || error),
+        );
     }
 
     // remove mapping
@@ -17641,7 +18048,7 @@ async function handleEndGiveawaysCommand(interaction) {
     .setColor(endedContests.length > 0 ? COLOR_BLUE : COLOR_RED)
     .setTitle("🏁 Zakończono wszystkie konkursy")
     .setTimestamp()
-    .setFooter(getBrandFooterObject());
+    .setFooter(getBrandFooterBuilderObject());
 
   let description = "";
   
@@ -18251,7 +18658,7 @@ async function sendRozliczeniaMessage() {
       .setDescription(
         "> \`ℹ️\` **Jeżeli sprzedajecie coś na shopie, wysyłacie tutaj kwotę, za którą dokonaliście sprzedaży. Na koniec każdego tygodnia w niedzielę rano macie czas do godziny 20:00, aby rozliczyć się i zapłacić 10% od łącznej sumy sprzedaży z __całego tygodnia.__**"
       )
-      .setFooter(getBrandFooterObject())
+      .setFooter(getBrandFooterBuilderObject())
       .setTimestamp();
 
     await channel.send({ embeds: [embed] });
@@ -18630,7 +19037,7 @@ async function sendStatusReport(channel) {
       { name: "💬 Kanały", value: status.channels.toString(), inline: true }
     )
     .setTimestamp()
-    .setFooter(getBrandFooterObject());
+    .setFooter(getBrandFooterBuilderObject());
 
   await channel.send({ embeds: [embed] });
 }
