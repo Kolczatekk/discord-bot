@@ -9315,6 +9315,23 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
     );
   }
 
+  if (state.isModyPanel) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`mody_videos_${Date.now()}`)
+          .setLabel("Nagrania modów")
+          .setEmoji("📸")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`mody_buy_${Date.now()}`)
+          .setLabel("Zakup moda")
+          .setEmoji({ id: "1477662159029796865", name: "java" })
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+  }
+
   if (!container.components.length) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent("-# Pusty embed testowy"),
@@ -10911,23 +10928,12 @@ async function handleAktualizacjaEmbedCommand(interaction) {
         messageId: targetMessage.id,
         channelId: targetChannel.id
       };
-    } else {
-      // Jeśli brak embeda (czysty kontener), szukamy najnowszego aktywnego draftu właściciela globalnie
-      let latestDraft = null;
-      for (const s of embedTestStates.values()) {
-        if (s.ownerId === interaction.user.id) {
-          latestDraft = s;
-        }
-      }
-      if (latestDraft) {
-        state = { ...latestDraft };
-      }
     }
   }
 
   if (!state) {
     await interaction.reply({
-      content: "> `❌` × Nie znalazłem aktywnego draftu ani treści do zaimportowania. Użyj najpierw `/embedtest`.",
+      content: "> `❌` × Nie znalazłem zapisanego stanu dla tej wiadomości ani treści do zaimportowania. \n> `💡` × Jeśli chcesz nadpisać ten panel nową treścią, użyj najpierw `/embedtest`, stwórz podgląd, a potem tutaj `/aktualizacja-embed` (ale upewnij się, że masz tylko jeden aktywny podgląd).",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -10940,6 +10946,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   }
 
   // 3. Budujemy payload z wybranego stanu (bez stopki na razie, dodamy ją na końcu)
+  state.isModyPanel = targetChannel.name.toLowerCase().includes("mody");
   const payload = buildEmbedTestMessagePayload(state, true);
 
   // 4. Przenosimy funkcjonalne przyciski ze starej wiadomości DO ŚRODKA embeda
