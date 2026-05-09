@@ -115,10 +115,10 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
   const originalEmbedBuilderToJSON = EmbedBuilder.prototype.toJSON;
 
   /**
-   * Pozwala wyłączyć automatyczną stopkę brandową dla konkretnego embeda.
+   * Pozwala włączyć automatyczną stopkę brandową dla konkretnego embeda.
    */
-  EmbedBuilder.prototype.setNoBrandFooter = function() {
-    this._noBrandFooter = true;
+  EmbedBuilder.prototype.setBrandFooter = function() {
+    this._useBrandFooter = true;
     return this;
   };
 
@@ -129,8 +129,8 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
       // Automatycznie usuwamy timestamp z każdego embeda (według starej logiki)
       delete data.timestamp;
       
-      // Ustawiamy stopkę NEW SHOP jeśli nie została ustawiona I nie została jawnie wyłączona
-      if (!data.footer && !this._noBrandFooter) {
+      // Ustawiamy stopkę NEW SHOP TYLKO jeśli została jawnie włączona
+      if (!data.footer && this._useBrandFooter) {
         data.footer = getBrandFooterObject();
       }
     }
@@ -1098,6 +1098,7 @@ function buildFreeKasaResultEmbed({
 
   return new EmbedBuilder()
     .setColor(loss ? COLOR_GRAY : COLOR_YELLOW)
+    .setBrandFooter()
     .setDescription(description.join("\n"))
     .setTimestamp();
 }
@@ -1480,6 +1481,7 @@ function buildFreeKasaInstructionPayload(guildId = null) {
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_YELLOW)
+    .setBrandFooter()
     .setDescription(description);
 
   const row = new ActionRowBuilder().addComponents(
@@ -1803,6 +1805,7 @@ function buildFreeKasaInstructionPayload(guildId = null) {
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_YELLOW)
+    .setBrandFooter()
     .setDescription(description);
 
   const row = new ActionRowBuilder().addComponents(
@@ -1891,6 +1894,7 @@ function buildFreeKasaResultEmbed({
 
   return new EmbedBuilder()
     .setColor(loss ? COLOR_GRAY : COLOR_YELLOW)
+    .setBrandFooter()
     .setDescription(description.join("\n"))
     .setTimestamp();
 }
@@ -9145,7 +9149,7 @@ function createDefaultEmbedTestState(
   };
 }
 
-function buildEmbedTestMessagePayload(state) {
+function buildEmbedTestMessagePayload(state, skipFooter = false) {
   if (isRegulationEmbedState(state)) {
     return buildRegulationPanelMessagePayload(state);
   }
@@ -9292,7 +9296,9 @@ function buildEmbedTestMessagePayload(state) {
     );
   }
 
-  appendBrandFooterToContainer(container, state.guildId);
+  if (!skipFooter) {
+    appendBrandFooterToContainer(container, state.guildId);
+  }
 
   return {
     components: [container],
@@ -10899,8 +10905,8 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     applyEmbedTestMediaFilesToState(state, mediaFiles);
   }
 
-  // 3. Budujemy payload z wybranego stanu
-  const payload = buildEmbedTestMessagePayload(state);
+  // 3. Budujemy payload z wybranego stanu (bez stopki na razie, dodamy ją na końcu)
+  const payload = buildEmbedTestMessagePayload(state, true);
 
   // 4. Przenosimy funkcjonalne przyciski ze starej wiadomości DO ŚRODKA embeda
   const originalButtons = [];
@@ -10926,6 +10932,12 @@ async function handleAktualizacjaEmbedCommand(interaction) {
         container.addActionRowComponents(new ActionRowBuilder().addComponents(...chunk));
       }
     }
+  }
+
+  // DODAJ STOPKĘ NA SAMYM KOŃCU (Zawsze pod wszystkimi przyciskami)
+  const container = payload.components[0];
+  if (container) {
+    appendBrandFooterToContainer(container, state.guildId);
   }
 
   // 5. Wyślij nowe, usuń stare, zaktualizuj stan
@@ -11416,7 +11428,8 @@ function buildTicketPanelPayload() {
     .addOptions(PANEL_CATEGORY_OPTIONS);
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(selectMenu));
-  appendBrandFooterToContainer(container, null); // Guild ID null here, it will use global markup
+  // Przywrócono stopkę dla panelu ticketów zgodnie z prośbą
+  appendBrandFooterToContainer(container, null); 
 
   return {
     components: [container],
@@ -16795,6 +16808,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
         container.setThumbnail(avatarUrl);
       }
 
+      // Przywrócono stopkę dla Lobby zgodnie z nową prośbą (bez roku)
       appendBrandFooterToContainer(container, member.guild.id);
 
       await targetCh.send({ 
@@ -17067,7 +17081,6 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
 
         const instructionInviteEmbed = new EmbedBuilder()
           .setColor(0xffffff)
-          .setNoBrandFooter()
           .setDescription(
             "`📩` × Użyj **komendy** </sprawdz-zaproszenia:1464015495932940398>, aby sprawdzić swoje **zaproszenia**"
           );
@@ -17323,7 +17336,6 @@ async function handleHelpCommand(interaction) {
   try {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setNoBrandFooter()
       .setTitle("`📋` × Spis komend")
       .setDescription(
         [
