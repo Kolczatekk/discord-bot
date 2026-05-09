@@ -10476,6 +10476,16 @@ function isRegulationPanelMessage(message) {
   return getPanelComponentDump(message).includes("embedtest_buy_open_regulamin");
 }
 
+function isLegacyModyPanelMessage(message) {
+  const componentDump = getPanelComponentDump(message);
+  return (
+    message?.author?.id === client.user?.id &&
+    message.embeds?.length > 0 &&
+    componentDump.includes("mody_videos_") &&
+    componentDump.includes("mody_buy_")
+  );
+}
+
 async function findLatestEmbedTestMessage(channel) {
   if (!channel?.isTextBased?.()) return null;
 
@@ -10496,6 +10506,23 @@ async function findLatestEmbedTestMessage(channel) {
         componentDump.includes("\"Płatności\"") ||
         componentDump.includes("\"Zobacz regulamin\"")
       ) {
+        return message;
+      }
+    }
+  } catch (_error) {
+    return null;
+  }
+
+  return null;
+}
+
+async function findLatestLegacyModyPanelMessage(channel) {
+  if (!channel?.isTextBased?.()) return null;
+
+  try {
+    const fetched = await channel.messages.fetch({ limit: 100 });
+    for (const message of fetched.values()) {
+      if (isLegacyModyPanelMessage(message)) {
         return message;
       }
     }
@@ -10643,6 +10670,34 @@ async function findEmbedTestStateForOwnerCommand(interaction, targetChannel) {
   return { message: foundMessage, state };
 }
 
+async function resendLegacyModyPanelMessage(message, targetChannel) {
+  const embeds = message.embeds.map((embed) => EmbedBuilder.from(embed));
+  const components = message.components
+    .map((component) =>
+      typeof component.toJSON === "function"
+        ? component.toJSON()
+        : getSerializableMessageComponent(component),
+    )
+    .filter(Boolean);
+  const files = message.attachments?.size
+    ? message.attachments.map((attachment) => ({
+        attachment: attachment.url,
+        name: attachment.name || "zalacznik",
+      }))
+    : [];
+
+  const sent = await targetChannel.send({
+    content: message.content || undefined,
+    embeds,
+    components,
+    files: files.length ? files : undefined,
+    allowedMentions: { parse: [] },
+  });
+
+  await message.delete().catch(() => null);
+  return sent;
+}
+
 async function handleZaaktualizujFilmCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
@@ -10767,9 +10822,28 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   );
 
   if (!message || !state) {
+    const legacyModyMessage = await findLatestLegacyModyPanelMessage(targetChannel);
+    if (legacyModyMessage) {
+      const sent = await resendLegacyModyPanelMessage(
+        legacyModyMessage,
+        targetChannel,
+      );
+
+      await interaction.reply({
+        content:
+          `> \`✅\` × Odświeżyłem panel modów w nowym wydaniu: ${getDiscordMessageUrl(
+            interaction.guildId,
+            targetChannel.id,
+            sent.id,
+          )}`,
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
     await interaction.reply({
       content:
-        "> `❌` × Nie znalazłem aktywnego embedtestu na tym kanale albo nie da się go odtworzyć.",
+        "> `❌` × Nie znalazłem aktywnego embedtestu ani panelu modów na tym kanale.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
