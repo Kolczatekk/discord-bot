@@ -10931,6 +10931,19 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     }
   }
 
+  // Jeśli nadal brak stanu, szukamy najnowszego aktywnego draftu użytkownika (fallback)
+  if (!state) {
+    let latestDraft = null;
+    for (const s of embedTestStates.values()) {
+      if (s.ownerId === interaction.user.id) {
+        latestDraft = s;
+      }
+    }
+    if (latestDraft) {
+      state = { ...latestDraft };
+    }
+  }
+
   if (!state) {
     await interaction.reply({
       content: "> `❌` × Nie znalazłem zapisanego stanu dla tej wiadomości ani treści do zaimportowania. \n> `💡` × Jeśli chcesz nadpisać ten panel nową treścią, użyj najpierw `/embedtest`, stwórz podgląd, a potem tutaj `/aktualizacja-embed` (ale upewnij się, że masz tylko jeden aktywny podgląd).",
