@@ -5493,7 +5493,7 @@ async function handleButtonInteraction(interaction) {
     sellerPaymentProfiles.delete(
       getSellerPaymentProfileKey(interaction.guildId, interaction.user.id),
     );
-    scheduleSavePersistentState(true);
+    await persistSellerPaymentProfilesNow();
 
     await interaction.reply({
       content: "> `🗑️` × Wyczyściłem Twoje dane płatności.",
@@ -7974,6 +7974,33 @@ function formatSellerPaymentValue(value) {
   return text ? `\`${text.replace(/`/g, "'")}\`` : "`Brak`";
 }
 
+async function persistSellerPaymentProfilesNow() {
+  scheduleSavePersistentState(true);
+  await saveStateToSupabase(buildPersistentStateData()).catch((error) =>
+    console.error("[seller-data] Nie udało się zapisać danych sprzedawcy:", error),
+  );
+}
+
+function normalizeTicketPaymentText(text = "") {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[`*_~>|:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getTicketPaymentKind(ticketData = {}) {
+  const text = normalizeTicketPaymentText(ticketData?.formInfo || "");
+  if (!text.includes("forma platnosci")) return null;
+  if (text.includes("psc bez paragonu")) return "psc_no_receipt";
+  if (/\bpsc\b/.test(text) || text.includes("paysafecard")) return "psc_receipt";
+  if (text.includes("kod blik")) return "blik_code";
+  if (/\bblik\b/.test(text)) return "blik";
+  return null;
+}
+
 function buildSellerPaymentPanelPayload(guildId) {
   const container = new ContainerBuilder()
     .setAccentColor(COLOR_BLUE)
@@ -7987,12 +8014,9 @@ function buildSellerPaymentPanelPayload(guildId) {
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "> `🧾` × Ustaw swoje dane do płatności raz, a bot pokaże je po przejęciu ticketa.\n" +
-          "> `🔒` × Dane widzi tylko osoba w tickecie, bo wiadomość trafia na prywatny kanał.",
+        "> `🧾` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa.",
       ),
     );
-
-  appendBrandFooterToContainer(container, guildId);
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -8007,8 +8031,11 @@ function buildSellerPaymentPanelPayload(guildId) {
       .setStyle(ButtonStyle.Secondary),
   );
 
+  container.addActionRowComponents(row);
+  appendBrandFooterToContainer(container, guildId);
+
   return {
-    components: [container, row],
+    components: [container],
     flags: MessageFlags.IsComponentsV2,
   };
 }
@@ -8080,23 +8107,47 @@ async function handlePanelDaneCommand(interaction) {
   });
 }
 
-async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId) {
+async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, ticketData = {}) {
+  const paymentKind = getTicketPaymentKind(ticketData);
+
+  if (paymentKind === "psc_receipt") {
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_YELLOW)
+      .setDescription(
+        "> `🎟️` × **Paysafecard**\n" +
+          "> `📸` × Wyślij **zdjęcie paragonu** oraz **kod PSC**.",
+      );
+
+    await channel.send({ embeds: [embed] }).catch(() => null);
+    return;
+  }
+
+  if (paymentKind === "psc_no_receipt") {
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_YELLOW)
+      .setDescription(
+        "> `🎟️` × **Paysafecard bez paragonu**\n" +
+          "> `🔑` × Wyślij swój **kod PSC**.",
+      );
+
+    await channel.send({ embeds: [embed] }).catch(() => null);
+    return;
+  }
+
+  if (paymentKind !== "blik") return;
+
   const profile = getSellerPaymentProfile(guildId, sellerId);
-  const hasData = sellerPaymentProfileHasData(profile);
-  const description = hasData
-    ? [
-        "> `💳` × **Dane do płatności**",
-        `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
-        `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
-        `> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.receiverName)}`,
-      ].join("\n")
-    : [
-        "> `💳` × **Dane do płatności**",
-        "> `⚠️` × **Brak danych.** Sprzedawca nie uzupełnił jeszcze panelu płatności.",
-      ].join("\n");
+  if (!sellerPaymentProfileHasData(profile)) return;
+
+  const description = [
+    "> `💳` × **Dane do płatności**",
+    `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
+    `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
+    `> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.receiverName)}`,
+  ].join("\n");
 
   const embed = new EmbedBuilder()
-    .setColor(hasData ? COLOR_BLUE : COLOR_YELLOW)
+    .setColor(COLOR_BLUE)
     .setDescription(description);
 
   await channel.send({ embeds: [embed] }).catch(() => null);
@@ -13175,7 +13226,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       // ignore
     }
 
-    await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId);
+    await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId, ticketData);
 
     await sendTicketLogEntry(interaction.guild, {
       title: "Ticket przejęty",
@@ -13795,7 +13846,7 @@ async function handleModalSubmit(interaction) {
     const key = getSellerPaymentProfileKey(guildId, interaction.user.id);
     if (sellerPaymentProfileHasData(profile)) {
       sellerPaymentProfiles.set(key, profile);
-      scheduleSavePersistentState(true);
+      await persistSellerPaymentProfilesNow();
       await interaction.reply({
         content:
           "> `✅` × Zapisałem Twoje dane. Od teraz bot pokaże je po przejęciu ticketa.",
@@ -13803,7 +13854,7 @@ async function handleModalSubmit(interaction) {
       });
     } else {
       sellerPaymentProfiles.delete(key);
-      scheduleSavePersistentState(true);
+      await persistSellerPaymentProfilesNow();
       await interaction.reply({
         content:
           "> `🗑️` × Formularz był pusty, więc wyczyściłem Twoje dane płatności.",
