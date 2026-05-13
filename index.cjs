@@ -5512,7 +5512,7 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
 
-  if (customId === "seller_data_edit") {
+  if (["seller_data_edit", "seller_data_main_edit", "seller_data_extra_edit"].includes(customId)) {
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
         content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
@@ -5521,7 +5521,33 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
-    await interaction.showModal(buildSellerPaymentDataModal(interaction));
+    if (customId === "seller_data_edit") {
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("seller_data_main_edit")
+          .setLabel("BLIK / PayPal")
+          .setEmoji("💳")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("seller_data_extra_edit")
+          .setLabel("LTC / MyPSC")
+          .setEmoji("🪙")
+          .setStyle(ButtonStyle.Secondary),
+      );
+
+      await interaction.reply({
+        content: "> `💳` × Wybierz, które dane chcesz dodać lub edytować.",
+        components: [row],
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.showModal(
+      customId === "seller_data_extra_edit"
+        ? buildSellerPaymentExtraDataModal(interaction)
+        : buildSellerPaymentDataModal(interaction),
+    );
     return;
   }
 
@@ -8083,9 +8109,16 @@ function normalizeTicketPaymentText(text = "") {
     .trim();
 }
 
-function getTicketPaymentKind(ticketData = {}) {
-  const text = normalizeTicketPaymentText(ticketData?.formInfo || "");
-  if (!text.includes("forma platnosci")) return null;
+function getTicketPaymentKind(ticketData = {}, channel = null) {
+  const text = normalizeTicketPaymentText(
+    [
+      ticketData?.formInfo || "",
+      ticketData?.paymentMethod || "",
+      ticketData?.ticketTypeLabel || "",
+      channel?.name || "",
+      channel?.topic || "",
+    ].join(" "),
+  );
   if (text.includes("mypsc")) return "mypsc";
   if (text.includes("paypal")) return "paypal";
   if (text.includes("ltc") || text.includes("litecoin")) return "ltc";
@@ -8187,19 +8220,11 @@ function buildSellerPaymentExtraDataModal(interaction) {
   const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
   const modal = new ModalBuilder()
     .setCustomId("seller_data_extra_modal")
-    .setTitle("Dane dodatkowe");
-
-  const paypalInput = new TextInputBuilder()
-    .setCustomId("paypal_email")
-    .setLabel("Mail PayPal")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(120)
-    .setPlaceholder("np. kontakt@newshop.pl");
+    .setTitle("LTC i MyPSC");
 
   const ltcInput = new TextInputBuilder()
     .setCustomId("ltc_wallet")
-    .setLabel("Portfel LTC")
+    .setLabel("Twój portfel LTC")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(180)
@@ -8207,18 +8232,16 @@ function buildSellerPaymentExtraDataModal(interaction) {
 
   const mypscInput = new TextInputBuilder()
     .setCustomId("mypsc_email")
-    .setLabel("Mail do MyPSC")
+    .setLabel("Twój mail do MyPSC")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
     .setPlaceholder("np. mypsc@newshop.pl");
 
-  setTextInputValueIfPresent(paypalInput, current.paypalEmail || "");
   setTextInputValueIfPresent(ltcInput, current.ltcWallet || "");
   setTextInputValueIfPresent(mypscInput, current.mypscEmail || "");
 
   modal.addComponents(
-    new ActionRowBuilder().addComponents(paypalInput),
     new ActionRowBuilder().addComponents(ltcInput),
     new ActionRowBuilder().addComponents(mypscInput),
   );
@@ -8296,31 +8319,16 @@ function buildSellerPaymentDataModal(interaction) {
     .setMaxLength(120)
     .setPlaceholder("np. kontakt@newshop.pl");
 
-  const ltcMypscInput = new TextInputBuilder()
-    .setCustomId("ltc_mypsc")
-    .setLabel("Portfel LTC / mail MyPSC")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false)
-    .setMaxLength(300)
-    .setPlaceholder("LTC: adres portfela\nMyPSC: mail@domena.pl");
-
-  const ltcMypscValue = [
-    current.ltcWallet ? `LTC: ${current.ltcWallet}` : "",
-    current.mypscEmail ? `MyPSC: ${current.mypscEmail}` : "",
-  ].filter(Boolean).join("\n");
-
   setTextInputValueIfPresent(phoneInput, current.phone || "");
   setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
   setTextInputValueIfPresent(receiverInput, current.receiverName || "");
   setTextInputValueIfPresent(paypalInput, current.paypalEmail || "");
-  setTextInputValueIfPresent(ltcMypscInput, ltcMypscValue);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(phoneInput),
     new ActionRowBuilder().addComponents(transferTitleInput),
     new ActionRowBuilder().addComponents(receiverInput),
     new ActionRowBuilder().addComponents(paypalInput),
-    new ActionRowBuilder().addComponents(ltcMypscInput),
   );
 
   return modal;
@@ -8351,7 +8359,7 @@ async function handlePanelDaneCommand(interaction) {
 }
 
 async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, ticketData = {}) {
-  const paymentKind = getTicketPaymentKind(ticketData);
+  const paymentKind = getTicketPaymentKind(ticketData, channel);
 
   if (paymentKind === "psc_receipt") {
     const embed = new EmbedBuilder()
@@ -14102,9 +14110,7 @@ async function handleModalSubmit(interaction) {
     }
 
     const currentProfile = getSellerPaymentProfile(guildId, interaction.user.id) || {};
-    const ltcMypscDetails = parseLtcMypscDetails(
-      getModalFieldValue(interaction.fields, "ltc_mypsc"),
-    );
+    const ltcMypscDetails = parseLtcMypscDetails(getModalFieldValue(interaction.fields, "ltc_mypsc"));
     const profile = normalizeSellerPaymentProfile({
       ...currentProfile,
       blikDetails: getModalFieldValue(interaction.fields, "blik_details"),
@@ -14112,8 +14118,14 @@ async function handleModalSubmit(interaction) {
       transferTitle: getModalFieldValue(interaction.fields, "transfer_title"),
       receiverName: getModalFieldValue(interaction.fields, "receiver_name"),
       paypalEmail: getModalFieldValue(interaction.fields, "paypal_email"),
-      ltcWallet: getModalFieldValue(interaction.fields, "ltc_wallet") || ltcMypscDetails.ltcWallet,
-      mypscEmail: getModalFieldValue(interaction.fields, "mypsc_email") || ltcMypscDetails.mypscEmail,
+      ltcWallet:
+        getModalFieldValue(interaction.fields, "ltc_wallet") ||
+        ltcMypscDetails.ltcWallet ||
+        currentProfile.ltcWallet,
+      mypscEmail:
+        getModalFieldValue(interaction.fields, "mypsc_email") ||
+        ltcMypscDetails.mypscEmail ||
+        currentProfile.mypscEmail,
       updatedAt: Date.now(),
     });
 
