@@ -222,6 +222,7 @@ function generateClaimQuiz() {
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
+const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const regulationPanels = new Map(); // messageId -> persisted regulation panel state
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
@@ -997,6 +998,7 @@ function buildPersistentStateData() {
     opinieChannels: opinieChannelsObj,
     regulationPanels: regulationPanelsObj,
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
+    sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
   };
 
@@ -2787,6 +2789,26 @@ async function loadPersistentState() {
     }
 
     if (
+      botStateData.sellerPaymentProfiles &&
+      typeof botStateData.sellerPaymentProfiles === "object"
+    ) {
+      for (const [profileKey, profile] of Object.entries(
+        botStateData.sellerPaymentProfiles,
+      )) {
+        if (!profile || typeof profile !== "object") continue;
+        sellerPaymentProfiles.set(profileKey, {
+          phone: String(profile.phone || "").slice(0, 80),
+          transferTitle: String(profile.transferTitle || "").slice(0, 120),
+          receiverName: String(profile.receiverName || "").slice(0, 120),
+          updatedAt: Number(profile.updatedAt || Date.now()),
+        });
+      }
+      console.log(
+        `[state] Wczytano sellerPaymentProfiles: ${sellerPaymentProfiles.size} wpisów`,
+      );
+    }
+
+    if (
       botStateData.ownerInviteCountingSettings &&
       typeof botStateData.ownerInviteCountingSettings === "object"
     ) {
@@ -3140,6 +3162,11 @@ const commands = [
   new SlashCommandBuilder()
     .setName("panelweryfikacja")
     .setDescription("Wyślij panel weryfikacji na kanał")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("panel-dane")
+    .setDescription("Wyślij panel do ustawiania danych sprzedawcy")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
@@ -5441,6 +5468,40 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
 
+  if (customId === "seller_data_edit") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.showModal(buildSellerPaymentDataModal(interaction));
+    return;
+  }
+
+  if (customId === "seller_data_clear") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    sellerPaymentProfiles.delete(
+      getSellerPaymentProfileKey(interaction.guildId, interaction.user.id),
+    );
+    scheduleSavePersistentState(true);
+
+    await interaction.reply({
+      content: "> `🗑️` × Wyczyściłem Twoje dane płatności.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
   if (customId === "free_kasa_roll") {
     await handleFreeKasaCommand(interaction);
     return;
@@ -6252,6 +6313,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "panelweryfikacja":
       await handlePanelWeryfikacjaCommand(interaction);
+      break;
+    case "panel-dane":
+      await handlePanelDaneCommand(interaction);
       break;
     case "opinia":
       await handleOpinionCommand(interaction);
@@ -7877,6 +7941,165 @@ async function handleOpinieKanalCommand(interaction) {
     flags: [MessageFlags.Ephemeral],
   });
   console.log(`Kanał opinii ustawiony na ${channel.id} dla serwera ${guildId}`);
+}
+
+function getSellerPaymentProfileKey(guildId, userId) {
+  return `${guildId}:${userId}`;
+}
+
+function getSellerPaymentProfile(guildId, userId) {
+  return sellerPaymentProfiles.get(getSellerPaymentProfileKey(guildId, userId)) || null;
+}
+
+function normalizeSellerPaymentProfile(profile = {}) {
+  return {
+    phone: String(profile.phone || "").trim().slice(0, 80),
+    transferTitle: String(profile.transferTitle || "").trim().slice(0, 120),
+    receiverName: String(profile.receiverName || "").trim().slice(0, 120),
+    updatedAt: Number(profile.updatedAt || Date.now()),
+  };
+}
+
+function sellerPaymentProfileHasData(profile) {
+  return !!(
+    profile &&
+    (String(profile.phone || "").trim() ||
+      String(profile.transferTitle || "").trim() ||
+      String(profile.receiverName || "").trim())
+  );
+}
+
+function formatSellerPaymentValue(value) {
+  const text = String(value || "").trim();
+  return text ? `\`${text.replace(/`/g, "'")}\`` : "`Brak`";
+}
+
+function buildSellerPaymentPanelPayload(guildId) {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_BLUE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+          "💳 New Shop × DANE SPRZEDAWCY\n" +
+          "```",
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "> `🧾` × Ustaw swoje dane do płatności raz, a bot pokaże je po przejęciu ticketa.\n" +
+          "> `🔒` × Dane widzi tylko osoba w tickecie, bo wiadomość trafia na prywatny kanał.",
+      ),
+    );
+
+  appendBrandFooterToContainer(container, guildId);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("seller_data_edit")
+      .setLabel("Ustaw dane")
+      .setEmoji("💳")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("seller_data_clear")
+      .setLabel("Wyczyść")
+      .setEmoji("🗑️")
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  return {
+    components: [container, row],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
+function buildSellerPaymentDataModal(interaction) {
+  const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
+  const modal = new ModalBuilder()
+    .setCustomId("seller_data_modal")
+    .setTitle("Dane sprzedawcy");
+
+  const phoneInput = new TextInputBuilder()
+    .setCustomId("phone")
+    .setLabel("Numer telefonu")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("np. 123 456 789");
+
+  const transferTitleInput = new TextInputBuilder()
+    .setCustomId("transfer_title")
+    .setLabel("Tytuł przelewu")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. Nick Discord / zamówienie");
+
+  const receiverInput = new TextInputBuilder()
+    .setCustomId("receiver_name")
+    .setLabel("Nazwa odbiorcy")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. Imię / nazwa odbiorcy");
+
+  setTextInputValueIfPresent(phoneInput, current.phone || "");
+  setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
+  setTextInputValueIfPresent(receiverInput, current.receiverName || "");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(phoneInput),
+    new ActionRowBuilder().addComponents(transferTitleInput),
+    new ActionRowBuilder().addComponents(receiverInput),
+  );
+
+  return modal;
+}
+
+async function handlePanelDaneCommand(interaction) {
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (!interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels)) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.channel.send(buildSellerPaymentPanelPayload(interaction.guildId));
+  await interaction.reply({
+    content: "> `✅` × Panel danych sprzedawcy został wysłany.",
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
+async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId) {
+  const profile = getSellerPaymentProfile(guildId, sellerId);
+  const hasData = sellerPaymentProfileHasData(profile);
+  const description = hasData
+    ? [
+        "> `💳` × **Dane do płatności**",
+        `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
+        `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
+        `> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.receiverName)}`,
+      ].join("\n")
+    : [
+        "> `💳` × **Dane do płatności**",
+        "> `⚠️` × **Brak danych.** Sprzedawca nie uzupełnił jeszcze panelu płatności.",
+      ].join("\n");
+
+  const embed = new EmbedBuilder()
+    .setColor(hasData ? COLOR_BLUE : COLOR_YELLOW)
+    .setDescription(description);
+
+  await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
 async function handlePanelWeryfikacjaCommand(interaction) {
@@ -12952,6 +13175,8 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       // ignore
     }
 
+    await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId);
+
     await sendTicketLogEntry(interaction.guild, {
       title: "Ticket przejęty",
       icon: "🟢",
@@ -13550,6 +13775,43 @@ async function handleModalSubmit(interaction) {
   if (!guildId || !interaction.guild) return;
 
   const cid = interaction.customId || "";
+
+  if (cid === "seller_data_modal") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten formularz jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const profile = normalizeSellerPaymentProfile({
+      phone: interaction.fields.getTextInputValue("phone"),
+      transferTitle: interaction.fields.getTextInputValue("transfer_title"),
+      receiverName: interaction.fields.getTextInputValue("receiver_name"),
+      updatedAt: Date.now(),
+    });
+
+    const key = getSellerPaymentProfileKey(guildId, interaction.user.id);
+    if (sellerPaymentProfileHasData(profile)) {
+      sellerPaymentProfiles.set(key, profile);
+      scheduleSavePersistentState(true);
+      await interaction.reply({
+        content:
+          "> `✅` × Zapisałem Twoje dane. Od teraz bot pokaże je po przejęciu ticketa.",
+        flags: [MessageFlags.Ephemeral],
+      });
+    } else {
+      sellerPaymentProfiles.delete(key);
+      scheduleSavePersistentState(true);
+      await interaction.reply({
+        content:
+          "> `🗑️` × Formularz był pusty, więc wyczyściłem Twoje dane płatności.",
+        flags: [MessageFlags.Ephemeral],
+      });
+    }
+    return;
+  }
 
   // --- ODPRZEJMIJ MODAL ---
   if (cid.startsWith("modal_odprzejmij")) {
