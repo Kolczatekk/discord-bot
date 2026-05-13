@@ -8234,25 +8234,59 @@ function getModalFieldValue(fields, customId) {
   }
 }
 
+function parseLtcMypscDetails(rawValue = "") {
+  const lines = String(rawValue || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const result = { ltcWallet: "", mypscEmail: "" };
+
+  for (const line of lines) {
+    const clean = line.replace(/^(ltc|portfel|mypsc|mail|email)\s*[:\-]\s*/i, "").trim();
+    if (!clean) continue;
+    if (/mypsc/i.test(line) || clean.includes("@")) {
+      result.mypscEmail = clean;
+    } else if (!result.ltcWallet) {
+      result.ltcWallet = clean;
+    }
+  }
+
+  if (!result.ltcWallet && !result.mypscEmail && lines[0]) {
+    result.ltcWallet = lines[0];
+  }
+
+  return result;
+}
+
 function buildSellerPaymentDataModal(interaction) {
   const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
   const modal = new ModalBuilder()
     .setCustomId("seller_data_modal")
     .setTitle("Dane sprzedawcy");
 
-  const legacyBlikDetails = [
-    current.phone ? `Telefon: ${current.phone}` : "",
-    current.transferTitle ? `Tytuł: ${current.transferTitle}` : "",
-    current.receiverName ? `Odbiorca: ${current.receiverName}` : "",
-  ].filter(Boolean).join("\n");
-
-  const blikDetailsInput = new TextInputBuilder()
-    .setCustomId("blik_details")
-    .setLabel("Dane BLIK / przelew")
-    .setStyle(TextInputStyle.Paragraph)
+  const phoneInput = new TextInputBuilder()
+    .setCustomId("phone")
+    .setLabel("Twój numer telefonu")
+    .setStyle(TextInputStyle.Short)
     .setRequired(false)
-    .setMaxLength(450)
-    .setPlaceholder("np. Telefon: 123 456 789\nTytuł: Nick Discord / zamówienie\nOdbiorca: New Shop");
+    .setMaxLength(80)
+    .setPlaceholder("np. 123 456 789");
+
+  const transferTitleInput = new TextInputBuilder()
+    .setCustomId("transfer_title")
+    .setLabel("Tytuł przelewu")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. Zakup itemów MC");
+
+  const receiverInput = new TextInputBuilder()
+    .setCustomId("receiver_name")
+    .setLabel("Nazwa odbiorcy")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. New Shop");
 
   const paypalInput = new TextInputBuilder()
     .setCustomId("paypal_email")
@@ -8262,32 +8296,31 @@ function buildSellerPaymentDataModal(interaction) {
     .setMaxLength(120)
     .setPlaceholder("np. kontakt@newshop.pl");
 
-  const ltcInput = new TextInputBuilder()
-    .setCustomId("ltc_wallet")
-    .setLabel("Portfel LTC")
-    .setStyle(TextInputStyle.Short)
+  const ltcMypscInput = new TextInputBuilder()
+    .setCustomId("ltc_mypsc")
+    .setLabel("Portfel LTC / mail MyPSC")
+    .setStyle(TextInputStyle.Paragraph)
     .setRequired(false)
-    .setMaxLength(180)
-    .setPlaceholder("Adres portfela Litecoin");
+    .setMaxLength(300)
+    .setPlaceholder("LTC: adres portfela\nMyPSC: mail@domena.pl");
 
-  const mypscInput = new TextInputBuilder()
-    .setCustomId("mypsc_email")
-    .setLabel("Mail do MyPSC")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(120)
-    .setPlaceholder("np. mypsc@newshop.pl");
+  const ltcMypscValue = [
+    current.ltcWallet ? `LTC: ${current.ltcWallet}` : "",
+    current.mypscEmail ? `MyPSC: ${current.mypscEmail}` : "",
+  ].filter(Boolean).join("\n");
 
-  setTextInputValueIfPresent(blikDetailsInput, current.blikDetails || legacyBlikDetails);
+  setTextInputValueIfPresent(phoneInput, current.phone || "");
+  setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
+  setTextInputValueIfPresent(receiverInput, current.receiverName || "");
   setTextInputValueIfPresent(paypalInput, current.paypalEmail || "");
-  setTextInputValueIfPresent(ltcInput, current.ltcWallet || "");
-  setTextInputValueIfPresent(mypscInput, current.mypscEmail || "");
+  setTextInputValueIfPresent(ltcMypscInput, ltcMypscValue);
 
   modal.addComponents(
-    new ActionRowBuilder().addComponents(blikDetailsInput),
+    new ActionRowBuilder().addComponents(phoneInput),
+    new ActionRowBuilder().addComponents(transferTitleInput),
+    new ActionRowBuilder().addComponents(receiverInput),
     new ActionRowBuilder().addComponents(paypalInput),
-    new ActionRowBuilder().addComponents(ltcInput),
-    new ActionRowBuilder().addComponents(mypscInput),
+    new ActionRowBuilder().addComponents(ltcMypscInput),
   );
 
   return modal;
@@ -14069,6 +14102,9 @@ async function handleModalSubmit(interaction) {
     }
 
     const currentProfile = getSellerPaymentProfile(guildId, interaction.user.id) || {};
+    const ltcMypscDetails = parseLtcMypscDetails(
+      getModalFieldValue(interaction.fields, "ltc_mypsc"),
+    );
     const profile = normalizeSellerPaymentProfile({
       ...currentProfile,
       blikDetails: getModalFieldValue(interaction.fields, "blik_details"),
@@ -14076,8 +14112,8 @@ async function handleModalSubmit(interaction) {
       transferTitle: getModalFieldValue(interaction.fields, "transfer_title"),
       receiverName: getModalFieldValue(interaction.fields, "receiver_name"),
       paypalEmail: getModalFieldValue(interaction.fields, "paypal_email"),
-      ltcWallet: getModalFieldValue(interaction.fields, "ltc_wallet"),
-      mypscEmail: getModalFieldValue(interaction.fields, "mypsc_email"),
+      ltcWallet: getModalFieldValue(interaction.fields, "ltc_wallet") || ltcMypscDetails.ltcWallet,
+      mypscEmail: getModalFieldValue(interaction.fields, "mypsc_email") || ltcMypscDetails.mypscEmail,
       updatedAt: Date.now(),
     });
 
