@@ -222,7 +222,7 @@ function generateClaimQuiz() {
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
-const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
+const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> seller payment data
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const regulationPanels = new Map(); // messageId -> persisted regulation panel state
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
@@ -2800,6 +2800,9 @@ async function loadPersistentState() {
           phone: String(profile.phone || "").slice(0, 80),
           transferTitle: String(profile.transferTitle || "").slice(0, 120),
           receiverName: String(profile.receiverName || "").slice(0, 120),
+          paypalEmail: String(profile.paypalEmail || "").slice(0, 120),
+          ltcWallet: String(profile.ltcWallet || "").slice(0, 180),
+          mypscEmail: String(profile.mypscEmail || "").slice(0, 120),
           updatedAt: Number(profile.updatedAt || Date.now()),
         });
       }
@@ -3535,6 +3538,15 @@ const commands = [
     .toJSON(),
 ];
 
+const HIDDEN_STALE_COMMAND_NAMES = new Set([
+  "pull",
+  "feedback",
+  "bypass",
+  "setup",
+  "syncroles",
+  "vouch",
+]);
+
 const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN);
 
 // Helper: human-readable ms
@@ -4213,6 +4225,35 @@ async function registerCommands() {
   }
 }
 
+async function deleteStaleHiddenCommands(BOT_ID, guildId = null) {
+  const listRoute = guildId
+    ? Routes.applicationGuildCommands(BOT_ID, guildId)
+    : Routes.applicationCommands(BOT_ID);
+
+  const deleteRoute = (commandId) =>
+    guildId
+      ? Routes.applicationGuildCommand(BOT_ID, guildId, commandId)
+      : Routes.applicationCommand(BOT_ID, commandId);
+
+  const scopeLabel = guildId ? `guild ${guildId}` : "global";
+  try {
+    const registered = await rest.get(listRoute);
+    if (!Array.isArray(registered)) return;
+
+    for (const command of registered) {
+      if (!HIDDEN_STALE_COMMAND_NAMES.has(command?.name)) continue;
+      await rest.delete(deleteRoute(command.id));
+      console.log(`[commands] Usunięto ukrytą/starszą komendę /${command.name} (${scopeLabel})`);
+    }
+
+  } catch (error) {
+    console.warn(
+      `[commands] Nie udało się wyczyścić starych komend (${scopeLabel}):`,
+      error?.message || error,
+    );
+  }
+}
+
 // improved apply defaults (tries to find resources by name / fallback)
 async function applyDefaultsForGuild(guildId) {
   try {
@@ -4324,6 +4365,8 @@ client.once(Events.ClientReady, async (c) => {
   }
 
   await registerCommands();
+  await deleteStaleHiddenCommands(process.env.DISCORD_BOT_ID || "1449397101032112139", DEFAULT_GUILD_ID);
+  await deleteStaleHiddenCommands(process.env.DISCORD_BOT_ID || "1449397101032112139");
 
   // try to apply defaults on the provided server id
   await applyDefaultsForGuild(DEFAULT_GUILD_ID);
@@ -5478,6 +5521,37 @@ async function handleButtonInteraction(interaction) {
     }
 
     await interaction.showModal(buildSellerPaymentDataModal(interaction));
+    return;
+  }
+
+  if (customId === "seller_data_extra_edit") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.showModal(buildSellerPaymentExtraDataModal(interaction));
+    return;
+  }
+
+  if (customId === "seller_data_view") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: formatSellerPaymentProfilePreview(
+        getSellerPaymentProfile(interaction.guildId, interaction.user.id),
+      ),
+      flags: [MessageFlags.Ephemeral],
+    });
     return;
   }
 
@@ -7956,6 +8030,9 @@ function normalizeSellerPaymentProfile(profile = {}) {
     phone: String(profile.phone || "").trim().slice(0, 80),
     transferTitle: String(profile.transferTitle || "").trim().slice(0, 120),
     receiverName: String(profile.receiverName || "").trim().slice(0, 120),
+    paypalEmail: String(profile.paypalEmail || "").trim().slice(0, 120),
+    ltcWallet: String(profile.ltcWallet || "").trim().slice(0, 180),
+    mypscEmail: String(profile.mypscEmail || "").trim().slice(0, 120),
     updatedAt: Number(profile.updatedAt || Date.now()),
   };
 }
@@ -7965,13 +8042,37 @@ function sellerPaymentProfileHasData(profile) {
     profile &&
     (String(profile.phone || "").trim() ||
       String(profile.transferTitle || "").trim() ||
-      String(profile.receiverName || "").trim())
+      String(profile.receiverName || "").trim() ||
+      String(profile.paypalEmail || "").trim() ||
+      String(profile.ltcWallet || "").trim() ||
+      String(profile.mypscEmail || "").trim())
   );
 }
 
 function formatSellerPaymentValue(value) {
   const text = String(value || "").trim();
-  return text ? `\`${text.replace(/`/g, "'")}\`` : "`Brak`";
+  return `\`${text.replace(/`/g, "'")}\``;
+}
+
+function addSellerPaymentLine(lines, icon, label, value) {
+  const text = String(value || "").trim();
+  if (!text) return;
+  lines.push(`> \`${icon}\` × **${label}:** ${formatSellerPaymentValue(text)}`);
+}
+
+function formatSellerPaymentProfilePreview(profile) {
+  if (!sellerPaymentProfileHasData(profile)) {
+    return "> `🔎` × Nie masz jeszcze zapisanych żadnych danych płatności.";
+  }
+
+  const lines = ["> `🔎` × **Twoje zapisane dane płatności**"];
+  addSellerPaymentLine(lines, "📱", "Telefon", profile.phone);
+  addSellerPaymentLine(lines, "🧾", "Tytuł przelewu", profile.transferTitle);
+  addSellerPaymentLine(lines, "👤", "Odbiorca", profile.receiverName);
+  addSellerPaymentLine(lines, "📧", "PayPal", profile.paypalEmail);
+  addSellerPaymentLine(lines, "🪙", "Portfel LTC", profile.ltcWallet);
+  addSellerPaymentLine(lines, "📩", "MyPSC", profile.mypscEmail);
+  return lines.join("\n");
 }
 
 async function persistSellerPaymentProfilesNow() {
@@ -7994,6 +8095,9 @@ function normalizeTicketPaymentText(text = "") {
 function getTicketPaymentKind(ticketData = {}) {
   const text = normalizeTicketPaymentText(ticketData?.formInfo || "");
   if (!text.includes("forma platnosci")) return null;
+  if (text.includes("mypsc")) return "mypsc";
+  if (text.includes("paypal")) return "paypal";
+  if (text.includes("ltc") || text.includes("litecoin")) return "ltc";
   if (text.includes("psc bez paragonu")) return "psc_no_receipt";
   if (/\bpsc\b/.test(text) || text.includes("paysafecard")) return "psc_receipt";
   if (text.includes("kod blik")) return "blik_code";
@@ -8021,8 +8125,18 @@ function buildSellerPaymentPanelPayload(guildId) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_edit")
-      .setLabel("Ustaw dane")
+      .setLabel("BLIK / przelew")
       .setEmoji("💳")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("seller_data_extra_edit")
+      .setLabel("PayPal / LTC / MyPSC")
+      .setEmoji("💼")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("seller_data_view")
+      .setLabel("Moje dane")
+      .setEmoji("🔎")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_clear")
@@ -8083,6 +8197,49 @@ function buildSellerPaymentDataModal(interaction) {
   return modal;
 }
 
+function buildSellerPaymentExtraDataModal(interaction) {
+  const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
+  const modal = new ModalBuilder()
+    .setCustomId("seller_data_extra_modal")
+    .setTitle("Dane dodatkowe");
+
+  const paypalInput = new TextInputBuilder()
+    .setCustomId("paypal_email")
+    .setLabel("Mail PayPal")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. kontakt@newshop.pl");
+
+  const ltcInput = new TextInputBuilder()
+    .setCustomId("ltc_wallet")
+    .setLabel("Portfel LTC")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(180)
+    .setPlaceholder("Adres portfela Litecoin");
+
+  const mypscInput = new TextInputBuilder()
+    .setCustomId("mypsc_email")
+    .setLabel("Mail do MyPSC")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. mypsc@newshop.pl");
+
+  setTextInputValueIfPresent(paypalInput, current.paypalEmail || "");
+  setTextInputValueIfPresent(ltcInput, current.ltcWallet || "");
+  setTextInputValueIfPresent(mypscInput, current.mypscEmail || "");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(paypalInput),
+    new ActionRowBuilder().addComponents(ltcInput),
+    new ActionRowBuilder().addComponents(mypscInput),
+  );
+
+  return modal;
+}
+
 async function handlePanelDaneCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
@@ -8134,12 +8291,33 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
     return;
   }
 
-  if (paymentKind !== "blik") return;
+  if (!["blik", "paypal", "ltc", "mypsc"].includes(paymentKind)) return;
 
   const profile = getSellerPaymentProfile(guildId, sellerId);
   if (!sellerPaymentProfileHasData(profile)) return;
 
-  const description = [
+  const paymentLines = ["> `💳` × **Dane do płatności**"];
+  if (paymentKind === "blik") {
+    addSellerPaymentLine(paymentLines, "📱", "Telefon", profile.phone);
+    addSellerPaymentLine(paymentLines, "🧾", "Tytuł przelewu", profile.transferTitle);
+    addSellerPaymentLine(paymentLines, "👤", "Odbiorca", profile.receiverName);
+  } else if (paymentKind === "paypal") {
+    addSellerPaymentLine(paymentLines, "📧", "PayPal", profile.paypalEmail);
+  } else if (paymentKind === "ltc") {
+    addSellerPaymentLine(paymentLines, "🪙", "Portfel LTC", profile.ltcWallet);
+  } else if (paymentKind === "mypsc") {
+    addSellerPaymentLine(paymentLines, "📩", "MyPSC", profile.mypscEmail);
+  }
+  if (paymentLines.length <= 1) return;
+
+  const paymentEmbed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(paymentLines.join("\n"));
+
+  await channel.send({ embeds: [paymentEmbed] }).catch(() => null);
+  return;
+
+  const lines = [
     "> `💳` × **Dane do płatności**",
     `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
     `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
@@ -13836,7 +14014,9 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
+    const currentProfile = getSellerPaymentProfile(guildId, interaction.user.id) || {};
     const profile = normalizeSellerPaymentProfile({
+      ...currentProfile,
       phone: interaction.fields.getTextInputValue("phone"),
       transferTitle: interaction.fields.getTextInputValue("transfer_title"),
       receiverName: interaction.fields.getTextInputValue("receiver_name"),
@@ -13858,6 +14038,43 @@ async function handleModalSubmit(interaction) {
       await interaction.reply({
         content:
           "> `🗑️` × Formularz był pusty, więc wyczyściłem Twoje dane płatności.",
+        flags: [MessageFlags.Ephemeral],
+      });
+    }
+    return;
+  }
+
+  if (cid === "seller_data_extra_modal") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten formularz jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const key = getSellerPaymentProfileKey(guildId, interaction.user.id);
+    const currentProfile = getSellerPaymentProfile(guildId, interaction.user.id) || {};
+    const profile = normalizeSellerPaymentProfile({
+      ...currentProfile,
+      paypalEmail: interaction.fields.getTextInputValue("paypal_email"),
+      ltcWallet: interaction.fields.getTextInputValue("ltc_wallet"),
+      mypscEmail: interaction.fields.getTextInputValue("mypsc_email"),
+      updatedAt: Date.now(),
+    });
+
+    if (sellerPaymentProfileHasData(profile)) {
+      sellerPaymentProfiles.set(key, profile);
+      await persistSellerPaymentProfilesNow();
+      await interaction.reply({
+        content: "> `✅` × Zapisałem dodatkowe dane płatności.",
+        flags: [MessageFlags.Ephemeral],
+      });
+    } else {
+      sellerPaymentProfiles.delete(key);
+      await persistSellerPaymentProfilesNow();
+      await interaction.reply({
+        content: "> `🗑️` × Formularz był pusty, więc wyczyściłem Twoje dane płatności.",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -17475,6 +17692,11 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   const left = lMap.get(userId) || 0;
   const fake = fakeMap.get(userId) || 0;
   const bonus = bonusMap.get(userId) || 0;
+  const inviteUserName =
+    interaction.member?.displayName ||
+    interaction.user.globalName ||
+    interaction.user.username ||
+    `ID ${userId}`;
 
   const pendingInviteRewardDelivery = await deliverPendingInviteRewardCodes(
     interaction.guild,
@@ -17512,6 +17734,13 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
 
   try {
     // Kanał docelowy
+    embed.setDescription(
+      (embed.data.description || "").replace(
+        `<@${userId}> **posiada:**`,
+        `**${inviteUserName}** posiada:`,
+      ),
+    );
+
     const targetChannel = preferChannel ? preferChannel : interaction.channel;
 
     // Publikacja embeda
