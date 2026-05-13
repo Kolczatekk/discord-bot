@@ -2797,6 +2797,7 @@ async function loadPersistentState() {
       )) {
         if (!profile || typeof profile !== "object") continue;
         sellerPaymentProfiles.set(profileKey, {
+          blikDetails: String(profile.blikDetails || "").slice(0, 450),
           phone: String(profile.phone || "").slice(0, 80),
           transferTitle: String(profile.transferTitle || "").slice(0, 120),
           receiverName: String(profile.receiverName || "").slice(0, 120),
@@ -5524,19 +5525,6 @@ async function handleButtonInteraction(interaction) {
     return;
   }
 
-  if (customId === "seller_data_extra_edit") {
-    if (!isAdminOrSeller(interaction.member)) {
-      await interaction.reply({
-        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.showModal(buildSellerPaymentExtraDataModal(interaction));
-    return;
-  }
-
   if (customId === "seller_data_view") {
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
@@ -8027,6 +8015,7 @@ function getSellerPaymentProfile(guildId, userId) {
 
 function normalizeSellerPaymentProfile(profile = {}) {
   return {
+    blikDetails: String(profile.blikDetails || "").trim().slice(0, 450),
     phone: String(profile.phone || "").trim().slice(0, 80),
     transferTitle: String(profile.transferTitle || "").trim().slice(0, 120),
     receiverName: String(profile.receiverName || "").trim().slice(0, 120),
@@ -8040,7 +8029,8 @@ function normalizeSellerPaymentProfile(profile = {}) {
 function sellerPaymentProfileHasData(profile) {
   return !!(
     profile &&
-    (String(profile.phone || "").trim() ||
+    (String(profile.blikDetails || "").trim() ||
+      String(profile.phone || "").trim() ||
       String(profile.transferTitle || "").trim() ||
       String(profile.receiverName || "").trim() ||
       String(profile.paypalEmail || "").trim() ||
@@ -8066,6 +8056,7 @@ function formatSellerPaymentProfilePreview(profile) {
   }
 
   const lines = ["> `🔎` × **Twoje zapisane dane płatności**"];
+  addSellerPaymentLine(lines, "💳", "BLIK / przelew", profile.blikDetails);
   addSellerPaymentLine(lines, "📱", "Telefon", profile.phone);
   addSellerPaymentLine(lines, "🧾", "Tytuł przelewu", profile.transferTitle);
   addSellerPaymentLine(lines, "👤", "Odbiorca", profile.receiverName);
@@ -8125,17 +8116,12 @@ function buildSellerPaymentPanelPayload(guildId) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_edit")
-      .setLabel("BLIK / przelew")
+      .setLabel("Dodaj dane")
       .setEmoji("💳")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId("seller_data_extra_edit")
-      .setLabel("PayPal / LTC / MyPSC")
-      .setEmoji("💼")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
       .setCustomId("seller_data_view")
-      .setLabel("Moje dane")
+      .setLabel("Moje Dane")
       .setEmoji("🔎")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
@@ -8240,6 +8226,73 @@ function buildSellerPaymentExtraDataModal(interaction) {
   return modal;
 }
 
+function getModalFieldValue(fields, customId) {
+  try {
+    return fields.getTextInputValue(customId);
+  } catch {
+    return "";
+  }
+}
+
+function buildSellerPaymentDataModal(interaction) {
+  const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
+  const modal = new ModalBuilder()
+    .setCustomId("seller_data_modal")
+    .setTitle("Dane sprzedawcy");
+
+  const legacyBlikDetails = [
+    current.phone ? `Telefon: ${current.phone}` : "",
+    current.transferTitle ? `Tytuł: ${current.transferTitle}` : "",
+    current.receiverName ? `Odbiorca: ${current.receiverName}` : "",
+  ].filter(Boolean).join("\n");
+
+  const blikDetailsInput = new TextInputBuilder()
+    .setCustomId("blik_details")
+    .setLabel("Dane BLIK / przelew")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setMaxLength(450)
+    .setPlaceholder("np. Telefon: 123 456 789\nTytuł: Nick Discord / zamówienie\nOdbiorca: New Shop");
+
+  const paypalInput = new TextInputBuilder()
+    .setCustomId("paypal_email")
+    .setLabel("Mail PayPal")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. kontakt@newshop.pl");
+
+  const ltcInput = new TextInputBuilder()
+    .setCustomId("ltc_wallet")
+    .setLabel("Portfel LTC")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(180)
+    .setPlaceholder("Adres portfela Litecoin");
+
+  const mypscInput = new TextInputBuilder()
+    .setCustomId("mypsc_email")
+    .setLabel("Mail do MyPSC")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. mypsc@newshop.pl");
+
+  setTextInputValueIfPresent(blikDetailsInput, current.blikDetails || legacyBlikDetails);
+  setTextInputValueIfPresent(paypalInput, current.paypalEmail || "");
+  setTextInputValueIfPresent(ltcInput, current.ltcWallet || "");
+  setTextInputValueIfPresent(mypscInput, current.mypscEmail || "");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(blikDetailsInput),
+    new ActionRowBuilder().addComponents(paypalInput),
+    new ActionRowBuilder().addComponents(ltcInput),
+    new ActionRowBuilder().addComponents(mypscInput),
+  );
+
+  return modal;
+}
+
 async function handlePanelDaneCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
@@ -8298,6 +8351,7 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
 
   const paymentLines = ["> `💳` × **Dane do płatności**"];
   if (paymentKind === "blik") {
+    addSellerPaymentLine(paymentLines, "💳", "BLIK / przelew", profile.blikDetails);
     addSellerPaymentLine(paymentLines, "📱", "Telefon", profile.phone);
     addSellerPaymentLine(paymentLines, "🧾", "Tytuł przelewu", profile.transferTitle);
     addSellerPaymentLine(paymentLines, "👤", "Odbiorca", profile.receiverName);
@@ -14017,9 +14071,13 @@ async function handleModalSubmit(interaction) {
     const currentProfile = getSellerPaymentProfile(guildId, interaction.user.id) || {};
     const profile = normalizeSellerPaymentProfile({
       ...currentProfile,
-      phone: interaction.fields.getTextInputValue("phone"),
-      transferTitle: interaction.fields.getTextInputValue("transfer_title"),
-      receiverName: interaction.fields.getTextInputValue("receiver_name"),
+      blikDetails: getModalFieldValue(interaction.fields, "blik_details"),
+      phone: getModalFieldValue(interaction.fields, "phone"),
+      transferTitle: getModalFieldValue(interaction.fields, "transfer_title"),
+      receiverName: getModalFieldValue(interaction.fields, "receiver_name"),
+      paypalEmail: getModalFieldValue(interaction.fields, "paypal_email"),
+      ltcWallet: getModalFieldValue(interaction.fields, "ltc_wallet"),
+      mypscEmail: getModalFieldValue(interaction.fields, "mypsc_email"),
       updatedAt: Date.now(),
     });
 
@@ -17692,11 +17750,6 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   const left = lMap.get(userId) || 0;
   const fake = fakeMap.get(userId) || 0;
   const bonus = bonusMap.get(userId) || 0;
-  const inviteUserName =
-    interaction.member?.displayName ||
-    interaction.user.globalName ||
-    interaction.user.username ||
-    `ID ${userId}`;
 
   const pendingInviteRewardDelivery = await deliverPendingInviteRewardCodes(
     interaction.guild,
@@ -17734,17 +17787,13 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
 
   try {
     // Kanał docelowy
-    embed.setDescription(
-      (embed.data.description || "").replace(
-        `<@${userId}> **posiada:**`,
-        `**${inviteUserName}** posiada:`,
-      ),
-    );
-
     const targetChannel = preferChannel ? preferChannel : interaction.channel;
 
     // Publikacja embeda
-    await targetChannel.send({ embeds: [embed] });
+    await targetChannel.send({
+      embeds: [embed],
+      allowedMentions: { users: [userId] },
+    });
 
     // Odświeżanie instrukcji
     try {
