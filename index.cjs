@@ -222,7 +222,7 @@ function generateClaimQuiz() {
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
-const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> seller payment data
+const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const regulationPanels = new Map(); // messageId -> persisted regulation panel state
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
@@ -424,14 +424,14 @@ const FREE_KASA_REWARD_POOL = [
     kind: "reward",
     rewardText: "20k$ na anarchia.gg",
     rewardAmount: 20000,
-    weight: 18,
+    weight: 28,
   },
   {
     key: "cash_10k",
     kind: "reward",
     rewardText: "10k$ na anarchia.gg",
     rewardAmount: 10000,
-    weight: 26,
+    weight: 40,
   },
   {
     key: "discount_10",
@@ -1033,28 +1033,13 @@ async function saveStateToSupabase(data) {
 
 // ----------------- FREE KASA -----------------
 function pickFreeKasaReward() {
-  const currentWinChance = Math.min(
-    FREE_KASA_PITY_CAP,
-    FREE_KASA_BASE_WIN_CHANCE +
-      Math.max(0, freeKasaLossStreak - FREE_KASA_PITY_START + 1) *
-        FREE_KASA_PITY_STEP,
-  );
-
-  if (freeKasaLossStreak >= FREE_KASA_PITY_GUARANTEE_AFTER) {
-    freeKasaLossStreak = 0;
-    scheduleSavePersistentState(true);
-    return rollFreeKasaRewardFromPool();
+  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 10% (wygrywa średnio raz na 10 losowań).
+  const WIN_CHANCE = 10.0;
+  
+  if (Math.random() * 100 > WIN_CHANCE) {
+    return null; // Pusty los
   }
 
-  const losingRoll = Math.random() * 100;
-  if (losingRoll >= currentWinChance) {
-    freeKasaLossStreak += 1;
-    scheduleSavePersistentState(true);
-    return null;
-  }
-
-  freeKasaLossStreak = 0;
-  scheduleSavePersistentState(true);
   return rollFreeKasaRewardFromPool();
 }
 
@@ -2797,13 +2782,9 @@ async function loadPersistentState() {
       )) {
         if (!profile || typeof profile !== "object") continue;
         sellerPaymentProfiles.set(profileKey, {
-          blikDetails: String(profile.blikDetails || "").slice(0, 450),
           phone: String(profile.phone || "").slice(0, 80),
           transferTitle: String(profile.transferTitle || "").slice(0, 120),
           receiverName: String(profile.receiverName || "").slice(0, 120),
-          paypalEmail: String(profile.paypalEmail || "").slice(0, 120),
-          ltcWallet: String(profile.ltcWallet || "").slice(0, 180),
-          mypscEmail: String(profile.mypscEmail || "").slice(0, 120),
           updatedAt: Number(profile.updatedAt || Date.now()),
         });
       }
@@ -3539,15 +3520,6 @@ const commands = [
     .toJSON(),
 ];
 
-const HIDDEN_STALE_COMMAND_NAMES = new Set([
-  "pull",
-  "feedback",
-  "bypass",
-  "setup",
-  "syncroles",
-  "vouch",
-]);
-
 const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN);
 
 // Helper: human-readable ms
@@ -4226,35 +4198,6 @@ async function registerCommands() {
   }
 }
 
-async function deleteStaleHiddenCommands(BOT_ID, guildId = null) {
-  const listRoute = guildId
-    ? Routes.applicationGuildCommands(BOT_ID, guildId)
-    : Routes.applicationCommands(BOT_ID);
-
-  const deleteRoute = (commandId) =>
-    guildId
-      ? Routes.applicationGuildCommand(BOT_ID, guildId, commandId)
-      : Routes.applicationCommand(BOT_ID, commandId);
-
-  const scopeLabel = guildId ? `guild ${guildId}` : "global";
-  try {
-    const registered = await rest.get(listRoute);
-    if (!Array.isArray(registered)) return;
-
-    for (const command of registered) {
-      if (!HIDDEN_STALE_COMMAND_NAMES.has(command?.name)) continue;
-      await rest.delete(deleteRoute(command.id));
-      console.log(`[commands] Usunięto ukrytą/starszą komendę /${command.name} (${scopeLabel})`);
-    }
-
-  } catch (error) {
-    console.warn(
-      `[commands] Nie udało się wyczyścić starych komend (${scopeLabel}):`,
-      error?.message || error,
-    );
-  }
-}
-
 // improved apply defaults (tries to find resources by name / fallback)
 async function applyDefaultsForGuild(guildId) {
   try {
@@ -4366,8 +4309,6 @@ client.once(Events.ClientReady, async (c) => {
   }
 
   await registerCommands();
-  await deleteStaleHiddenCommands(process.env.DISCORD_BOT_ID || "1449397101032112139", DEFAULT_GUILD_ID);
-  await deleteStaleHiddenCommands(process.env.DISCORD_BOT_ID || "1449397101032112139");
 
   // try to apply defaults on the provided server id
   await applyDefaultsForGuild(DEFAULT_GUILD_ID);
@@ -5512,7 +5453,7 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
 
-  if (["seller_data_edit", "seller_data_main_edit", "seller_data_extra_edit"].includes(customId)) {
+  if (customId === "seller_data_edit") {
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
         content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
@@ -5521,51 +5462,7 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
-    if (customId === "seller_data_edit") {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("seller_data_main_edit")
-          .setLabel("BLIK / PayPal")
-          .setEmoji("💳")
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId("seller_data_extra_edit")
-          .setLabel("LTC / MyPSC")
-          .setEmoji("🪙")
-          .setStyle(ButtonStyle.Secondary),
-      );
-
-      await interaction.reply({
-        content: "> `💳` × Wybierz, które dane chcesz dodać lub edytować.",
-        components: [row],
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.showModal(
-      customId === "seller_data_extra_edit"
-        ? buildSellerPaymentExtraDataModal(interaction)
-        : buildSellerPaymentDataModal(interaction),
-    );
-    return;
-  }
-
-  if (customId === "seller_data_view") {
-    if (!isAdminOrSeller(interaction.member)) {
-      await interaction.reply({
-        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.reply({
-      content: formatSellerPaymentProfilePreview(
-        getSellerPaymentProfile(interaction.guildId, interaction.user.id),
-      ),
-      flags: [MessageFlags.Ephemeral],
-    });
+    await interaction.showModal(buildSellerPaymentDataModal(interaction));
     return;
   }
 
@@ -5581,7 +5478,7 @@ async function handleButtonInteraction(interaction) {
     sellerPaymentProfiles.delete(
       getSellerPaymentProfileKey(interaction.guildId, interaction.user.id),
     );
-    await persistSellerPaymentProfilesNow();
+    scheduleSavePersistentState(true);
 
     await interaction.reply({
       content: "> `🗑️` × Wyczyściłem Twoje dane płatności.",
@@ -8041,13 +7938,9 @@ function getSellerPaymentProfile(guildId, userId) {
 
 function normalizeSellerPaymentProfile(profile = {}) {
   return {
-    blikDetails: String(profile.blikDetails || "").trim().slice(0, 450),
     phone: String(profile.phone || "").trim().slice(0, 80),
     transferTitle: String(profile.transferTitle || "").trim().slice(0, 120),
     receiverName: String(profile.receiverName || "").trim().slice(0, 120),
-    paypalEmail: String(profile.paypalEmail || "").trim().slice(0, 120),
-    ltcWallet: String(profile.ltcWallet || "").trim().slice(0, 180),
-    mypscEmail: String(profile.mypscEmail || "").trim().slice(0, 120),
     updatedAt: Number(profile.updatedAt || Date.now()),
   };
 }
@@ -8055,78 +7948,41 @@ function normalizeSellerPaymentProfile(profile = {}) {
 function sellerPaymentProfileHasData(profile) {
   return !!(
     profile &&
-    (String(profile.blikDetails || "").trim() ||
-      String(profile.phone || "").trim() ||
+    (String(profile.phone || "").trim() ||
       String(profile.transferTitle || "").trim() ||
-      String(profile.receiverName || "").trim() ||
-      String(profile.paypalEmail || "").trim() ||
-      String(profile.ltcWallet || "").trim() ||
-      String(profile.mypscEmail || "").trim())
+      String(profile.receiverName || "").trim())
   );
 }
 
 function formatSellerPaymentValue(value) {
   const text = String(value || "").trim();
-  return `\`${text.replace(/`/g, "'")}\``;
+  return text ? `\`${text.replace(/`/g, "'")}\`` : "`Brak`";
 }
 
-function addSellerPaymentLine(lines, icon, label, value) {
-  const text = String(value || "").trim();
-  if (!text) return;
-  lines.push(`> \`${icon}\` × **${label}:** ${formatSellerPaymentValue(text)}`);
-}
+function isPurchaseTicketForPaymentData(channel, ticketData = null) {
+  const label = String(ticketData?.ticketTypeLabel || "").toUpperCase();
+  if (label.startsWith("SPRZ")) return false;
+  if (label.startsWith("ZAKUP")) return true;
+  if (ticketData?.ownerOnlyPurchase) return true;
 
-function formatSellerPaymentProfilePreview(profile) {
-  if (!sellerPaymentProfileHasData(profile)) {
-    return "> `🔎` × Nie masz jeszcze zapisanych żadnych danych płatności.";
+  const guild = channel?.guild || null;
+  if (guild) {
+    const guildCats = ticketCategories.get(guild.id) || {};
+    const salesCategoryId = guildCats.sprzedaz ? String(guildCats.sprzedaz) : null;
+    const purchaseCategoryIds = getPurchaseTicketCategoryIdsForGuild(guild);
+    const originalCategoryId = ticketData?.originalCategoryId
+      ? String(ticketData.originalCategoryId)
+      : null;
+    const currentCategoryId = channel?.parentId ? String(channel.parentId) : null;
+
+    if (salesCategoryId && originalCategoryId === salesCategoryId) return false;
+    if (salesCategoryId && currentCategoryId === salesCategoryId) return false;
+
+    if (originalCategoryId && purchaseCategoryIds.has(originalCategoryId)) return true;
+    if (currentCategoryId && purchaseCategoryIds.has(currentCategoryId)) return true;
   }
 
-  const lines = ["> `🔎` × **Twoje zapisane dane płatności**"];
-  addSellerPaymentLine(lines, "💳", "BLIK / przelew", profile.blikDetails);
-  addSellerPaymentLine(lines, "📱", "Telefon", profile.phone);
-  addSellerPaymentLine(lines, "🧾", "Tytuł przelewu", profile.transferTitle);
-  addSellerPaymentLine(lines, "👤", "Odbiorca", profile.receiverName);
-  addSellerPaymentLine(lines, "📧", "PayPal", profile.paypalEmail);
-  addSellerPaymentLine(lines, "🪙", "Portfel LTC", profile.ltcWallet);
-  addSellerPaymentLine(lines, "📩", "MyPSC", profile.mypscEmail);
-  return lines.join("\n");
-}
-
-async function persistSellerPaymentProfilesNow() {
-  scheduleSavePersistentState(true);
-  await saveStateToSupabase(buildPersistentStateData()).catch((error) =>
-    console.error("[seller-data] Nie udało się zapisać danych sprzedawcy:", error),
-  );
-}
-
-function normalizeTicketPaymentText(text = "") {
-  return String(text || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[`*_~>|:]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function getTicketPaymentKind(ticketData = {}, channel = null) {
-  const text = normalizeTicketPaymentText(
-    [
-      ticketData?.formInfo || "",
-      ticketData?.paymentMethod || "",
-      ticketData?.ticketTypeLabel || "",
-      channel?.name || "",
-      channel?.topic || "",
-    ].join(" "),
-  );
-  if (text.includes("mypsc")) return "mypsc";
-  if (text.includes("paypal")) return "paypal";
-  if (text.includes("ltc") || text.includes("litecoin")) return "ltc";
-  if (text.includes("psc bez paragonu")) return "psc_no_receipt";
-  if (/\bpsc\b/.test(text) || text.includes("paysafecard")) return "psc_receipt";
-  if (text.includes("kod blik")) return "blik_code";
-  if (/\bblik\b/.test(text)) return "blik";
-  return null;
+  return isModernPurchaseTicketChannelName(channel?.name || "");
 }
 
 function buildSellerPaymentPanelPayload(guildId) {
@@ -8142,20 +7998,18 @@ function buildSellerPaymentPanelPayload(guildId) {
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "> `🧾` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa.",
+        "> `🧾` × Ustaw swoje dane do płatności raz, a bot pokaże je po przejęciu ticketa.\n" +
+          "> `🔒` × Dane widzi tylko osoba w tickecie, bo wiadomość trafia na prywatny kanał.",
       ),
     );
+
+  appendBrandFooterToContainer(container, guildId);
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_edit")
-      .setLabel("Dodaj dane")
+      .setLabel("Ustaw dane")
       .setEmoji("💳")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("seller_data_view")
-      .setLabel("Moje Dane")
-      .setEmoji("🔎")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_clear")
@@ -8164,11 +8018,8 @@ function buildSellerPaymentPanelPayload(guildId) {
       .setStyle(ButtonStyle.Secondary),
   );
 
-  container.addActionRowComponents(row);
-  appendBrandFooterToContainer(container, guildId);
-
   return {
-    components: [container],
+    components: [container, row],
     flags: MessageFlags.IsComponentsV2,
   };
 }
@@ -8216,124 +8067,6 @@ function buildSellerPaymentDataModal(interaction) {
   return modal;
 }
 
-function buildSellerPaymentExtraDataModal(interaction) {
-  const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
-  const modal = new ModalBuilder()
-    .setCustomId("seller_data_extra_modal")
-    .setTitle("LTC i MyPSC");
-
-  const ltcInput = new TextInputBuilder()
-    .setCustomId("ltc_wallet")
-    .setLabel("Twój portfel LTC")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(180)
-    .setPlaceholder("Adres portfela Litecoin");
-
-  const mypscInput = new TextInputBuilder()
-    .setCustomId("mypsc_email")
-    .setLabel("Twój mail do MyPSC")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(120)
-    .setPlaceholder("np. mypsc@newshop.pl");
-
-  setTextInputValueIfPresent(ltcInput, current.ltcWallet || "");
-  setTextInputValueIfPresent(mypscInput, current.mypscEmail || "");
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(ltcInput),
-    new ActionRowBuilder().addComponents(mypscInput),
-  );
-
-  return modal;
-}
-
-function getModalFieldValue(fields, customId) {
-  try {
-    return fields.getTextInputValue(customId);
-  } catch {
-    return "";
-  }
-}
-
-function parseLtcMypscDetails(rawValue = "") {
-  const lines = String(rawValue || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const result = { ltcWallet: "", mypscEmail: "" };
-
-  for (const line of lines) {
-    const clean = line.replace(/^(ltc|portfel|mypsc|mail|email)\s*[:\-]\s*/i, "").trim();
-    if (!clean) continue;
-    if (/mypsc/i.test(line) || clean.includes("@")) {
-      result.mypscEmail = clean;
-    } else if (!result.ltcWallet) {
-      result.ltcWallet = clean;
-    }
-  }
-
-  if (!result.ltcWallet && !result.mypscEmail && lines[0]) {
-    result.ltcWallet = lines[0];
-  }
-
-  return result;
-}
-
-function buildSellerPaymentDataModal(interaction) {
-  const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
-  const modal = new ModalBuilder()
-    .setCustomId("seller_data_modal")
-    .setTitle("Dane sprzedawcy");
-
-  const phoneInput = new TextInputBuilder()
-    .setCustomId("phone")
-    .setLabel("Twój numer telefonu")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(80)
-    .setPlaceholder("np. 123 456 789");
-
-  const transferTitleInput = new TextInputBuilder()
-    .setCustomId("transfer_title")
-    .setLabel("Tytuł przelewu")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(120)
-    .setPlaceholder("np. Zakup itemów MC");
-
-  const receiverInput = new TextInputBuilder()
-    .setCustomId("receiver_name")
-    .setLabel("Nazwa odbiorcy")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(120)
-    .setPlaceholder("np. New Shop");
-
-  const paypalInput = new TextInputBuilder()
-    .setCustomId("paypal_email")
-    .setLabel("Mail PayPal")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(120)
-    .setPlaceholder("np. kontakt@newshop.pl");
-
-  setTextInputValueIfPresent(phoneInput, current.phone || "");
-  setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
-  setTextInputValueIfPresent(receiverInput, current.receiverName || "");
-  setTextInputValueIfPresent(paypalInput, current.paypalEmail || "");
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(phoneInput),
-    new ActionRowBuilder().addComponents(transferTitleInput),
-    new ActionRowBuilder().addComponents(receiverInput),
-    new ActionRowBuilder().addComponents(paypalInput),
-  );
-
-  return modal;
-}
-
 async function handlePanelDaneCommand(interaction) {
   if (!interaction.guild) {
     await interaction.reply({
@@ -8358,69 +8091,25 @@ async function handlePanelDaneCommand(interaction) {
   });
 }
 
-async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, ticketData = {}) {
-  const paymentKind = getTicketPaymentKind(ticketData, channel);
-
-  if (paymentKind === "psc_receipt") {
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_YELLOW)
-      .setDescription(
-        "> `🎟️` × **Paysafecard**\n" +
-          "> `📸` × Wyślij **zdjęcie paragonu** oraz **kod PSC**.",
-      );
-
-    await channel.send({ embeds: [embed] }).catch(() => null);
-    return;
-  }
-
-  if (paymentKind === "psc_no_receipt") {
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_YELLOW)
-      .setDescription(
-        "> `🎟️` × **Paysafecard bez paragonu**\n" +
-          "> `🔑` × Wyślij swój **kod PSC**.",
-      );
-
-    await channel.send({ embeds: [embed] }).catch(() => null);
-    return;
-  }
-
-  if (!["blik", "paypal", "ltc", "mypsc"].includes(paymentKind)) return;
+async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, ticketData = null) {
+  if (!isPurchaseTicketForPaymentData(channel, ticketData)) return;
 
   const profile = getSellerPaymentProfile(guildId, sellerId);
-  if (!sellerPaymentProfileHasData(profile)) return;
-
-  const paymentLines = ["> `💳` × **Dane do płatności**"];
-  if (paymentKind === "blik") {
-    addSellerPaymentLine(paymentLines, "💳", "BLIK / przelew", profile.blikDetails);
-    addSellerPaymentLine(paymentLines, "📱", "Telefon", profile.phone);
-    addSellerPaymentLine(paymentLines, "🧾", "Tytuł przelewu", profile.transferTitle);
-    addSellerPaymentLine(paymentLines, "👤", "Odbiorca", profile.receiverName);
-  } else if (paymentKind === "paypal") {
-    addSellerPaymentLine(paymentLines, "📧", "PayPal", profile.paypalEmail);
-  } else if (paymentKind === "ltc") {
-    addSellerPaymentLine(paymentLines, "🪙", "Portfel LTC", profile.ltcWallet);
-  } else if (paymentKind === "mypsc") {
-    addSellerPaymentLine(paymentLines, "📩", "MyPSC", profile.mypscEmail);
-  }
-  if (paymentLines.length <= 1) return;
-
-  const paymentEmbed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(paymentLines.join("\n"));
-
-  await channel.send({ embeds: [paymentEmbed] }).catch(() => null);
-  return;
-
-  const lines = [
-    "> `💳` × **Dane do płatności**",
-    `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
-    `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
-    `> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.receiverName)}`,
-  ].join("\n");
+  const hasData = sellerPaymentProfileHasData(profile);
+  const description = hasData
+    ? [
+        "> `💳` × **Dane do płatności**",
+        `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
+        `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
+        `> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.receiverName)}`,
+      ].join("\n")
+    : [
+        "> `💳` × **Dane do płatności**",
+        "> `⚠️` × **Brak danych.** Sprzedawca nie uzupełnił jeszcze panelu płatności.",
+      ].join("\n");
 
   const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
+    .setColor(hasData ? COLOR_BLUE : COLOR_YELLOW)
     .setDescription(description);
 
   await channel.send({ embeds: [embed] }).catch(() => null);
@@ -13499,7 +13188,14 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       // ignore
     }
 
-    await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId, ticketData);
+    try {
+      // Payment info only for purchases, not for sales (SPRZEDAŻ)
+      if (ticketData.ticketTypeLabel !== "SPRZEDAŻ") {
+        await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId, ticketData);
+      }
+    } catch (e) {
+      console.error("Error sending payment profile:", e);
+    }
 
     await sendTicketLogEntry(interaction.guild, {
       title: "Ticket przejęty",
@@ -14109,30 +13805,17 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    const currentProfile = getSellerPaymentProfile(guildId, interaction.user.id) || {};
-    const ltcMypscDetails = parseLtcMypscDetails(getModalFieldValue(interaction.fields, "ltc_mypsc"));
     const profile = normalizeSellerPaymentProfile({
-      ...currentProfile,
-      blikDetails: getModalFieldValue(interaction.fields, "blik_details"),
-      phone: getModalFieldValue(interaction.fields, "phone"),
-      transferTitle: getModalFieldValue(interaction.fields, "transfer_title"),
-      receiverName: getModalFieldValue(interaction.fields, "receiver_name"),
-      paypalEmail: getModalFieldValue(interaction.fields, "paypal_email"),
-      ltcWallet:
-        getModalFieldValue(interaction.fields, "ltc_wallet") ||
-        ltcMypscDetails.ltcWallet ||
-        currentProfile.ltcWallet,
-      mypscEmail:
-        getModalFieldValue(interaction.fields, "mypsc_email") ||
-        ltcMypscDetails.mypscEmail ||
-        currentProfile.mypscEmail,
+      phone: interaction.fields.getTextInputValue("phone"),
+      transferTitle: interaction.fields.getTextInputValue("transfer_title"),
+      receiverName: interaction.fields.getTextInputValue("receiver_name"),
       updatedAt: Date.now(),
     });
 
     const key = getSellerPaymentProfileKey(guildId, interaction.user.id);
     if (sellerPaymentProfileHasData(profile)) {
       sellerPaymentProfiles.set(key, profile);
-      await persistSellerPaymentProfilesNow();
+      scheduleSavePersistentState(true);
       await interaction.reply({
         content:
           "> `✅` × Zapisałem Twoje dane. Od teraz bot pokaże je po przejęciu ticketa.",
@@ -14140,47 +13823,10 @@ async function handleModalSubmit(interaction) {
       });
     } else {
       sellerPaymentProfiles.delete(key);
-      await persistSellerPaymentProfilesNow();
+      scheduleSavePersistentState(true);
       await interaction.reply({
         content:
           "> `🗑️` × Formularz był pusty, więc wyczyściłem Twoje dane płatności.",
-        flags: [MessageFlags.Ephemeral],
-      });
-    }
-    return;
-  }
-
-  if (cid === "seller_data_extra_modal") {
-    if (!isAdminOrSeller(interaction.member)) {
-      await interaction.reply({
-        content: "> `❗` × Ten formularz jest tylko dla sprzedawców.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    const key = getSellerPaymentProfileKey(guildId, interaction.user.id);
-    const currentProfile = getSellerPaymentProfile(guildId, interaction.user.id) || {};
-    const profile = normalizeSellerPaymentProfile({
-      ...currentProfile,
-      paypalEmail: interaction.fields.getTextInputValue("paypal_email"),
-      ltcWallet: interaction.fields.getTextInputValue("ltc_wallet"),
-      mypscEmail: interaction.fields.getTextInputValue("mypsc_email"),
-      updatedAt: Date.now(),
-    });
-
-    if (sellerPaymentProfileHasData(profile)) {
-      sellerPaymentProfiles.set(key, profile);
-      await persistSellerPaymentProfilesNow();
-      await interaction.reply({
-        content: "> `✅` × Zapisałem dodatkowe dane płatności.",
-        flags: [MessageFlags.Ephemeral],
-      });
-    } else {
-      sellerPaymentProfiles.delete(key);
-      await persistSellerPaymentProfilesNow();
-      await interaction.reply({
-        content: "> `🗑️` × Formularz był pusty, więc wyczyściłem Twoje dane płatności.",
         flags: [MessageFlags.Ephemeral],
       });
     }
@@ -17709,13 +17355,13 @@ client.on(Events.GuildMemberRemove, async (member) => {
       try {
         let message;
         if (vanityCode) {
-          message = `> \`🚪\` × <@${member.id}> opuścił serwer. Dołączył używając linku **${vanityCode}**.`;
+          message = `> \`✉️\` × <@${member.id}> opuścił serwer. Dołączył używając linku **${vanityCode}**.`;
         } else if (inviterId === ownerId && !countOwnerInvites) {
           // Opuszczenie przez zaproszenie właściciela - nie odejmowaliśmy zaproszeń
-          message = `> \`🚪\` × <@${member.id}> opuścił serwer. (Był zaproszony przez właściciela)`;
+          message = `> \`✉️\` × <@${member.id}> opuścił serwer. (Był zaproszony przez właściciela)`;
         } else {
           // Normalne opuszczenie
-          message = `> \`🚪\` × <@${member.id}> opuścił serwer. Był zaproszony przez <@${inviterId}> który ma teraz **${currentCount}** ${inviteWord}.`;
+          message = `> \`✉️\` × <@${member.id}> opuścił serwer. Był zaproszony przez <@${inviterId}> który ma teraz **${currentCount}** ${inviteWord}.`;
         }
         await zapCh.send(message);
       } catch (e) { }
@@ -17838,10 +17484,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     const targetChannel = preferChannel ? preferChannel : interaction.channel;
 
     // Publikacja embeda
-    await targetChannel.send({
-      embeds: [embed],
-      allowedMentions: { users: [userId] },
-    });
+    await targetChannel.send({ embeds: [embed] });
 
     // Odświeżanie instrukcji
     try {
@@ -18117,10 +17760,9 @@ async function handleHelpCommand(interaction) {
       .setDescription(
         [
           "**`Komendy ogólne:`**",
-          "> `🎁` × </drop:1464015494876102748> Wylosuj zniżke na zakupy!",
           "> `📩` × </sprawdz-zaproszenia:1464015495932940398> Sprawdź swoje zaproszenia",
           "> `⭐` × </opinia:1464015495392133321> Podziel się opinią o naszym sklepie",
-          "> `📋` × </help:1464015495392133316> — Pokaż tę wiadomość",
+          "> `📋` × </help:1464015495392133316> Pokaż tę wiadomość",
         ].join("\n"),
       );
 
