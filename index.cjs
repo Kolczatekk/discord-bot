@@ -330,12 +330,17 @@ let pendingRename = false;
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
-const OPINION_STAR = "\u2B50";
+const OPINION_TITLE_STAR = "🌟";
+const OPINION_STAR_EMOJI = { id: "1474431260133691567", name: "star" };
+const OPINION_STAR_MARKUP = `<:${OPINION_STAR_EMOJI.name}:${OPINION_STAR_EMOJI.id}>`;
+const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
   return {
-    label: `${OPINION_STAR.repeat(value)} (${value}/5)`,
+    label: `${value} ${value === 1 ? "gwiazdka" : value < 5 ? "gwiazdki" : "gwiazdek"}`,
     value: String(value),
+    emoji: OPINION_STAR_EMOJI,
+    default: value === 5,
   };
 });
 
@@ -11842,19 +11847,19 @@ function parseOpinionRatingValue(raw) {
   const number = Number.parseInt(text.replace(/[^0-9]/g, ""), 10);
   if (Number.isFinite(number) && number >= 1 && number <= 5) return number;
 
-  const starCount = (text.match(/\u2B50/g) || []).length;
+  const starCount = (text.match(/\u2B50|★|🌟/gu) || []).length;
   return starCount >= 1 && starCount <= 5 ? starCount : null;
 }
 
 function getOpinionRatingValue(interaction, customId) {
   const selected = getModalStringSelectValueSafe(interaction, customId);
-  if (selected) return parseOpinionRatingValue(selected);
-  return parseOpinionRatingValue(getModalTextInputValueSafe(interaction, customId));
+  if (selected) return parseOpinionRatingValue(selected) || 5;
+  return parseOpinionRatingValue(getModalTextInputValueSafe(interaction, customId)) || 5;
 }
 
 function formatOpinionStars(value) {
   const count = Math.max(1, Math.min(5, Number(value) || 1));
-  return OPINION_STAR.repeat(count);
+  return Array.from({ length: count }, () => OPINION_STAR_MARKUP).join(" ");
 }
 
 function buildOpinionModal() {
@@ -11863,11 +11868,12 @@ function buildOpinionModal() {
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMaxLength(900)
-    .setPlaceholder("Bardzo polecam sklep...");
+    .setValue(OPINION_DEFAULT_TEXT)
+    .setPlaceholder(OPINION_DEFAULT_TEXT);
 
   return new ModalBuilder()
     .setCustomId("modal_wystaw_opinie")
-    .setTitle(`${OPINION_STAR} NEW SHOP - Opinia`)
+    .setTitle(`${OPINION_TITLE_STAR} NEW SHOP - Opinia`)
     .addLabelComponents(
       new LabelBuilder()
         .setLabel("Czas oczekiwania")
@@ -11884,27 +11890,29 @@ function buildOpinionModal() {
     );
 }
 
-function buildOpinionInstructionEmbed() {
-  return new EmbedBuilder()
-    .setColor(0xffd700)
-    .setDescription(
-      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
-    )
-    .setBrandFooter();
-}
-
 function buildOpinionButton() {
   return new ButtonBuilder()
     .setCustomId("btn_wystaw_opinie")
     .setLabel("Wystaw opinię")
-    .setEmoji(OPINION_STAR)
+    .setEmoji(OPINION_STAR_EMOJI)
     .setStyle(ButtonStyle.Secondary);
 }
 
 function buildOpinionInstructionPayload() {
+  const container = new ContainerBuilder().setAccentColor(0xffd700);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
+    ),
+  );
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(buildOpinionButton()),
+  );
+  appendBrandFooterToContainer(container, null);
+
   return {
-    embeds: [buildOpinionInstructionEmbed()],
-    components: [new ActionRowBuilder().addComponents(buildOpinionButton())],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
   };
 }
 
