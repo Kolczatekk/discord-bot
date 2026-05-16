@@ -330,13 +330,13 @@ let pendingRename = false;
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
-const OPINION_STAR = "<:star:1505298878096871546>";
-const OPINION_NO_STAR = "<:no_star:1505298895121551500>";
+const OPINION_BTN_STAR = "<:star:1505298878096871546>";
+const OPINION_STAR = "⭐";
 const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
   return {
-    label: `Ocena: ${value}/5`, // Zapobiega błędowi długości nazwy opcji w Discord API
+    label: `${OPINION_STAR.repeat(value)} (${value}/5)`,
     value: String(value),
     default: value === 5,
   };
@@ -2800,7 +2800,10 @@ async function loadPersistentState() {
           sellerPaymentProfiles.set(profileKey, {
             phone: String(profile.phone || "").slice(0, 80),
             transferTitle: String(profile.transferTitle || "").slice(0, 120),
-            receiverName: String(profile.receiverName || "").slice(0, 120),
+            recipient: String(profile.recipient || profile.receiverName || "").slice(0, 120),
+            paypalEmail: String(profile.paypalEmail || "").slice(0, 120),
+            ltcWallet: String(profile.ltcWallet || "").slice(0, 180),
+            mypscEmail: String(profile.mypscEmail || "").slice(0, 120),
             updatedAt: Number(profile.updatedAt || Date.now()),
           });
         }
@@ -12037,8 +12040,7 @@ function getOpinionRatingValue(interaction, customId) {
 
 function formatOpinionStars(value) {
   const count = Math.max(1, Math.min(5, Number(value) || 1));
-  const emptyCount = 5 - count;
-  return OPINION_STAR.repeat(count) + ":no_star:".repeat(emptyCount);
+  return `\`${OPINION_STAR.repeat(count)}\``;
 }
 
 function formatOpinionText(value) {
@@ -12080,7 +12082,7 @@ function buildOpinionButton() {
   return new ButtonBuilder()
     .setCustomId("btn_wystaw_opinie")
     .setLabel("Wystaw opinię")
-    .setEmoji(OPINION_STAR)
+    .setEmoji(OPINION_BTN_STAR)
     .setStyle(ButtonStyle.Secondary);
 }
 
@@ -13504,12 +13506,10 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
           const pscEmbed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
             .setDescription(
-              "```\n" +
-              "💳 New Shop × WYMAGANE DANE\n" +
-              "```\n" +
+              "> `ℹ️` × **Informacje**\n" +
               (method === "psc"
-                ? "> <a:arrowwhite:1491476759290449984> × **Podaj** kod **PSC** oraz **zdjęcie paragonu**.\n> <a:arrowwhite:1491476759290449984> × Sprzedawca sprawdzi kod po otrzymaniu danych."
-                : "> <a:arrowwhite:1491476759290449984> × **Podaj** kod **PSC**.\n> <a:arrowwhite:1491476759290449984> × Sprzedawca sprawdzi kod po otrzymaniu danych.")
+                ? "> `🛒` × Wyślij **zdjęcie paragonu** oraz **kod psc**."
+                : "> `🛒` × Wyślij **kod psc**.")
             );
           await ch.send({ embeds: [pscEmbed] }).catch(() => null);
         }
