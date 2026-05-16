@@ -408,7 +408,7 @@ const COLOR_RED = 0x8b0000;
 const COLOR_ORANGE = 0xff7a00;
 
 // Regex patterns for payment validation
-const PHONE_REGEX = /^(?:\+?\d{1,3})?\s?\d{3,15}$/;
+const PHONE_REGEX = /^(?:\+?\d{1,3})?\d{3,15}$/;
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const LTC_REGEX = /^[LM3][a-km-zA-HJ-NP-Z1-9]{26,33}$|^ltc1[ac-hj-np-z02-9]{39,59}$/;
 
@@ -14268,7 +14268,8 @@ async function handleModalSubmit(interaction) {
       }
     };
 
-    const phone = getField("phone");
+    const phoneRaw = getField("phone");
+    const phone = phoneRaw ? phoneRaw.replace(/\s+/g, "").replace(/-/g, "") : null;
     const transferTitle = getField("transfer_title");
     const recipient = getField("recipient");
     const paypalEmail = getField("paypal_email");
@@ -14276,7 +14277,7 @@ async function handleModalSubmit(interaction) {
     const mypscEmail = getField("mypsc_email");
 
     const errors = [];
-    if (phone && !PHONE_REGEX.test(phone.trim())) {
+    if (phone && !PHONE_REGEX.test(phone)) {
       errors.push("Nieprawidłowy format numeru telefonu.");
     }
     if (paypalEmail && !EMAIL_REGEX.test(paypalEmail.trim())) {
