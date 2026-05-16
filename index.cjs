@@ -8131,27 +8131,9 @@ function formatSellerPaymentValue(value) {
 function isPurchaseTicketForPaymentData(channel, ticketData = null) {
   const label = String(ticketData?.ticketTypeLabel || "").toUpperCase();
   if (label.startsWith("SPRZ")) return false;
-  if (label.startsWith("ZAKUP")) return true;
-  if (ticketData?.ownerOnlyPurchase) return true;
-
-  const guild = channel?.guild || null;
-  if (guild) {
-    const guildCats = ticketCategories.get(guild.id) || {};
-    const salesCategoryId = guildCats.sprzedaz ? String(guildCats.sprzedaz) : null;
-    const purchaseCategoryIds = getPurchaseTicketCategoryIdsForGuild(guild);
-    const originalCategoryId = ticketData?.originalCategoryId
-      ? String(ticketData.originalCategoryId)
-      : null;
-    const currentCategoryId = channel?.parentId ? String(channel.parentId) : null;
-
-    if (salesCategoryId && originalCategoryId === salesCategoryId) return false;
-    if (salesCategoryId && currentCategoryId === salesCategoryId) return false;
-
-    if (originalCategoryId && purchaseCategoryIds.has(originalCategoryId)) return true;
-    if (currentCategoryId && purchaseCategoryIds.has(currentCategoryId)) return true;
-  }
-
-  return isModernPurchaseTicketChannelName(channel?.name || "");
+  
+  // Domyślnie traktuj jako ticket zakupowy, chyba że wyraźnie oznaczony jako sprzedaż
+  return true;
 }
 
 function buildSellerPaymentPanelPayload(guildId) {
@@ -12085,7 +12067,7 @@ function buildOpinionModal() {
 
   return new ModalBuilder()
     .setCustomId("modal_wystaw_opinie")
-    .setTitle(`${OPINION_STAR} NEW SHOP - Opinia`)
+    .setTitle(`⭐ NEW SHOP - Opinia`)
     .addLabelComponents(
       new LabelBuilder()
         .setLabel("Czas oczekiwania")
@@ -16836,17 +16818,14 @@ async function handleOpinionCommand(interaction) {
 
   const safeTresc = formatOpinionText(tresc);
 
-  // Budujemy opis jako pojedynczy string — używamy tablicy i join(\n) żeby zachować czytelność
+  // Budujemy opis jako pojedynczy string
   const description = [
-    "```",
-    "✅ New Shop × OPINIA",
-    "```",
     `> \`👤\` **× Twórca opinii:** <@${interaction.user.id}>`,
     `> \`📝\` **× Treść:** ${safeTresc}`,
     "",
     `> \`⌛\` **× Czas oczekiwania:** ${starsInline(czas)}`,
     `> \`📋\` **× Jakość produktu:** ${starsInline(jakosc)}`,
-    `> \`💸\` **× Cena produktu:** ${starsInline(cena)}`,
+    `> \`💸\` **× Realizacja wymiany:** ${starsInline(cena)}`,
   ].join("\n");
 
   // Tworzymy embed z poprawnym description
