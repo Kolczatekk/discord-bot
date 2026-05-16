@@ -2,7 +2,7 @@ const {
   Client,
   GatewayIntentBits,
   Events,
-  EmbedBuilder, 
+  EmbedBuilder,
   SlashCommandBuilder,
   REST,
   Routes,
@@ -14,15 +14,15 @@ const {
   MediaGalleryItemBuilder,
   StringSelectMenuBuilder,
   LabelBuilder,
-  ModalBuilder,  
+  ModalBuilder,
   SeparatorBuilder,
   TextInputBuilder,
   TextDisplayBuilder,
-  TextInputStyle, 
+  TextInputStyle,
   PermissionsBitField,
   OverwriteType,
   ButtonBuilder,
-  ButtonStyle,  
+  ButtonStyle,
   AttachmentBuilder,
   MessageFlags,
 } = require("discord.js");
@@ -134,7 +134,7 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
   /**
    * Pozwala włączyć automatyczną stopkę brandową dla konkretnego embeda.
    */
-  EmbedBuilder.prototype.setBrandFooter = function() {
+  EmbedBuilder.prototype.setBrandFooter = function () {
     this._useBrandFooter = true;
     return this;
   };
@@ -145,7 +145,7 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
     if (data && typeof data === "object") {
       // Automatycznie usuwamy timestamp z każdego embeda (według starej logiki)
       delete data.timestamp;
-      
+
       // Ustawiamy stopkę NEW SHOP TYLKO jeśli została jawnie włączona
       if (!data.footer && this._useBrandFooter) {
         data.footer = getBrandFooterObject();
@@ -1020,19 +1020,19 @@ async function saveStateToSupabase(data) {
   try {
     const { error } = await supabase
       .from('bot_state')
-      .upsert({ 
-        id: 1, 
+      .upsert({
+        id: 1,
         data: data,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'id'
       });
-    
+
     if (error) {
       console.error('[supabase] Błąd zapisu:', error);
       return false;
     }
-    
+
     console.log('[supabase] Stan zapisany pomyślnie');
     return true;
   } catch (error) {
@@ -1045,7 +1045,7 @@ async function saveStateToSupabase(data) {
 function pickFreeKasaReward() {
   // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 10% (wygrywa średnio raz na 10 losowań).
   const WIN_CHANCE = 10.0;
-  
+
   if (Math.random() * 100 > WIN_CHANCE) {
     return null; // Pusty los
   }
@@ -1925,10 +1925,10 @@ function buildFreeKasaResultEmbed({
 
 async function sendFreeKasaPublicResult(interaction, payload) {
   if (typeof interaction?.isMessageComponent === "function" && interaction.isMessageComponent()) {
-      if (!interaction.deferred && !interaction.replied) {
-          try { await interaction.deferUpdate(); } catch(e) {}
-      }
-      return interaction.channel?.send(payload).catch(() => null);
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferUpdate(); } catch (e) { }
+    }
+    return interaction.channel?.send(payload).catch(() => null);
   }
 
   if (interaction?.deferred || interaction?.replied) {
@@ -1982,8 +1982,8 @@ async function handleFreeKasaCommand(interaction) {
 
     const statusGuideEmbed = statusGuideAttachment
       ? new EmbedBuilder()
-          .setColor(COLOR_GRAY)
-          .setImage(`attachment://${FREE_KASA_STATUS_GUIDE_IMAGE_NAME}`)
+        .setColor(COLOR_GRAY)
+        .setImage(`attachment://${FREE_KASA_STATUS_GUIDE_IMAGE_NAME}`)
       : null;
 
     await interaction.reply({
@@ -2013,7 +2013,7 @@ async function handleFreeKasaCommand(interaction) {
 
   try {
     await interaction.deferUpdate();
-  } catch (e) {}
+  } catch (e) { }
 
   const reward = pickFreeKasaReward();
   const retryTimestamp = Math.floor((now + FREE_KASA_COOLDOWN_MS) / 1000);
@@ -2162,7 +2162,7 @@ async function handleWezwijCommand(interaction) {
       .setColor(COLOR_BLUE)
       .setDescription(
         "```\n" +
-          "🚨 New Shop × JESTES WZYWANY\n" +
+        "🚨 New Shop × JESTES WZYWANY\n" +
         "```\n" +
         `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
         `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
@@ -2191,7 +2191,7 @@ async function loadStateFromSupabase() {
       .select('data')
       .eq('id', 1)
       .single();
-    
+
     if (error) {
       if (error.code === 'PGRST116') {
         console.log('[supabase] Nie znaleziono stanu, tworzę nowy');
@@ -2200,7 +2200,7 @@ async function loadStateFromSupabase() {
       console.error('[supabase] Błąd odczytu:', error);
       return null;
     }
-    
+
     console.log('[supabase] Stan wczytany pomyślnie');
     return data.data;
   } catch (error) {
@@ -2212,10 +2212,10 @@ async function loadStateFromSupabase() {
 function flushPersistentStateSync() {
   try {
     const data = buildPersistentStateData();
-    
+
     // Tylko zapis do Supabase
     saveStateToSupabase(data);
-    
+
     console.log(`[state] flush ok -> supabase only`);
   } catch (e) {
     console.error("[state] flush failed:", e);
@@ -2225,7 +2225,7 @@ function flushPersistentStateSync() {
 function scheduleSavePersistentState(immediate = false) {
   // debounce writes to avoid spamming disk
   if (saveStateTimeout) return;
-  
+
   if (immediate) {
     // Natychmiastowy zapis dla krytycznych danych
     saveStateTimeout = setTimeout(() => {
@@ -2258,10 +2258,10 @@ function scheduleSavePersistentState(immediate = false) {
 async function loadPersistentState() {
   try {
     console.log("[state] Rozpoczynam wczytywanie stanu...");
-    
+
     // Tylko wczytywanie z Supabase
     const supabaseData = await loadStateFromSupabase();
-    
+
     if (supabaseData) {
       console.log("[state] Używam danych z Supabase");
       const botStateData = supabaseData;
@@ -2270,563 +2270,563 @@ async function loadPersistentState() {
         legitRepCount = botStateData.legitRepCount;
       }
 
-    if (botStateData.legitRepCooldown && typeof botStateData.legitRepCooldown === "object") {
-      for (const [userId, ts] of Object.entries(botStateData.legitRepCooldown)) {
-        if (typeof ts === "number") {
-          legitRepCooldown.set(userId, ts);
+      if (botStateData.legitRepCooldown && typeof botStateData.legitRepCooldown === "object") {
+        for (const [userId, ts] of Object.entries(botStateData.legitRepCooldown)) {
+          if (typeof ts === "number") {
+            legitRepCooldown.set(userId, ts);
+          }
         }
       }
-    }
 
-    if (botStateData.ticketCounter && typeof botStateData.ticketCounter === "object") {
-      for (const [guildId, value] of Object.entries(botStateData.ticketCounter)) {
-        if (typeof value === "number") {
-          ticketCounter.set(guildId, value);
+      if (botStateData.ticketCounter && typeof botStateData.ticketCounter === "object") {
+        for (const [guildId, value] of Object.entries(botStateData.ticketCounter)) {
+          if (typeof value === "number") {
+            ticketCounter.set(guildId, value);
+          }
         }
       }
-    }
 
-    if (botStateData.ticketOwners && typeof botStateData.ticketOwners === "object") {
-      for (const [channelId, ticketData] of Object.entries(botStateData.ticketOwners)) {
-        if (ticketData && typeof ticketData === "object") {
-          ticketOwners.set(channelId, ticketData);
+      if (botStateData.ticketOwners && typeof botStateData.ticketOwners === "object") {
+        for (const [channelId, ticketData] of Object.entries(botStateData.ticketOwners)) {
+          if (ticketData && typeof ticketData === "object") {
+            ticketOwners.set(channelId, ticketData);
+          }
         }
       }
-    }
 
-    if (botStateData.activeCodes && typeof botStateData.activeCodes === "object") {
-      for (const [storedCode, storedData] of Object.entries(botStateData.activeCodes)) {
-        if (!storedData || typeof storedData !== "object") continue;
-        const normalizedCode = normalizeCodeInput(storedCode);
-        if (!normalizedCode) continue;
-        activeCodes.set(normalizedCode, {
-          ...storedData,
-          expiresAt: Number(storedData.expiresAt || 0),
-          used: !!storedData.used,
-          rewardAmount: Number(storedData.rewardAmount || 0),
+      if (botStateData.activeCodes && typeof botStateData.activeCodes === "object") {
+        for (const [storedCode, storedData] of Object.entries(botStateData.activeCodes)) {
+          if (!storedData || typeof storedData !== "object") continue;
+          const normalizedCode = normalizeCodeInput(storedCode);
+          if (!normalizedCode) continue;
+          activeCodes.set(normalizedCode, {
+            ...storedData,
+            expiresAt: Number(storedData.expiresAt || 0),
+            used: !!storedData.used,
+            rewardAmount: Number(storedData.rewardAmount || 0),
+          });
+        }
+        console.log(`[state] Wczytano activeCodes ze stanu: ${activeCodes.size} kodów`);
+      }
+
+      if (
+        botStateData.fourMonthBlockList &&
+        typeof botStateData.fourMonthBlockList === "object"
+      ) {
+        for (const [gId, arr] of Object.entries(botStateData.fourMonthBlockList)) {
+          if (Array.isArray(arr)) {
+            fourMonthBlockList.set(gId, new Set(arr));
+          }
+        }
+      }
+
+      if (botStateData.inviteCounts) {
+        const loaded = nestedObjectToMapOfMaps(botStateData.inviteCounts);
+        loaded.forEach((inner, guildId) => {
+          inviteCounts.set(guildId, inner);
+          console.log(`[state] Wczytano inviteCounts dla guild ${guildId}: ${inner.size} wpisów`);
         });
       }
-      console.log(`[state] Wczytano activeCodes ze stanu: ${activeCodes.size} kodów`);
-    }
 
-    if (
-      botStateData.fourMonthBlockList &&
-      typeof botStateData.fourMonthBlockList === "object"
-    ) {
-      for (const [gId, arr] of Object.entries(botStateData.fourMonthBlockList)) {
-        if (Array.isArray(arr)) {
-          fourMonthBlockList.set(gId, new Set(arr));
-        }
-      }
-    }
-
-    if (botStateData.inviteCounts) {
-      const loaded = nestedObjectToMapOfMaps(botStateData.inviteCounts);
-      loaded.forEach((inner, guildId) => {
-        inviteCounts.set(guildId, inner);
-        console.log(`[state] Wczytano inviteCounts dla guild ${guildId}: ${inner.size} wpisów`);
-      });
-    }
-
-    if (botStateData.inviteRewards) {
-      const loaded = nestedObjectToMapOfMaps(botStateData.inviteRewards);
-      loaded.forEach((inner, guildId) => {
-        inviteRewards.set(guildId, inner);
-      });
-    }
-
-    if (botStateData.inviteLeaves) {
-      const loaded = nestedObjectToMapOfMaps(botStateData.inviteLeaves);
-      loaded.forEach((inner, guildId) => {
-        inviteLeaves.set(guildId, inner);
-      });
-    }
-
-    if (botStateData.inviteRewardsGiven) {
-      // NEW
-      const loaded = nestedObjectToMapOfMaps(botStateData.inviteRewardsGiven);
-      loaded.forEach((inner, guildId) => {
-        inviteRewardsGiven.set(guildId, inner);
-        console.log(`[state] Wczytano inviteRewardsGiven dla guild ${guildId}: ${inner.size} wpisów`);
-      });
-    }
-
-    if (botStateData.inviteRewardLevels) {
-      // Load inviteRewardLevels
-      for (const [guildId, userObj] of Object.entries(botStateData.inviteRewardLevels)) {
-        const userMap = new Map();
-        for (const [userId, levelsArray] of Object.entries(userObj)) {
-          if (Array.isArray(levelsArray)) {
-            userMap.set(userId, new Set(levelsArray));
-          }
-        }
-        inviteRewardLevels.set(guildId, userMap);
-      }
-      console.log("[state] Wczytano inviteRewardLevels");
-    }
-
-    if (botStateData.claimedInviteRewardMilestones) {
-      for (const [guildId, userObj] of Object.entries(botStateData.claimedInviteRewardMilestones)) {
-        const userMap = new Map();
-        for (const [userId, levelsArray] of Object.entries(userObj)) {
-          if (Array.isArray(levelsArray)) {
-            userMap.set(userId, new Set(levelsArray));
-          }
-        }
-        claimedInviteRewardMilestones.set(guildId, userMap);
-      }
-      console.log("[state] Wczytano claimedInviteRewardMilestones");
-    }
-
-    if (
-      botStateData.lastInviteInstruction &&
-      typeof botStateData.lastInviteInstruction === "object"
-    ) {
-      for (const [channelId, messageId] of Object.entries(
-        botStateData.lastInviteInstruction,
-      )) {
-        if (typeof messageId === "string") {
-          lastInviteInstruction.set(channelId, messageId);
-        }
-      }
-    }
-
-    // Load contests
-    if (botStateData.contests && typeof botStateData.contests === "object") {
-      for (const [msgId, meta] of Object.entries(botStateData.contests)) {
-        if (meta && typeof meta.endsAt === "number") {
-          contests.set(msgId, meta);
-          // Schedule contest end if it hasn't ended yet
-          const now = Date.now();
-          if (meta.endsAt > now) {
-            const delay = meta.endsAt - now;
-            setTimeout(() => {
-              endContestByMessageId(msgId).catch((e) => console.error(e));
-            }, delay);
-            console.log(
-              `[contests] Przywrócono konkurs ${msgId}, zakończy się za ${Math.round(delay / 1000)}s`,
-            );
-          } else {
-            // Contest should have ended, end it now
-            setImmediate(() => {
-              endContestByMessageId(msgId).catch((e) => console.error(e));
-            });
-          }
-        }
-      }
-    }
-
-    // Load contest participants
-    if (
-      botStateData.contestParticipants &&
-      typeof botStateData.contestParticipants === "object"
-    ) {
-      for (const [msgId, participantData] of Object.entries(botStateData.contestParticipants)) {
-        if (Array.isArray(participantData)) {
-          // Check if participantData is array of [userId, nick] pairs or just userIds (backward compatibility)
-          if (participantData.length > 0 && Array.isArray(participantData[0])) {
-            // New format: array of [userId, nick] pairs
-            contestParticipants.set(msgId, new Map(participantData));
-          } else {
-            // Old format: array of userIds - convert to Map with empty nicks
-            const participantsMap = new Map();
-            participantData.forEach(userId => {
-              participantsMap.set(userId, "");
-            });
-            contestParticipants.set(msgId, participantsMap);
-          }
-        }
-      }
-      console.log("[state] Wczytano contestParticipants");
-    }
-
-    // Load contest leave blocks
-    if (
-      botStateData.contestLeaveBlocks &&
-      typeof botStateData.contestLeaveBlocks === "object"
-    ) {
-      for (const [userId, contestBlocks] of Object.entries(botStateData.contestLeaveBlocks)) {
-        if (contestBlocks && typeof contestBlocks === "object") {
-          const userBlocks = {};
-          for (const [msgId, blockData] of Object.entries(contestBlocks)) {
-            userBlocks[msgId] = {
-              leaveCount: blockData.leaveCount || 0,
-              blockedUntil: blockData.blockedUntil || 0
-            };
-          }
-          contestLeaveBlocks.set(userId, userBlocks);
-        }
-      }
-      console.log("[state] Wczytano contestLeaveBlocks");
-    }
-
-    if (botStateData.weeklySales && typeof botStateData.weeklySales === "object") {
-      for (const [userId, saleData] of Object.entries(botStateData.weeklySales)) {
-        if (!saleData || typeof saleData !== "object") continue;
-        weeklySales.set(userId, {
-          amount: Number(saleData.amount || 0),
-          lastUpdate: Number(saleData.lastUpdate || Date.now()),
-          paid: !!saleData.paid,
-          paidAt: saleData.paidAt || null,
-          guildId: saleData.guildId || null,
+      if (botStateData.inviteRewards) {
+        const loaded = nestedObjectToMapOfMaps(botStateData.inviteRewards);
+        loaded.forEach((inner, guildId) => {
+          inviteRewards.set(guildId, inner);
         });
       }
-      console.log(`[state] Wczytano weeklySales ze snapshotu: ${weeklySales.size} użytkowników`);
-    }
 
-    if (
-      botStateData.embedTestStates &&
-      typeof botStateData.embedTestStates === "object"
-    ) {
-      for (const [messageId, state] of Object.entries(
-        botStateData.embedTestStates,
-      )) {
-        if (!state || typeof state !== "object") continue;
-        embedTestStates.set(messageId, state);
+      if (botStateData.inviteLeaves) {
+        const loaded = nestedObjectToMapOfMaps(botStateData.inviteLeaves);
+        loaded.forEach((inner, guildId) => {
+          inviteLeaves.set(guildId, inner);
+        });
       }
-      console.log(
-        `[state] Wczytano embedTestStates: ${embedTestStates.size} stanów`,
-      );
-    }
 
-    if (
-      botStateData.regulationPanels &&
-      typeof botStateData.regulationPanels === "object"
-    ) {
-      for (const [messageId, panelState] of Object.entries(
-        botStateData.regulationPanels,
-      )) {
-        if (!panelState || typeof panelState !== "object") continue;
-        regulationPanels.set(
-          messageId,
-          cloneRegulationPanelState(panelState, {
-            messageId,
-            persistPanel: true,
-          }),
+      if (botStateData.inviteRewardsGiven) {
+        // NEW
+        const loaded = nestedObjectToMapOfMaps(botStateData.inviteRewardsGiven);
+        loaded.forEach((inner, guildId) => {
+          inviteRewardsGiven.set(guildId, inner);
+          console.log(`[state] Wczytano inviteRewardsGiven dla guild ${guildId}: ${inner.size} wpisów`);
+        });
+      }
+
+      if (botStateData.inviteRewardLevels) {
+        // Load inviteRewardLevels
+        for (const [guildId, userObj] of Object.entries(botStateData.inviteRewardLevels)) {
+          const userMap = new Map();
+          for (const [userId, levelsArray] of Object.entries(userObj)) {
+            if (Array.isArray(levelsArray)) {
+              userMap.set(userId, new Set(levelsArray));
+            }
+          }
+          inviteRewardLevels.set(guildId, userMap);
+        }
+        console.log("[state] Wczytano inviteRewardLevels");
+      }
+
+      if (botStateData.claimedInviteRewardMilestones) {
+        for (const [guildId, userObj] of Object.entries(botStateData.claimedInviteRewardMilestones)) {
+          const userMap = new Map();
+          for (const [userId, levelsArray] of Object.entries(userObj)) {
+            if (Array.isArray(levelsArray)) {
+              userMap.set(userId, new Set(levelsArray));
+            }
+          }
+          claimedInviteRewardMilestones.set(guildId, userMap);
+        }
+        console.log("[state] Wczytano claimedInviteRewardMilestones");
+      }
+
+      if (
+        botStateData.lastInviteInstruction &&
+        typeof botStateData.lastInviteInstruction === "object"
+      ) {
+        for (const [channelId, messageId] of Object.entries(
+          botStateData.lastInviteInstruction,
+        )) {
+          if (typeof messageId === "string") {
+            lastInviteInstruction.set(channelId, messageId);
+          }
+        }
+      }
+
+      // Load contests
+      if (botStateData.contests && typeof botStateData.contests === "object") {
+        for (const [msgId, meta] of Object.entries(botStateData.contests)) {
+          if (meta && typeof meta.endsAt === "number") {
+            contests.set(msgId, meta);
+            // Schedule contest end if it hasn't ended yet
+            const now = Date.now();
+            if (meta.endsAt > now) {
+              const delay = meta.endsAt - now;
+              setTimeout(() => {
+                endContestByMessageId(msgId).catch((e) => console.error(e));
+              }, delay);
+              console.log(
+                `[contests] Przywrócono konkurs ${msgId}, zakończy się za ${Math.round(delay / 1000)}s`,
+              );
+            } else {
+              // Contest should have ended, end it now
+              setImmediate(() => {
+                endContestByMessageId(msgId).catch((e) => console.error(e));
+              });
+            }
+          }
+        }
+      }
+
+      // Load contest participants
+      if (
+        botStateData.contestParticipants &&
+        typeof botStateData.contestParticipants === "object"
+      ) {
+        for (const [msgId, participantData] of Object.entries(botStateData.contestParticipants)) {
+          if (Array.isArray(participantData)) {
+            // Check if participantData is array of [userId, nick] pairs or just userIds (backward compatibility)
+            if (participantData.length > 0 && Array.isArray(participantData[0])) {
+              // New format: array of [userId, nick] pairs
+              contestParticipants.set(msgId, new Map(participantData));
+            } else {
+              // Old format: array of userIds - convert to Map with empty nicks
+              const participantsMap = new Map();
+              participantData.forEach(userId => {
+                participantsMap.set(userId, "");
+              });
+              contestParticipants.set(msgId, participantsMap);
+            }
+          }
+        }
+        console.log("[state] Wczytano contestParticipants");
+      }
+
+      // Load contest leave blocks
+      if (
+        botStateData.contestLeaveBlocks &&
+        typeof botStateData.contestLeaveBlocks === "object"
+      ) {
+        for (const [userId, contestBlocks] of Object.entries(botStateData.contestLeaveBlocks)) {
+          if (contestBlocks && typeof contestBlocks === "object") {
+            const userBlocks = {};
+            for (const [msgId, blockData] of Object.entries(contestBlocks)) {
+              userBlocks[msgId] = {
+                leaveCount: blockData.leaveCount || 0,
+                blockedUntil: blockData.blockedUntil || 0
+              };
+            }
+            contestLeaveBlocks.set(userId, userBlocks);
+          }
+        }
+        console.log("[state] Wczytano contestLeaveBlocks");
+      }
+
+      if (botStateData.weeklySales && typeof botStateData.weeklySales === "object") {
+        for (const [userId, saleData] of Object.entries(botStateData.weeklySales)) {
+          if (!saleData || typeof saleData !== "object") continue;
+          weeklySales.set(userId, {
+            amount: Number(saleData.amount || 0),
+            lastUpdate: Number(saleData.lastUpdate || Date.now()),
+            paid: !!saleData.paid,
+            paidAt: saleData.paidAt || null,
+            guildId: saleData.guildId || null,
+          });
+        }
+        console.log(`[state] Wczytano weeklySales ze snapshotu: ${weeklySales.size} użytkowników`);
+      }
+
+      if (
+        botStateData.embedTestStates &&
+        typeof botStateData.embedTestStates === "object"
+      ) {
+        for (const [messageId, state] of Object.entries(
+          botStateData.embedTestStates,
+        )) {
+          if (!state || typeof state !== "object") continue;
+          embedTestStates.set(messageId, state);
+        }
+        console.log(
+          `[state] Wczytano embedTestStates: ${embedTestStates.size} stanów`,
         );
       }
-      console.log(
-        `[state] Wczytano regulationPanels: ${regulationPanels.size} paneli`,
-      );
-    }
 
-    // Load weekly sales from Supabase
-    try {
-      const sales = await db.getWeeklySales();
-      sales.forEach(({ user_id, amount, paid, paid_at, guild_id, updated_at }) => {
-        weeklySales.set(user_id, { 
-          amount: Number(amount || 0),
-          lastUpdate: updated_at ? new Date(updated_at).getTime() : Date.now(),
-          paid: paid || false,
-          paidAt: paid_at ? new Date(paid_at).getTime() : null,
-          guildId: guild_id || null,
-        });
-      });
-      console.log(`[Supabase] Wczytano weeklySales: ${sales.length} użytkowników`);
-    } catch (error) {
-      console.error("[Supabase] Błąd wczytywania weeklySales:", error);
-    }
-
-    // Load active codes
-    try {
-      const codes = await db.getActiveCodes();
-      codes.forEach(({ code, ...codeData }) => {
-        const normalizedCode = normalizeCodeInput(code);
-        if (!normalizedCode) return;
-        // Konwertuj nazwy pól na format używany w bocie
-        const botCodeData = {
-          oderId: codeData.user_id,
-          discount: codeData.discount,
-          expiresAt: new Date(codeData.expires_at).getTime(),
-          used: codeData.used,
-          reward: codeData.reward,
-          rewardAmount: codeData.reward_amount,
-          rewardText: codeData.reward_text,
-          type: codeData.type
-        };
-        activeCodes.set(normalizedCode, botCodeData);
-      });
-      console.log(`[Supabase] Wczytano activeCodes: ${codes.length} kodów`);
-    } catch (error) {
-      console.error("[Supabase] Błąd wczytywania activeCodes:", error);
-    }
-
-    // Load ticket owners from Supabase
-    try {
-      const ticketOwnersData = await db.getTicketOwners();
-      for (const [channelId, ticketData] of Object.entries(ticketOwnersData)) {
-        ticketOwners.set(channelId, ticketData);
+      if (
+        botStateData.regulationPanels &&
+        typeof botStateData.regulationPanels === "object"
+      ) {
+        for (const [messageId, panelState] of Object.entries(
+          botStateData.regulationPanels,
+        )) {
+          if (!panelState || typeof panelState !== "object") continue;
+          regulationPanels.set(
+            messageId,
+            cloneRegulationPanelState(panelState, {
+              messageId,
+              persistPanel: true,
+            }),
+          );
+        }
+        console.log(
+          `[state] Wczytano regulationPanels: ${regulationPanels.size} paneli`,
+        );
       }
-      console.log(`[Supabase] Wczytano ticketOwners: ${Object.keys(ticketOwnersData).length} wpisów`);
-    } catch (error) {
-      console.error("[Supabase] Błąd wczytywania ticketOwners:", error);
-    }
 
-    // Load invite total joined
-    if (botStateData.inviteTotalJoined) {
-      const loaded = nestedObjectToMapOfMaps(botStateData.inviteTotalJoined);
-      loaded.forEach((inner, guildId) => {
-        inviteTotalJoined.set(guildId, inner);
-      });
-    }
+      // Load weekly sales from Supabase
+      try {
+        const sales = await db.getWeeklySales();
+        sales.forEach(({ user_id, amount, paid, paid_at, guild_id, updated_at }) => {
+          weeklySales.set(user_id, {
+            amount: Number(amount || 0),
+            lastUpdate: updated_at ? new Date(updated_at).getTime() : Date.now(),
+            paid: paid || false,
+            paidAt: paid_at ? new Date(paid_at).getTime() : null,
+            guildId: guild_id || null,
+          });
+        });
+        console.log(`[Supabase] Wczytano weeklySales: ${sales.length} użytkowników`);
+      } catch (error) {
+        console.error("[Supabase] Błąd wczytywania weeklySales:", error);
+      }
 
-    // Load invite fake accounts
-    if (botStateData.inviteFakeAccounts) {
-      const loaded = nestedObjectToMapOfMaps(botStateData.inviteFakeAccounts);
-      loaded.forEach((inner, guildId) => {
-        inviteFakeAccounts.set(guildId, inner);
-      });
-    }
+      // Load active codes
+      try {
+        const codes = await db.getActiveCodes();
+        codes.forEach(({ code, ...codeData }) => {
+          const normalizedCode = normalizeCodeInput(code);
+          if (!normalizedCode) return;
+          // Konwertuj nazwy pól na format używany w bocie
+          const botCodeData = {
+            oderId: codeData.user_id,
+            discount: codeData.discount,
+            expiresAt: new Date(codeData.expires_at).getTime(),
+            used: codeData.used,
+            reward: codeData.reward,
+            rewardAmount: codeData.reward_amount,
+            rewardText: codeData.reward_text,
+            type: codeData.type
+          };
+          activeCodes.set(normalizedCode, botCodeData);
+        });
+        console.log(`[Supabase] Wczytano activeCodes: ${codes.length} kodów`);
+      } catch (error) {
+        console.error("[Supabase] Błąd wczytywania activeCodes:", error);
+      }
 
-    // Load invite bonus invites
-    if (botStateData.inviteBonusInvites) {
-      const loaded = nestedObjectToMapOfMaps(botStateData.inviteBonusInvites);
-      loaded.forEach((inner, guildId) => {
-        inviteBonusInvites.set(guildId, inner);
-      });
-    }
+      // Load ticket owners from Supabase
+      try {
+        const ticketOwnersData = await db.getTicketOwners();
+        for (const [channelId, ticketData] of Object.entries(ticketOwnersData)) {
+          ticketOwners.set(channelId, ticketData);
+        }
+        console.log(`[Supabase] Wczytano ticketOwners: ${Object.keys(ticketOwnersData).length} wpisów`);
+      } catch (error) {
+        console.error("[Supabase] Błąd wczytywania ticketOwners:", error);
+      }
 
-    // Load guildInvites
-    if (botStateData.guildInvites && typeof botStateData.guildInvites === "object") {
-      for (const [guildId, inviteMap] of Object.entries(botStateData.guildInvites)) {
-        if (inviteMap && typeof inviteMap === "object") {
-          const map = new Map();
-          for (const [code, uses] of Object.entries(inviteMap)) {
-            map.set(code, uses);
+      // Load invite total joined
+      if (botStateData.inviteTotalJoined) {
+        const loaded = nestedObjectToMapOfMaps(botStateData.inviteTotalJoined);
+        loaded.forEach((inner, guildId) => {
+          inviteTotalJoined.set(guildId, inner);
+        });
+      }
+
+      // Load invite fake accounts
+      if (botStateData.inviteFakeAccounts) {
+        const loaded = nestedObjectToMapOfMaps(botStateData.inviteFakeAccounts);
+        loaded.forEach((inner, guildId) => {
+          inviteFakeAccounts.set(guildId, inner);
+        });
+      }
+
+      // Load invite bonus invites
+      if (botStateData.inviteBonusInvites) {
+        const loaded = nestedObjectToMapOfMaps(botStateData.inviteBonusInvites);
+        loaded.forEach((inner, guildId) => {
+          inviteBonusInvites.set(guildId, inner);
+        });
+      }
+
+      // Load guildInvites
+      if (botStateData.guildInvites && typeof botStateData.guildInvites === "object") {
+        for (const [guildId, inviteMap] of Object.entries(botStateData.guildInvites)) {
+          if (inviteMap && typeof inviteMap === "object") {
+            const map = new Map();
+            for (const [code, uses] of Object.entries(inviteMap)) {
+              map.set(code, uses);
+            }
+            guildInvites.set(guildId, map);
           }
-          guildInvites.set(guildId, map);
         }
       }
-    }
 
-    // Load inviterOfMember
-    if (botStateData.inviterOfMember && typeof botStateData.inviterOfMember === "object") {
-      for (const [key, memberData] of Object.entries(botStateData.inviterOfMember)) {
-        if (memberData && typeof memberData === "object") {
-          inviterOfMember.set(key, memberData);
-        }
-      }
-    }
-
-    // Load inviterRateLimit
-    if (botStateData.inviterRateLimit && typeof botStateData.inviterRateLimit === "object") {
-      for (const [guildId, rateMap] of Object.entries(botStateData.inviterRateLimit)) {
-        if (rateMap && typeof rateMap === "object") {
-          const map = new Map();
-          for (const [inviterId, timestamps] of Object.entries(rateMap)) {
-            map.set(inviterId, timestamps);
+      // Load inviterOfMember
+      if (botStateData.inviterOfMember && typeof botStateData.inviterOfMember === "object") {
+        for (const [key, memberData] of Object.entries(botStateData.inviterOfMember)) {
+          if (memberData && typeof memberData === "object") {
+            inviterOfMember.set(key, memberData);
           }
-          inviterRateLimit.set(guildId, map);
         }
       }
-    }
 
-    // Load leaveRecords
-    if (botStateData.leaveRecords && typeof botStateData.leaveRecords === "object") {
-      for (const [key, inviterId] of Object.entries(botStateData.leaveRecords)) {
-        leaveRecords.set(key, inviterId);
-      }
-    }
-
-    // Load verificationRoles
-    if (botStateData.verificationRoles && typeof botStateData.verificationRoles === "object") {
-      for (const [guildId, roleId] of Object.entries(botStateData.verificationRoles)) {
-        verificationRoles.set(guildId, roleId);
-      }
-    }
-
-    // Load pendingVerifications
-    if (botStateData.pendingVerifications && typeof botStateData.pendingVerifications === "object") {
-      for (const [modalId, verificationData] of Object.entries(botStateData.pendingVerifications)) {
-        pendingVerifications.set(modalId, verificationData);
-      }
-    }
-
-    // Load ticketCategories
-    if (botStateData.ticketCategories && typeof botStateData.ticketCategories === "object") {
-      for (const [guildId, categories] of Object.entries(botStateData.ticketCategories)) {
-        ticketCategories.set(guildId, categories);
-      }
-    }
-
-    // Load dropChannels
-    if (botStateData.dropChannels && typeof botStateData.dropChannels === "object") {
-      for (const [guildId, channelId] of Object.entries(botStateData.dropChannels)) {
-        dropChannels.set(guildId, channelId);
-      }
-    }
-
-    // Load sprawdzZaproszeniaCooldowns
-    if (botStateData.sprawdzZaproszeniaCooldowns && typeof botStateData.sprawdzZaproszeniaCooldowns === "object") {
-      for (const [userId, timestamp] of Object.entries(botStateData.sprawdzZaproszeniaCooldowns)) {
-        sprawdzZaproszeniaCooldowns.set(userId, timestamp);
-      }
-    }
-
-    // Load lastOpinionInstruction
-    if (botStateData.lastOpinionInstruction && typeof botStateData.lastOpinionInstruction === "object") {
-      for (const [channelId, messageId] of Object.entries(botStateData.lastOpinionInstruction)) {
-        lastOpinionInstruction.set(channelId, messageId);
-      }
-    }
-
-    // Load lastDropInstruction
-    if (botStateData.lastDropInstruction && typeof botStateData.lastDropInstruction === "object") {
-      for (const [channelId, messageId] of Object.entries(botStateData.lastDropInstruction)) {
-        lastDropInstruction.set(channelId, messageId);
-      }
-    }
-
-    // Load kalkulatorData
-    if (botStateData.kalkulatorData && typeof botStateData.kalkulatorData === "object") {
-      for (const [userId, calcData] of Object.entries(botStateData.kalkulatorData)) {
-        kalkulatorData.set(userId, calcData);
-      }
-    }
-
-    // Load infoCooldowns
-    if (botStateData.infoCooldowns && typeof botStateData.infoCooldowns === "object") {
-      for (const [userId, timestamp] of Object.entries(botStateData.infoCooldowns)) {
-        infoCooldowns.set(userId, timestamp);
-      }
-    }
-
-    // Load repLastInfoMessage
-    if (botStateData.repLastInfoMessage && typeof botStateData.repLastInfoMessage === "object") {
-      for (const [channelId, messageId] of Object.entries(botStateData.repLastInfoMessage)) {
-        repLastInfoMessage.set(channelId, messageId);
-      }
-    }
-
-    // Load dropCooldowns
-    if (botStateData.dropCooldowns && typeof botStateData.dropCooldowns === "object") {
-      for (const [userId, timestamp] of Object.entries(botStateData.dropCooldowns)) {
-        dropCooldowns.set(userId, timestamp);
-      }
-    }
-
-    // Load freeKasaCooldowns
-    if (botStateData.freeKasaCooldowns && typeof botStateData.freeKasaCooldowns === "object") {
-      for (const [userId, timestamp] of Object.entries(botStateData.freeKasaCooldowns)) {
-        freeKasaCooldowns.set(userId, timestamp);
-      }
-    }
-
-    freeKasaLossStreak = Math.max(
-      0,
-      Number(botStateData.freeKasaLossStreak || 0),
-    );
-
-    if (
-      botStateData.freeKasaRewardProgress &&
-      typeof botStateData.freeKasaRewardProgress === "object"
-    ) {
-      for (const [userId, progress] of Object.entries(botStateData.freeKasaRewardProgress)) {
-        if (!progress || typeof progress !== "object") continue;
-        freeKasaRewardProgress.set(userId, {
-          cashBalance: Number(progress.cashBalance || 0),
-          totalWonCash: Number(progress.totalWonCash || 0),
-          pendingSwords: Number(progress.pendingSwords || 0),
-          history: Array.isArray(progress.history)
-            ? progress.history.slice(0, FREE_KASA_HISTORY_LIMIT)
-            : [],
-        });
-      }
-    }
-
-    // Load opinionCooldowns
-    if (botStateData.opinionCooldowns && typeof botStateData.opinionCooldowns === "object") {
-      for (const [userId, timestamp] of Object.entries(botStateData.opinionCooldowns)) {
-        opinionCooldowns.set(userId, timestamp);
-      }
-    }
-
-    if (
-      botStateData.rewardTicketClaims &&
-      typeof botStateData.rewardTicketClaims === "object"
-    ) {
-      for (const [channelId, claimData] of Object.entries(botStateData.rewardTicketClaims)) {
-        if (!claimData || typeof claimData !== "object") continue;
-        rewardTicketClaims.set(channelId, {
-          guildId: claimData.guildId || null,
-          userId: claimData.userId || null,
-          inviteMilestones: Array.isArray(claimData.inviteMilestones)
-            ? claimData.inviteMilestones.map((value) => Number(value)).filter(Boolean)
-            : [],
-          freeKasaCashToClaim: Number(claimData.freeKasaCashToClaim || 0),
-          freeKasaSwordCount: Number(claimData.freeKasaSwordCount || 0),
-          createdAt: Number(claimData.createdAt || Date.now()),
-        });
-      }
-    }
-
-    // Load pendingTicketClose
-    if (botStateData.pendingTicketClose && typeof botStateData.pendingTicketClose === "object") {
-      for (const [channelId, ticketData] of Object.entries(botStateData.pendingTicketClose)) {
-        pendingTicketClose.set(channelId, ticketData);
-      }
-    }
-
-    // Load opinieChannels
-    if (botStateData.opinieChannels && typeof botStateData.opinieChannels === "object") {
-      for (const [guildId, channelId] of Object.entries(botStateData.opinieChannels)) {
-        opinieChannels.set(guildId, channelId);
-      }
-    }
-
-    // Load autoPrzejmijSettings
-    if (botStateData.autoPrzejmijSettings && typeof botStateData.autoPrzejmijSettings === "object") {
-      for (const [guildId, cfg] of Object.entries(botStateData.autoPrzejmijSettings)) {
-        if (cfg && typeof cfg === "object" && cfg.enabled) {
-          autoPrzejmijSettings.set(guildId, cfg);
+      // Load inviterRateLimit
+      if (botStateData.inviterRateLimit && typeof botStateData.inviterRateLimit === "object") {
+        for (const [guildId, rateMap] of Object.entries(botStateData.inviterRateLimit)) {
+          if (rateMap && typeof rateMap === "object") {
+            const map = new Map();
+            for (const [inviterId, timestamps] of Object.entries(rateMap)) {
+              map.set(inviterId, timestamps);
+            }
+            inviterRateLimit.set(guildId, map);
+          }
         }
       }
-    }
 
-    if (
-      botStateData.sellerPaymentProfiles &&
-      typeof botStateData.sellerPaymentProfiles === "object"
-    ) {
-      for (const [profileKey, profile] of Object.entries(
-        botStateData.sellerPaymentProfiles,
-      )) {
-        if (!profile || typeof profile !== "object") continue;
-        sellerPaymentProfiles.set(profileKey, {
-          phone: String(profile.phone || "").slice(0, 80),
-          transferTitle: String(profile.transferTitle || "").slice(0, 120),
-          receiverName: String(profile.receiverName || "").slice(0, 120),
-          updatedAt: Number(profile.updatedAt || Date.now()),
-        });
+      // Load leaveRecords
+      if (botStateData.leaveRecords && typeof botStateData.leaveRecords === "object") {
+        for (const [key, inviterId] of Object.entries(botStateData.leaveRecords)) {
+          leaveRecords.set(key, inviterId);
+        }
       }
-      console.log(
-        `[state] Wczytano sellerPaymentProfiles: ${sellerPaymentProfiles.size} wpisów`,
+
+      // Load verificationRoles
+      if (botStateData.verificationRoles && typeof botStateData.verificationRoles === "object") {
+        for (const [guildId, roleId] of Object.entries(botStateData.verificationRoles)) {
+          verificationRoles.set(guildId, roleId);
+        }
+      }
+
+      // Load pendingVerifications
+      if (botStateData.pendingVerifications && typeof botStateData.pendingVerifications === "object") {
+        for (const [modalId, verificationData] of Object.entries(botStateData.pendingVerifications)) {
+          pendingVerifications.set(modalId, verificationData);
+        }
+      }
+
+      // Load ticketCategories
+      if (botStateData.ticketCategories && typeof botStateData.ticketCategories === "object") {
+        for (const [guildId, categories] of Object.entries(botStateData.ticketCategories)) {
+          ticketCategories.set(guildId, categories);
+        }
+      }
+
+      // Load dropChannels
+      if (botStateData.dropChannels && typeof botStateData.dropChannels === "object") {
+        for (const [guildId, channelId] of Object.entries(botStateData.dropChannels)) {
+          dropChannels.set(guildId, channelId);
+        }
+      }
+
+      // Load sprawdzZaproszeniaCooldowns
+      if (botStateData.sprawdzZaproszeniaCooldowns && typeof botStateData.sprawdzZaproszeniaCooldowns === "object") {
+        for (const [userId, timestamp] of Object.entries(botStateData.sprawdzZaproszeniaCooldowns)) {
+          sprawdzZaproszeniaCooldowns.set(userId, timestamp);
+        }
+      }
+
+      // Load lastOpinionInstruction
+      if (botStateData.lastOpinionInstruction && typeof botStateData.lastOpinionInstruction === "object") {
+        for (const [channelId, messageId] of Object.entries(botStateData.lastOpinionInstruction)) {
+          lastOpinionInstruction.set(channelId, messageId);
+        }
+      }
+
+      // Load lastDropInstruction
+      if (botStateData.lastDropInstruction && typeof botStateData.lastDropInstruction === "object") {
+        for (const [channelId, messageId] of Object.entries(botStateData.lastDropInstruction)) {
+          lastDropInstruction.set(channelId, messageId);
+        }
+      }
+
+      // Load kalkulatorData
+      if (botStateData.kalkulatorData && typeof botStateData.kalkulatorData === "object") {
+        for (const [userId, calcData] of Object.entries(botStateData.kalkulatorData)) {
+          kalkulatorData.set(userId, calcData);
+        }
+      }
+
+      // Load infoCooldowns
+      if (botStateData.infoCooldowns && typeof botStateData.infoCooldowns === "object") {
+        for (const [userId, timestamp] of Object.entries(botStateData.infoCooldowns)) {
+          infoCooldowns.set(userId, timestamp);
+        }
+      }
+
+      // Load repLastInfoMessage
+      if (botStateData.repLastInfoMessage && typeof botStateData.repLastInfoMessage === "object") {
+        for (const [channelId, messageId] of Object.entries(botStateData.repLastInfoMessage)) {
+          repLastInfoMessage.set(channelId, messageId);
+        }
+      }
+
+      // Load dropCooldowns
+      if (botStateData.dropCooldowns && typeof botStateData.dropCooldowns === "object") {
+        for (const [userId, timestamp] of Object.entries(botStateData.dropCooldowns)) {
+          dropCooldowns.set(userId, timestamp);
+        }
+      }
+
+      // Load freeKasaCooldowns
+      if (botStateData.freeKasaCooldowns && typeof botStateData.freeKasaCooldowns === "object") {
+        for (const [userId, timestamp] of Object.entries(botStateData.freeKasaCooldowns)) {
+          freeKasaCooldowns.set(userId, timestamp);
+        }
+      }
+
+      freeKasaLossStreak = Math.max(
+        0,
+        Number(botStateData.freeKasaLossStreak || 0),
       );
-    }
 
-    if (
-      botStateData.ownerInviteCountingSettings &&
-      typeof botStateData.ownerInviteCountingSettings === "object"
-    ) {
-      for (const [guildId, enabled] of Object.entries(botStateData.ownerInviteCountingSettings)) {
-        ownerInviteCountingSettings.set(guildId, !!enabled);
+      if (
+        botStateData.freeKasaRewardProgress &&
+        typeof botStateData.freeKasaRewardProgress === "object"
+      ) {
+        for (const [userId, progress] of Object.entries(botStateData.freeKasaRewardProgress)) {
+          if (!progress || typeof progress !== "object") continue;
+          freeKasaRewardProgress.set(userId, {
+            cashBalance: Number(progress.cashBalance || 0),
+            totalWonCash: Number(progress.totalWonCash || 0),
+            pendingSwords: Number(progress.pendingSwords || 0),
+            history: Array.isArray(progress.history)
+              ? progress.history.slice(0, FREE_KASA_HISTORY_LIMIT)
+              : [],
+          });
+        }
       }
-    }
 
-    try {
-      let fakeGuilds = 0;
-      let fakeEntries = 0;
-      for (const [gId, inner] of inviteFakeAccounts.entries()) {
-        fakeGuilds++;
-        if (inner && typeof inner.size === "number") fakeEntries += inner.size;
+      // Load opinionCooldowns
+      if (botStateData.opinionCooldowns && typeof botStateData.opinionCooldowns === "object") {
+        for (const [userId, timestamp] of Object.entries(botStateData.opinionCooldowns)) {
+          opinionCooldowns.set(userId, timestamp);
+        }
       }
-      console.log(
-        `[state] load ok <- supabase inviteFakeAccounts guilds=${fakeGuilds} entries=${fakeEntries}`,
-      );
-    } catch (e) {
-      // ignore
-    }
-    console.log("Załadowano zapisany stan bota z Supabase.");
-    console.log("[state] Zakończono wczytywanie stanu");
+
+      if (
+        botStateData.rewardTicketClaims &&
+        typeof botStateData.rewardTicketClaims === "object"
+      ) {
+        for (const [channelId, claimData] of Object.entries(botStateData.rewardTicketClaims)) {
+          if (!claimData || typeof claimData !== "object") continue;
+          rewardTicketClaims.set(channelId, {
+            guildId: claimData.guildId || null,
+            userId: claimData.userId || null,
+            inviteMilestones: Array.isArray(claimData.inviteMilestones)
+              ? claimData.inviteMilestones.map((value) => Number(value)).filter(Boolean)
+              : [],
+            freeKasaCashToClaim: Number(claimData.freeKasaCashToClaim || 0),
+            freeKasaSwordCount: Number(claimData.freeKasaSwordCount || 0),
+            createdAt: Number(claimData.createdAt || Date.now()),
+          });
+        }
+      }
+
+      // Load pendingTicketClose
+      if (botStateData.pendingTicketClose && typeof botStateData.pendingTicketClose === "object") {
+        for (const [channelId, ticketData] of Object.entries(botStateData.pendingTicketClose)) {
+          pendingTicketClose.set(channelId, ticketData);
+        }
+      }
+
+      // Load opinieChannels
+      if (botStateData.opinieChannels && typeof botStateData.opinieChannels === "object") {
+        for (const [guildId, channelId] of Object.entries(botStateData.opinieChannels)) {
+          opinieChannels.set(guildId, channelId);
+        }
+      }
+
+      // Load autoPrzejmijSettings
+      if (botStateData.autoPrzejmijSettings && typeof botStateData.autoPrzejmijSettings === "object") {
+        for (const [guildId, cfg] of Object.entries(botStateData.autoPrzejmijSettings)) {
+          if (cfg && typeof cfg === "object" && cfg.enabled) {
+            autoPrzejmijSettings.set(guildId, cfg);
+          }
+        }
+      }
+
+      if (
+        botStateData.sellerPaymentProfiles &&
+        typeof botStateData.sellerPaymentProfiles === "object"
+      ) {
+        for (const [profileKey, profile] of Object.entries(
+          botStateData.sellerPaymentProfiles,
+        )) {
+          if (!profile || typeof profile !== "object") continue;
+          sellerPaymentProfiles.set(profileKey, {
+            phone: String(profile.phone || "").slice(0, 80),
+            transferTitle: String(profile.transferTitle || "").slice(0, 120),
+            receiverName: String(profile.receiverName || "").slice(0, 120),
+            updatedAt: Number(profile.updatedAt || Date.now()),
+          });
+        }
+        console.log(
+          `[state] Wczytano sellerPaymentProfiles: ${sellerPaymentProfiles.size} wpisów`,
+        );
+      }
+
+      if (
+        botStateData.ownerInviteCountingSettings &&
+        typeof botStateData.ownerInviteCountingSettings === "object"
+      ) {
+        for (const [guildId, enabled] of Object.entries(botStateData.ownerInviteCountingSettings)) {
+          ownerInviteCountingSettings.set(guildId, !!enabled);
+        }
+      }
+
+      try {
+        let fakeGuilds = 0;
+        let fakeEntries = 0;
+        for (const [gId, inner] of inviteFakeAccounts.entries()) {
+          fakeGuilds++;
+          if (inner && typeof inner.size === "number") fakeEntries += inner.size;
+        }
+        console.log(
+          `[state] load ok <- supabase inviteFakeAccounts guilds=${fakeGuilds} entries=${fakeEntries}`,
+        );
+      } catch (e) {
+        // ignore
+      }
+      console.log("Załadowano zapisany stan bota z Supabase.");
+      console.log("[state] Zakończono wczytywanie stanu");
     } else {
       console.log("[state] Nie znaleziono danych w Supabase, zaczynam z pustym stanem");
     }
@@ -4285,7 +4285,7 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[READY] Bot zalogowany jako ${c.user.tag}`);
   console.log(`[READY] Bot jest na ${c.guilds.cache.size} serwerach`);
   console.log(`[READY] Bot jest online i gotowy do pracy!`);
-  
+
   // loadPersistentState() już wywołane na początku pliku
 
   // --- Webhook startowy do Discorda ---
@@ -4517,7 +4517,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 async function handleModalSubmit(interaction) {
   // Sprawdź czy interakcja już została odpowiedziana
   if (interaction.replied || interaction.deferred) return;
-  
+
   const id = interaction.customId;
 
   if (id.startsWith("modal_odprzejmij")) {
@@ -4920,10 +4920,10 @@ async function handleModalSubmit(interaction) {
     codeData.used = true;
     activeCodes.delete(enteredCode);
     await db.deleteActiveCode(enteredCode);
-    
+
     // Aktualizuj w Supabase
     await db.updateActiveCode(enteredCode, { used: true });
-    
+
     scheduleSavePersistentState();
 
     const redeemEmbed = new EmbedBuilder()
@@ -5254,7 +5254,7 @@ async function handleModalSubmit(interaction) {
     // Dodaj rangi limitów w zależności od kategorii
     if (parentToUse) {
       const categoryId = parentToUse;
-      
+
       // Specjalna obsługa dla kategorii "inne" - tylko właściciel i właściciel ticketu widzą
       if (categoryId === categories["inne"]) {
         createOptions.permissionOverwrites.push(
@@ -5320,11 +5320,11 @@ async function handleModalSubmit(interaction) {
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("Przejmij")
-        .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
+      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
     const unclaimButton = new ButtonBuilder()
       .setCustomId(`ticket_unclaim_${channel.id}`)
       .setLabel("Odprzejmij")
-        .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
+      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
       .setDisabled(true);
 
     const buttonRow = new ActionRowBuilder().addComponents(
@@ -5514,7 +5514,7 @@ async function handleButtonInteraction(interaction) {
       `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
       `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
       `> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`,
-      `> \`⛓️\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`,
+      `> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`,
       `> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`,
     ].join("\n");
     const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(description);
@@ -5582,7 +5582,7 @@ async function handleButtonInteraction(interaction) {
     const cancelEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription("> `📋` × Anulowano");
-    
+
     await interaction.update({
       embeds: [cancelEmbed],
       components: [],
@@ -5590,201 +5590,201 @@ async function handleButtonInteraction(interaction) {
     return;
   }
 
-async function handleModyVideosAction(interaction) {
-  try {
-    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-  } catch (err) {
-    // Interaction token already expired or already acknowledged.
-    console.warn("[mody] Nie udało się potwierdzić interakcji przycisku:", err?.code || err);
-    return;
-  }
+  async function handleModyVideosAction(interaction) {
+    try {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+    } catch (err) {
+      // Interaction token already expired or already acknowledged.
+      console.warn("[mody] Nie udało się potwierdzić interakcji przycisku:", err?.code || err);
+      return;
+    }
 
-  const resolvedVideos = [];
-  const seenKeys = new Set();
-  const seenUrls = new Set();
+    const resolvedVideos = [];
+    const seenKeys = new Set();
+    const seenUrls = new Set();
 
-  const addResolvedVideo = (videoCfg, url, labelFallback = "Nagranie") => {
-    if (!isHttpUrl(url)) return;
-    const key = videoCfg?.key ? `key:${videoCfg.key}` : `url:${url}`;
-    if (seenKeys.has(key) || seenUrls.has(url)) return;
-    seenKeys.add(key);
-    seenUrls.add(url);
-    resolvedVideos.push({
-      videoCfg: videoCfg || null,
-      url,
-      labelFallback,
-    });
-  };
-
-  // 1) Najpierw bierzemy video z wiadomości panelu (to najszybsza ścieżka).
-  const fromCurrentMessage = collectVideoLinksFromMessage(interaction.message);
-  for (const item of fromCurrentMessage) {
-    const cfgFromAttachment =
-      (item?.key && MODS_VIDEO_FILES.find((v) => v.key === item.key)) ||
-      getModsVideoConfigByFilename(item?.label || "");
-    addResolvedVideo(
-      cfgFromAttachment,
-      item?.url || "",
-      item?.modName || item?.label || "Nagranie",
-    );
-  }
-
-  // 2) Dołóż źródła z resolvera z preferencją Discord CDN (slow-scan + fallbacki).
-  for (const videoCfg of MODS_VIDEO_FILES) {
-    const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
-      allowSlowScan: true,
-    });
-    addResolvedVideo(
-      videoCfg,
-      url,
-      videoCfg.modName || videoCfg.label || "Nagranie",
-    );
-  }
-
-  if (resolvedVideos.length > 0) {
-    const MAX_VIDEO_MESSAGES = 10;
-    resolvedVideos.sort((a, b) => {
-      const rankA = getModsVideoOrderRank(a.videoCfg);
-      const rankB = getModsVideoOrderRank(b.videoCfg);
-      if (rankA !== rankB) return rankA - rankB;
-      const keyA = a.videoCfg?.key || a.labelFallback || "";
-      const keyB = b.videoCfg?.key || b.labelFallback || "";
-      return keyA.localeCompare(keyB, "pl");
-    });
-    const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
-    let sentAtLeastOneVideo = false;
-    let firstResponseSent = false;
-
-    const sendVideoMessage = async ({ content, files }) => {
-      if (!firstResponseSent) {
-        await interaction.editReply({
-          content,
-          files,
-          embeds: [],
-          components: [],
-        });
-        firstResponseSent = true;
-        return;
-      }
-      await interaction.followUp({
-        content,
-        files,
-        flags: [MessageFlags.Ephemeral],
+    const addResolvedVideo = (videoCfg, url, labelFallback = "Nagranie") => {
+      if (!isHttpUrl(url)) return;
+      const key = videoCfg?.key ? `key:${videoCfg.key}` : `url:${url}`;
+      if (seenKeys.has(key) || seenUrls.has(url)) return;
+      seenKeys.add(key);
+      seenUrls.add(url);
+      resolvedVideos.push({
+        videoCfg: videoCfg || null,
+        url,
+        labelFallback,
       });
     };
 
-    for (let i = 0; i < videosToSend.length; i += 1) {
-      const video = videosToSend[i];
-      const videoCfg = video.videoCfg || null;
-      const caption = getModsVideoCaption(videoCfg, video.labelFallback || "Nagranie");
-      const localPath = resolveLocalModsVideoPath(videoCfg);
-      let sentThisVideo = false;
+    // 1) Najpierw bierzemy video z wiadomości panelu (to najszybsza ścieżka).
+    const fromCurrentMessage = collectVideoLinksFromMessage(interaction.message);
+    for (const item of fromCurrentMessage) {
+      const cfgFromAttachment =
+        (item?.key && MODS_VIDEO_FILES.find((v) => v.key === item.key)) ||
+        getModsVideoConfigByFilename(item?.label || "");
+      addResolvedVideo(
+        cfgFromAttachment,
+        item?.url || "",
+        item?.modName || item?.label || "Nagranie",
+      );
+    }
 
-      if (localPath) {
-        let size = 0;
-        try {
-          size = fs.statSync(localPath).size || 0;
-        } catch {
-          size = 0;
+    // 2) Dołóż źródła z resolvera z preferencją Discord CDN (slow-scan + fallbacki).
+    for (const videoCfg of MODS_VIDEO_FILES) {
+      const url = await resolveModsVideoUrl(interaction.guild, videoCfg, {
+        allowSlowScan: true,
+      });
+      addResolvedVideo(
+        videoCfg,
+        url,
+        videoCfg.modName || videoCfg.label || "Nagranie",
+      );
+    }
+
+    if (resolvedVideos.length > 0) {
+      const MAX_VIDEO_MESSAGES = 10;
+      resolvedVideos.sort((a, b) => {
+        const rankA = getModsVideoOrderRank(a.videoCfg);
+        const rankB = getModsVideoOrderRank(b.videoCfg);
+        if (rankA !== rankB) return rankA - rankB;
+        const keyA = a.videoCfg?.key || a.labelFallback || "";
+        const keyB = b.videoCfg?.key || b.labelFallback || "";
+        return keyA.localeCompare(keyB, "pl");
+      });
+      const videosToSend = resolvedVideos.slice(0, MAX_VIDEO_MESSAGES);
+      let sentAtLeastOneVideo = false;
+      let firstResponseSent = false;
+
+      const sendVideoMessage = async ({ content, files }) => {
+        if (!firstResponseSent) {
+          await interaction.editReply({
+            content,
+            files,
+            embeds: [],
+            components: [],
+          });
+          firstResponseSent = true;
+          return;
+        }
+        await interaction.followUp({
+          content,
+          files,
+          flags: [MessageFlags.Ephemeral],
+        });
+      };
+
+      for (let i = 0; i < videosToSend.length; i += 1) {
+        const video = videosToSend[i];
+        const videoCfg = video.videoCfg || null;
+        const caption = getModsVideoCaption(videoCfg, video.labelFallback || "Nagranie");
+        const localPath = resolveLocalModsVideoPath(videoCfg);
+        let sentThisVideo = false;
+
+        if (localPath) {
+          let size = 0;
+          try {
+            size = fs.statSync(localPath).size || 0;
+          } catch {
+            size = 0;
+          }
+
+          if (size > 0 && size <= DISCORD_MAX_UPLOAD_BYTES) {
+            const ext = path.extname(localPath) || ".mp4";
+            const baseName =
+              (videoCfg?.key || `video_${i + 1}`)
+                .toString()
+                .replace(/[^a-z0-9_-]/gi, "_") || `video_${i + 1}`;
+            const attachment = new AttachmentBuilder(localPath, {
+              name: `${baseName}${ext.toLowerCase()}`,
+            });
+
+            try {
+              await sendVideoMessage({
+                content: caption,
+                files: [attachment],
+              });
+              sentAtLeastOneVideo = true;
+              sentThisVideo = true;
+              continue;
+            } catch (err) {
+              console.warn(
+                `[mody] Nie udało się wysłać pliku ${path.basename(localPath)}; próbuję link fallback.`,
+                err?.code || err?.message || err,
+              );
+            }
+          }
         }
 
-        if (size > 0 && size <= DISCORD_MAX_UPLOAD_BYTES) {
-          const ext = path.extname(localPath) || ".mp4";
-          const baseName =
-            (videoCfg?.key || `video_${i + 1}`)
-              .toString()
-              .replace(/[^a-z0-9_-]/gi, "_") || `video_${i + 1}`;
-          const attachment = new AttachmentBuilder(localPath, {
-            name: `${baseName}${ext.toLowerCase()}`,
-          });
-
+        // Fallback: jeśli lokalny plik jest niedostępny/za duży, wyślij caption + link.
+        if (!sentThisVideo && isHttpUrl(video.url)) {
           try {
             await sendVideoMessage({
-              content: caption,
-              files: [attachment],
+              content: `${caption}\n${video.url}`,
             });
             sentAtLeastOneVideo = true;
             sentThisVideo = true;
-            continue;
           } catch (err) {
             console.warn(
-              `[mody] Nie udało się wysłać pliku ${path.basename(localPath)}; próbuję link fallback.`,
+              "[mody] Nie udało się wysłać fallback linku:",
               err?.code || err?.message || err,
             );
           }
         }
-      }
 
-      // Fallback: jeśli lokalny plik jest niedostępny/za duży, wyślij caption + link.
-      if (!sentThisVideo && isHttpUrl(video.url)) {
-        try {
-          await sendVideoMessage({
-            content: `${caption}\n${video.url}`,
-          });
-          sentAtLeastOneVideo = true;
-          sentThisVideo = true;
-        } catch (err) {
+        if (!sentThisVideo) {
           console.warn(
-            "[mody] Nie udało się wysłać fallback linku:",
-            err?.code || err?.message || err,
+            `[mody] Pominięto video ${videoCfg?.key || video.labelFallback || i + 1} (brak pliku <= limit i brak działającego URL).`,
           );
         }
       }
 
-      if (!sentThisVideo) {
-        console.warn(
-          `[mody] Pominięto video ${videoCfg?.key || video.labelFallback || i + 1} (brak pliku <= limit i brak działającego URL).`,
-        );
+      if (!sentAtLeastOneVideo) {
+        const failMsg =
+          "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.";
+        if (!firstResponseSent) {
+          await interaction.editReply({ content: failMsg, embeds: [], components: [] });
+        } else {
+          await interaction.followUp({
+            content: failMsg,
+            flags: [MessageFlags.Ephemeral],
+          });
+        }
       }
+      return;
     }
 
-    if (!sentAtLeastOneVideo) {
-      const failMsg =
-        "> `❌` × Nie udało się wysłać nagrań. Sprawdź uprawnienia i źródła plików.";
-      if (!firstResponseSent) {
-        await interaction.editReply({ content: failMsg, embeds: [], components: [] });
-      } else {
-        await interaction.followUp({
-          content: failMsg,
-          flags: [MessageFlags.Ephemeral],
-        });
+    const localVideo =
+      MODS_VIDEO_FILES
+        .map((cfg) => ({
+          cfg,
+          localPath: resolveLocalModsVideoPath(cfg),
+        }))
+        .find((item) => !!item.localPath) || null;
+
+    if (localVideo) {
+      let videoSize = 0;
+      try {
+        videoSize = fs.statSync(localVideo.localPath).size || 0;
+      } catch {
+        videoSize = 0;
       }
-    }
-    return;
-  }
 
-  const localVideo =
-    MODS_VIDEO_FILES
-      .map((cfg) => ({
-        cfg,
-        localPath: resolveLocalModsVideoPath(cfg),
-      }))
-      .find((item) => !!item.localPath) || null;
-
-  if (localVideo) {
-    let videoSize = 0;
-    try {
-      videoSize = fs.statSync(localVideo.localPath).size || 0;
-    } catch {
-      videoSize = 0;
+      const sizeMb = (videoSize / 1024 / 1024).toFixed(1);
+      const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
+      await interaction.editReply({
+        content:
+          `> \`❌\` × Nie mam publicznego linku do **${path.basename(localVideo.localPath)}**.\n` +
+          `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
+          `> \`✅\` × Ustaw URL w env \`${localVideo.cfg.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
+      });
+      return;
     }
 
-    const sizeMb = (videoSize / 1024 / 1024).toFixed(1);
-    const limitMb = (DISCORD_MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0);
     await interaction.editReply({
       content:
-        `> \`❌\` × Nie mam publicznego linku do **${path.basename(localVideo.localPath)}**.\n` +
-        `> \`ℹ️\` × Lokalny plik ma \`${sizeMb} MB\`, a limit uploadu Discord to ok. \`${limitMb} MB\`.\n` +
-        `> \`✅\` × Ustaw URL w env \`${localVideo.cfg.envVar}\` (albo wrzuć film na kanał i kliknij przycisk ponownie).`,
+        "> `❌` × Nie znaleziono żadnych nagrań modów ani linków do nich.",
     });
-    return;
   }
-
-  await interaction.editReply({
-    content:
-      "> `❌` × Nie znaleziono żadnych nagrań modów ani linków do nich.",
-  });
-}
 
   if (customId.startsWith("mody_videos_")) {
     await handleModyVideosAction(interaction);
@@ -6273,7 +6273,7 @@ async function handleModyVideosAction(interaction) {
     const parts = customId.split("_");
     const channelId = parts[2];
     const expectedClaimer = parts[3] || "";
-    
+
     const modalId = expectedClaimer ? `modal_odprzejmij_${expectedClaimer}` : "modal_odprzejmij";
     const modal = new ModalBuilder()
       .setCustomId(modalId)
@@ -6448,7 +6448,7 @@ async function handleRozliczenieCommand(interaction) {
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   const requiredRoleId = "1350786945944391733";
   const hasRole = interaction.member.roles.cache.has(requiredRoleId);
-  
+
   if (!isOwner && !hasRole) {
     await interaction.reply({
       content: "> `❗` × Brak wymaganych uprawnień.",
@@ -6484,7 +6484,7 @@ async function handleRozliczenieCommand(interaction) {
   userData.lastUpdate = Date.now();
   userData.guildId = interaction.guild.id;
   weeklySales.set(userId, userData);
-  
+
   // Zapisz weekly sales do Supabase
   await db.saveWeeklySale(
     userId,
@@ -6510,7 +6510,7 @@ async function handleRozliczenieCommand(interaction) {
 
   await interaction.reply({ embeds: [embed] });
   console.log(`Użytkownik ${userId} dodał rozliczenie: ${kwota} zł`);
-  
+
   // Odśwież wiadomość ROZLICZENIA TYGODNIOWE po dodaniu rozliczenia
   setTimeout(sendRozliczeniaMessage, 1000);
 }
@@ -6571,7 +6571,7 @@ async function handleRozliczenieZaplacilCommand(interaction) {
 
   await interaction.reply({ embeds: [embed] });
   console.log(`[rozliczenie] Admin ${interaction.user.id} oznaczył rozliczenie użytkownika ${userId} jako zapłacone (${prowizja} zł)`);
-  
+
   // Odśwież wiadomość ROZLICZENIA TYGODNIOWE
   setTimeout(sendRozliczeniaMessage, 1000);
 }
@@ -6614,7 +6614,7 @@ async function handleRozliczenieZakonczCommand(interaction) {
       // Pobierz nazwę użytkownika zamiast pingować
       const user = client.users.cache.get(userId);
       const userName = user ? `<@${userId}>` : `<@${userId}>`;
-      
+
       reportLines.push(`${userName} Do zapłaty ${prowizja.toFixed(2)}zł`);
       totalSales += data.amount;
     }
@@ -6641,11 +6641,11 @@ async function handleRozliczenieZakonczCommand(interaction) {
       for (const [userId, data] of weeklySales) {
         pings.push(`<@${userId}>`);
       }
-      
+
       const pingMessage = await logsChannel.send({
         content: `**Osoby do zapłaty prowizji:** ${pings.join(' ')}`
       });
-      
+
       // Usuń wiadomość z pingami po 5 sekundach
       setTimeout(() => {
         pingMessage.delete().catch(err => console.log('Nie udało się usunąć wiadomości z pingami:', err));
@@ -6660,7 +6660,7 @@ async function handleRozliczenieZakonczCommand(interaction) {
     // Resetuj dane po wysłaniu raportu - TYLKO rozliczenia, NIE zaproszenia!
     weeklySales.clear();
     console.log("Ręcznie zresetowano rozliczenia po /rozliczeniezakoncz");
-    
+
     // Resetuj też w Supabase dla aktualnego tygodnia
     try {
       const resetOk = await db.resetWeeklySales();
@@ -6673,7 +6673,7 @@ async function handleRozliczenieZakonczCommand(interaction) {
       console.error("Błąd podczas resetowania rozliczeń w Supabase:", err);
     }
     scheduleSavePersistentState(true);
-    
+
     // UWAGA: NIE resetujemy zaproszeń - są one przechowywane w Supabase osobno!
     console.log("🔒 ZAPROSZENIA ZACHOWANE - nie resetowane!");
 
@@ -6713,7 +6713,7 @@ async function handleStatusBotaCommand(interaction) {
 
   try {
     const status = await checkBotStatus();
-    
+
     const embed = new EmbedBuilder()
       .setColor(status.statusColor)
       .setTitle("📊 Status Bota")
@@ -6779,7 +6779,7 @@ async function handleRozliczenieUstawCommand(interaction) {
   userData.lastUpdate = Date.now();
   userData.guildId = interaction.guild.id;
   weeklySales.set(userId, userData);
-  
+
   // Zapisz do Supabase
   await db.saveWeeklySale(
     userId,
@@ -6789,7 +6789,7 @@ async function handleRozliczenieUstawCommand(interaction) {
     userData.paidAt || null,
     userData.lastUpdate,
   );
-  
+
   // Zapisz stan po zmianie rozliczenia
   scheduleSavePersistentState(true);
 
@@ -7191,7 +7191,7 @@ async function handlePanelKalkulatorCommand(interaction) {
     flags: [MessageFlags.Ephemeral],
   });
 
-  await interaction.channel.send({ 
+  await interaction.channel.send({
     components: [container],
     flags: MessageFlags.IsComponentsV2
   });
@@ -7311,7 +7311,7 @@ async function handleAdminOdprzejmij(interaction) {
     await interaction.reply({ content: "> `❌` × **Użyj** komendy w kanale **ticketu**.", flags: [MessageFlags.Ephemeral] });
     return;
   }
-  
+
   const modal = new ModalBuilder()
     .setCustomId("modal_odprzejmij")
     .setTitle("Zwalnianie ticketu");
@@ -7555,7 +7555,7 @@ async function handleSendMessageCommand(interaction) {
           content: "> `❌` × **Anulowano** wysyłanie wiadomości.",
           flags: [MessageFlags.Ephemeral],
         });
-      } catch (e) {}
+      } catch (e) { }
       collector.stop("cancelled");
       return;
     }
@@ -7597,7 +7597,7 @@ async function handleSendMessageCommand(interaction) {
             "❌ Nie udało się wysłać wiadomości. Sprawdź kanał, załączniki i format treści.",
           flags: [MessageFlags.Ephemeral],
         });
-      } catch (e) {}
+      } catch (e) { }
     }
   });
 
@@ -7609,7 +7609,7 @@ async function handleSendMessageCommand(interaction) {
             "⌛ Nie otrzymałem wiadomości w wyznaczonym czasie. Użyj ponownie /embed aby spróbować jeszcze raz.",
           flags: [MessageFlags.Ephemeral],
         });
-      } catch (e) {}
+      } catch (e) { }
     }
   });
 }
@@ -7680,7 +7680,7 @@ async function handleModyCommand(interaction) {
     const minecraftEmoji2 = "<a:minecraft2:1480590181944791122>";
     const ironLoveEmoji = "<a:iron_love:1480590229697069210>";
     const starEmoji = "<:star:1474431260133691567>";
-  const content = contentRaw
+    const content = contentRaw
       .replace(/:strzałka:/gi, arrowEmoji)
       .replace(/:arrowwhite:/gi, arrowEmoji)
       .replace(/:alertownik:/gi, alertEmoji)
@@ -7850,7 +7850,7 @@ async function handleDropCommand(interaction) {
       created: Date.now(),
       type: "discount",
     });
-    
+
     // Zapisz do Supabase
     await db.saveActiveCode(code, {
       oderId: user.id,
@@ -7996,6 +7996,7 @@ function normalizeSellerPaymentProfile(profile = {}) {
   return {
     phone: String(profile.phone || "").trim().slice(0, 80),
     transferTitle: String(profile.transferTitle || "").trim().slice(0, 120),
+    recipient: String(profile.recipient || "").trim().slice(0, 120),
     paypalEmail: String(profile.paypalEmail || "").trim().slice(0, 120),
     ltcWallet: String(profile.ltcWallet || "").trim().slice(0, 180),
     mypscEmail: String(profile.mypscEmail || "").trim().slice(0, 120),
@@ -8008,6 +8009,7 @@ function sellerPaymentProfileHasData(profile) {
     profile &&
     (String(profile.phone || "").trim() ||
       String(profile.transferTitle || "").trim() ||
+      String(profile.recipient || "").trim() ||
       String(profile.paypalEmail || "").trim() ||
       String(profile.ltcWallet || "").trim() ||
       String(profile.mypscEmail || "").trim())
@@ -8051,8 +8053,8 @@ function buildSellerPaymentPanelPayload(guildId) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "```\n" +
-          "💳 New Shop × DANE SPRZEDAWCY\n" +
-          "```",
+        "💳 New Shop × DANE SPRZEDAWCY\n" +
+        "```",
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
@@ -8104,11 +8106,19 @@ function buildSellerPaymentDataModal(interaction) {
 
   const transferTitleInput = new TextInputBuilder()
     .setCustomId("transfer_title")
-    .setLabel("Tytuł przelewu / Odbiorca")
+    .setLabel("Tytuł przelewu")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
-    .setPlaceholder("np. Zamówienie DC / Jan K.");
+    .setPlaceholder("np. Zamówienie DC");
+
+  const recipientInput = new TextInputBuilder()
+    .setCustomId("recipient")
+    .setLabel("Odbiorca przelewu")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. Jan Kowalski");
 
   const paypalEmailInput = new TextInputBuilder()
     .setCustomId("paypal_email")
@@ -8136,6 +8146,7 @@ function buildSellerPaymentDataModal(interaction) {
 
   setTextInputValueIfPresent(phoneInput, current.phone || "");
   setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
+  setTextInputValueIfPresent(recipientInput, current.recipient || "");
   setTextInputValueIfPresent(paypalEmailInput, current.paypalEmail || "");
   setTextInputValueIfPresent(ltcWalletInput, current.ltcWallet || "");
   setTextInputValueIfPresent(mypscEmailInput, current.mypscEmail || "");
@@ -8143,9 +8154,13 @@ function buildSellerPaymentDataModal(interaction) {
   modal.addComponents(
     new ActionRowBuilder().addComponents(phoneInput),
     new ActionRowBuilder().addComponents(transferTitleInput),
+    new ActionRowBuilder().addComponents(recipientInput),
     new ActionRowBuilder().addComponents(paypalEmailInput),
-    new ActionRowBuilder().addComponents(ltcWalletInput),
-    new ActionRowBuilder().addComponents(mypscEmailInput)
+    new ActionRowBuilder().addComponents(ltcWalletInput)
+    // Uwaga: discord pozwala na max 5 pol w modalu. MyPSC zostalo wypchniete. 
+    // Musimy zdecydowac co usunac lub jak to podzielic. 
+    // Na razie zostawiam MyPSC poza modalem lub usune LTC jesli to mniej wazne.
+    // Ale w discord.js ActionRow moze byc max 5.
   );
 
   return modal;
@@ -8180,19 +8195,44 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
 
   const profile = getSellerPaymentProfile(guildId, sellerId);
   const hasData = sellerPaymentProfileHasData(profile);
-  const description = hasData
-    ? [
-        "> `💳` × **Dane do płatności**",
-        `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
-        `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
-        `> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`,
-        `> \`⛓️\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`,
-        `> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`,
-      ].join("\n")
-    : [
-        "> `💳` × **Dane do płatności**",
-        "> `⚠️` × **Brak danych.** Sprzedawca nie uzupełnił jeszcze panelu płatności.",
-      ].join("\n");
+  const method = String(ticketData?.paymentMethod || "").toLowerCase();
+
+  const descriptionLines = ["> `💳` × **Dane do płatności**"];
+
+  if (hasData) {
+    // Zawsze pokazuj Odbiorce i Tytul jesli to BLIK lub przelew
+    if (method.includes("blik") || method.includes("przelew") || !method) {
+      descriptionLines.push(`> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}`);
+      descriptionLines.push(`> \`📱\` × **nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`);
+      descriptionLines.push(`> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`);
+    }
+
+    if (method === "paypal" || !method) {
+      descriptionLines.push(`> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`);
+    }
+
+    if (method === "ltc" || !method) {
+      descriptionLines.push(`> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`);
+    }
+
+    if (method === "mypsc" || !method) {
+      descriptionLines.push(`> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`);
+    }
+
+    // Jesli zadna z powyzszych nie pasuje a mamy dane, pokaz wszystko (fallback)
+    if (descriptionLines.length === 1) {
+      descriptionLines.push(`> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}`);
+      descriptionLines.push(`> \`📱\` × **nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`);
+      descriptionLines.push(`> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`);
+      descriptionLines.push(`> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`);
+      descriptionLines.push(`> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`);
+      descriptionLines.push(`> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`);
+    }
+  } else {
+    descriptionLines.push("> `⚠️` × **Brak danych.** Sprzedawca nie uzupełnił jeszcze panelu płatności.");
+  }
+
+  const description = descriptionLines.join("\n");
 
   const embed = new EmbedBuilder()
     .setColor(hasData ? COLOR_BLUE : COLOR_YELLOW)
@@ -8269,15 +8309,15 @@ async function handlePanelWeryfikacjaCommand(interaction) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "```\n" +
-          "🛒 New Shop × WERYFIKACJA\n" +
-          "```",
+        "🛒 New Shop × WERYFIKACJA\n" +
+        "```",
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "> <a:arrowwhite:1491476759290449984> Weryfikacja pozwala **przywrócić cię na serwer** po __**t3rmie**__.\n" +
-          "> <a:arrowwhite:1491476759290449984> **Nie będziemy zapraszać** żadnych osób na **inne serwery!**",
+        "> <a:arrowwhite:1491476759290449984> **Nie będziemy zapraszać** żadnych osób na **inne serwery!**",
       ),
     )
     .addMediaGalleryComponents(
@@ -8985,8 +9025,8 @@ function applyEmbedTestMediaFilesToState(state, mediaFiles = []) {
 function getEmbedTestPayloadFiles(state) {
   return Array.isArray(state?.mediaFiles)
     ? state.mediaFiles
-        .filter((file) => file?.url && file?.name)
-        .map((file) => ({ attachment: file.url, name: file.name }))
+      .filter((file) => file?.url && file?.name)
+      .map((file) => ({ attachment: file.url, name: file.name }))
     : [];
 }
 
@@ -9124,7 +9164,7 @@ function cloneRegulationPanelState(state, overrides = {}) {
     headerBadge: String(state?.headerBadge || "📜"),
     headerNote: String(
       state?.headerNote ||
-        "• Kliknij **przycisk poniżej**, aby wyświetlić regulamin.",
+      "• Kliknij **przycisk poniżej**, aby wyświetlić regulamin.",
     ),
     title: String(state?.title || "NEW SHOP × REGULAMIN"),
     cashSectionTitle: String(state?.cashSectionTitle || ""),
@@ -9666,9 +9706,9 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
     container,
     extraSectionTwoParts,
     headerLines.length > 0 ||
-      hasCashSection ||
-      hasItemsSection ||
-      hasExtraSection,
+    hasCashSection ||
+    hasItemsSection ||
+    hasExtraSection,
   );
 
   if (mediaUrls.length) {
@@ -9804,23 +9844,23 @@ function buildEmbedTestControlPayload(state, statusLine) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-        "🧪 New Shop × EMBED TEST\n" +
-        "```\n" +
-        `> \`✅\` × ${statusLine}\n` +
-        `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
-        "> `🛠️` × Edytuj go przyciskami poniżej\n" +
-        "> `🎨` × Kolor zmienisz z menu pod spodem",
+      "🧪 New Shop × EMBED TEST\n" +
+      "```\n" +
+      `> \`✅\` × ${statusLine}\n` +
+      `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
+      "> `🛠️` × Edytuj go przyciskami poniżej\n" +
+      "> `🎨` × Kolor zmienisz z menu pod spodem",
     );
 
   if (isRegulation) {
     embed.setDescription(
       "```\n" +
-        "📜 New Shop × REGULAMIN\n" +
-        "```\n" +
-        `> \`✅\` × ${statusLine}\n` +
-        `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
-        "> `🛠️` × Edytuj panel i strony przyciskami poniżej\n" +
-        "> `🎨` × Kolor panelu zmienisz z menu pod spodem",
+      "📜 New Shop × REGULAMIN\n" +
+      "```\n" +
+      `> \`✅\` × ${statusLine}\n` +
+      `> \`🔗\` × [Otwórz wiadomość](${jumpUrl})\n` +
+      "> `🛠️` × Edytuj panel i strony przyciskami poniżej\n" +
+      "> `🎨` × Kolor panelu zmienisz z menu pod spodem",
     );
   }
 
@@ -9836,21 +9876,21 @@ function buildEmbedTestPublishPrompt(state) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-        "📤 New Shop × PUBLIKACJA\n" +
-        "```\n" +
-        "> `📍` × Wyślij teraz na czacie kanał docelowy\n" +
-        "> `✍️` × Przykład: `#‼️×〢anarchia-lf` albo ID kanału\n" +
-        "> `⏳` × Masz `2 min` na wysłanie kanału",
+      "📤 New Shop × PUBLIKACJA\n" +
+      "```\n" +
+      "> `📍` × Wyślij teraz na czacie kanał docelowy\n" +
+      "> `✍️` × Przykład: `#‼️×〢anarchia-lf` albo ID kanału\n" +
+      "> `⏳` × Masz `2 min` na wysłanie kanału",
     );
 
   if (isRegulation) {
     embed.setDescription(
       "```\n" +
-        "📤 New Shop × PUBLIKACJA REGULAMINU\n" +
-        "```\n" +
-        "> `📍` × Wyślij teraz na czacie kanał docelowy\n" +
-        "> `✍️` × Przykład: `#regulamin` albo ID kanału\n" +
-        "> `⏳` × Masz `2 min` na wysłanie kanału",
+      "📤 New Shop × PUBLIKACJA REGULAMINU\n" +
+      "```\n" +
+      "> `📍` × Wyślij teraz na czacie kanał docelowy\n" +
+      "> `✍️` × Przykład: `#regulamin` albo ID kanału\n" +
+      "> `⏳` × Masz `2 min` na wysłanie kanału",
     );
   }
 
@@ -10228,14 +10268,14 @@ async function publishEmbedTestToChannel(interaction, state, targetChannel) {
       embeds: [
         new EmbedBuilder().setColor(COLOR_BLUE).setDescription(
           "```\n" +
-            "✅ New Shop × GOTOWE\n" +
-            "```\n" +
-            `> \`📤\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
-            `> \`🔗\` × [Otwórz wiadomość](${getDiscordMessageUrl(
-              interaction.guildId,
-              targetChannel.id,
-              sentMessage.id,
-            )})`,
+          "✅ New Shop × GOTOWE\n" +
+          "```\n" +
+          `> \`📤\` × Wysłałem gotową wersję do <#${targetChannel.id}>\n` +
+          `> \`🔗\` × [Otwórz wiadomość](${getDiscordMessageUrl(
+            interaction.guildId,
+            targetChannel.id,
+            sentMessage.id,
+          )})`,
         ),
       ],
       components: [],
@@ -10713,7 +10753,7 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
     applyEmbedTestMediaFilesToState(state, messageMediaFiles);
   }
 
-  const embedTestButtons = collector.buttons.filter(b => 
+  const embedTestButtons = collector.buttons.filter(b =>
     String(b.customId || "").startsWith("embedtest_buy_open_") || b.url
   );
 
@@ -10874,9 +10914,9 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
   const extraSection = sections[2] || null;
   const extraSectionTwo = sections[3]
     ? {
-        title: sections[3].title || "",
-        body: sections[3].body || "",
-      }
+      title: sections[3].title || "",
+      body: sections[3].body || "",
+    }
     : null;
 
   if (sections.length > 4 && extraSectionTwo) {
@@ -10921,7 +10961,7 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
   }
 
   // Usunięto starą logikę secondaryButton na rzecz zunifikowanej powyżej
-  
+
   if (isRegulationPanel) {
     return cloneRegulationPanelState(state, {
       ownerId,
@@ -11045,12 +11085,12 @@ async function handleSprawdzEmbedTestCommand(interaction) {
   const liveState = embedTestStates.get(foundMessage.id) || null;
   const storedRegulationState = regulationPanels.has(foundMessage.id)
     ? cloneRegulationPanelState(regulationPanels.get(foundMessage.id), {
-        ownerId: interaction.user.id,
-        guildId: interaction.guild.id,
-        channelId: targetChannel.id,
-        messageId: foundMessage.id,
-        persistPanel: true,
-      })
+      ownerId: interaction.user.id,
+      guildId: interaction.guild.id,
+      channelId: targetChannel.id,
+      messageId: foundMessage.id,
+      persistPanel: true,
+    })
     : null;
 
   if (!liveState && !storedRegulationState && isRegulationPanelMessage(foundMessage)) {
@@ -11083,27 +11123,27 @@ async function handleSprawdzEmbedTestCommand(interaction) {
   existingState.channelId = targetChannel.id;
   embedTestStates.set(foundMessage.id, existingState);
 
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(
-        existingState,
-        isRegulationEmbedState(existingState)
-          ? `Podpiąłem istniejący panel regulaminu z <#${targetChannel.id}>`
-          : `Podpiąłem istniejący embed testowy z <#${targetChannel.id}>`,
-      ),
-      flags: [MessageFlags.Ephemeral],
-    });
+  await interaction.reply({
+    ...buildEmbedTestControlPayload(
+      existingState,
+      isRegulationEmbedState(existingState)
+        ? `Podpiąłem istniejący panel regulaminu z <#${targetChannel.id}>`
+        : `Podpiąłem istniejący embed testowy z <#${targetChannel.id}>`,
+    ),
+    flags: [MessageFlags.Ephemeral],
+  });
 }
 
 function getEditableEmbedTestStateFromMessage(message, ownerId, targetChannel) {
   const liveState = embedTestStates.get(message.id) || null;
   const storedRegulationState = regulationPanels.has(message.id)
     ? cloneRegulationPanelState(regulationPanels.get(message.id), {
-        ownerId,
-        guildId: message.guild.id,
-        channelId: targetChannel.id,
-        messageId: message.id,
-        persistPanel: true,
-      })
+      ownerId,
+      guildId: message.guild.id,
+      channelId: targetChannel.id,
+      messageId: message.id,
+      persistPanel: true,
+    })
     : null;
 
   if (!liveState && !storedRegulationState && isRegulationPanelMessage(message)) {
@@ -11151,9 +11191,9 @@ async function resendLegacyModyPanelMessage(message, targetChannel) {
     .filter(Boolean);
   const files = message.attachments?.size
     ? message.attachments.map((attachment) => ({
-        attachment: attachment.url,
-        name: attachment.name || "zalacznik",
-      }))
+      attachment: attachment.url,
+      name: attachment.name || "zalacznik",
+    }))
     : [];
 
   const sent = await targetChannel.send({
@@ -11292,7 +11332,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     try {
       const fetched = await targetChannel.messages.fetch({ limit: 50 });
       targetMessage = fetched.find(m => m.author.id === client.user.id && (m.embeds.length > 0 || m.flags.has(MessageFlags.IsComponentsV2))) || null;
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (!targetMessage) {
@@ -11305,7 +11345,7 @@ async function handleAktualizacjaEmbedCommand(interaction) {
 
   // 2. Szukamy źródła (Source): stan skojarzony z wiadomością LUB importujemy ze starej wiadomości
   let state = embedTestStates.get(targetMessage.id) || regulationPanels.get(targetMessage.id);
-  
+
   if (state) {
     state.headerNote = sanitizeBranding(state.headerNote);
     state.cashBody = sanitizeBranding(state.cashBody);
@@ -11997,7 +12037,7 @@ function buildTicketPanelPayload() {
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(selectMenu));
   // Przywrócono stopkę dla panelu ticketów zgodnie z prośbą
-  appendBrandFooterToContainer(container, null); 
+  appendBrandFooterToContainer(container, null);
 
   return {
     components: [container],
@@ -12129,10 +12169,10 @@ function buildTicketCloseConfirmEmbed(actionLabel) {
     .setColor(COLOR_BLUE)
     .setDescription(
       "```\n" +
-        "🎫 New Shop × ZAMYKANIE\n" +
-        "```\n" +
-        `> \`⚠️\` × ${actionLabel}\n` +
-        "> `⏳\` × Potwierdź w `30s`",
+      "🎫 New Shop × ZAMYKANIE\n" +
+      "```\n" +
+      `> \`⚠️\` × ${actionLabel}\n` +
+      "> `⏳\` × Potwierdź w `30s`",
     );
 }
 
@@ -12214,7 +12254,7 @@ async function handleTicketZakonczCommand(interaction) {
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   const SELLER_ROLE_ID = "1350786945944391733";
   const hasSellerRole = interaction.member.roles.cache.has(SELLER_ROLE_ID);
-  
+
   if (!isOwner && !hasSellerRole) {
     await interaction.reply({
       content: "> `❗` × Brak wymaganych uprawnień.",
@@ -12316,7 +12356,7 @@ async function handleTicketZakonczCommand(interaction) {
           content: `<@${ticketOwnerId}>`,
           allowedMentions: { users: [ticketOwnerId] },
         }).catch(() => null);
-        
+
         if (pingMessage) {
           setTimeout(() => {
             pingMessage.delete().catch(() => null);
@@ -12379,7 +12419,7 @@ async function handleAnonimCommand(interaction) {
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   const SELLER_ROLE_ID = "1350786945944391733";
   const hasSellerRole = interaction.member.roles.cache.has(SELLER_ROLE_ID);
-  
+
   if (!isOwner && !hasSellerRole) {
     await interaction.reply({
       content: "> `❌` Brak uprawnień do użycia komendy /anonim.",
@@ -12418,7 +12458,7 @@ async function handleAnonimCommand(interaction) {
     if (ticketData.typ === "zakup") verb = "sprzedał";
     else if (ticketData.typ === "sprzedaz" || ticketData.typ === "sprzedaż") verb = "kupił";
     else if (ticketData.typ === "wreczyl nagrode" || ticketData.typ === "wręczył nagrodę") verb = "wręczył nagrodę";
-    
+
     let simulatedRepText = `+rep <@${ticketData.commandUserId}> ${verb} ${ticketData.co}`;
     if (ticketData.serwer) {
       simulatedRepText += ` ${ticketData.serwer}`;
@@ -12440,7 +12480,7 @@ async function handleAnonimCommand(interaction) {
         if (prevMsg && prevMsg.deletable) {
           await prevMsg.delete().catch(() => null);
         }
-      } catch (delErr) {}
+      } catch (delErr) { }
     }
 
     const userID = "1305200545979437129";
@@ -12476,7 +12516,7 @@ async function handleAnonimCommand(interaction) {
       if (attachment) sendOptions.files = [attachment];
       const newInfoMsg = await repChannel.send(sendOptions);
       repLastInfoMessage.set(repChannel.id, newInfoMsg.id);
-    } catch (err) {}
+    } catch (err) { }
 
     const ticketMeta = ticketOwners.get(channel.id) || null;
     await archiveTicketOnClose(channel, interaction.user.id, ticketMeta, {
@@ -12576,7 +12616,7 @@ async function handleZamknijZPowodemCommand(interaction) {
         await commitRewardTicketClaim(channel.id).catch(() => null);
         ticketOwners.delete(channel.id);
         pendingTicketClose.delete(channel.id);
-        
+
         console.log(`Ticket ${channel.id} został zamknięty przez właściciela z powodem: ${powod}`);
       } catch (closeErr) {
         console.error(`Błąd zamykania ticketu ${channel.id}:`, closeErr);
@@ -12614,7 +12654,7 @@ async function handleLegitRepUstawCommand(interaction) {
     }
 
     const ile = interaction.options.getInteger("ile");
-    
+
     if (ile < 0 || ile > 9999) {
       const payload = { content: "> `❌` × **Podaj** liczbę od 0 do 9999.", flags: [MessageFlags.Ephemeral] };
       if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
@@ -12624,14 +12664,14 @@ async function handleLegitRepUstawCommand(interaction) {
 
     // Zaktualizuj licznik
     legitRepCount = ile;
-    
+
     // Zmień nazwę kanału
     const channelId = "1449840030947217529";
     const channel = await client.channels.fetch(channelId).catch((err) => {
       console.error("legit-rep-ustaw fetch channel error", err);
       return null;
     });
-    
+
     if (!channel) {
       const payload = { content: "> `❌` × **Nie znaleziono** kanału legit-rep.", flags: [MessageFlags.Ephemeral] };
       if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
@@ -12641,7 +12681,7 @@ async function handleLegitRepUstawCommand(interaction) {
 
     const newName = `✅×〢legit-rep➔${ile}`;
     await channel.setName(newName);
-    
+
     // Wyślij informacyjną wiadomość
     const successPayload = {
       content: `LegitRepy: ${ile}\nLegitChecki: ${ile}`,
@@ -12649,10 +12689,10 @@ async function handleLegitRepUstawCommand(interaction) {
     };
     if (interaction.deferred || interaction.replied) await interaction.editReply(successPayload);
     else await interaction.reply(successPayload);
-    
+
     // Zapisz stan
     scheduleSavePersistentState();
-    
+
     console.log(`Nazwa kanału legit-rep zmieniona na: ${newName} przez ${interaction.user.tag}`);
   } catch (error) {
     console.error("Błąd podczas ustawiania legit-rep (outer catch):", error);
@@ -12671,13 +12711,13 @@ async function handleAdminZaproszeniaCommand(interaction) {
     });
     return;
   }
-  
+
   const targetUser = interaction.options.getUser("nick");
   const targetId = targetUser.id;
   const guild = interaction.guild;
-  
+
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-  
+
   try {
     let allInvites = [];
     try {
@@ -12686,14 +12726,14 @@ async function handleAdminZaproszeniaCommand(interaction) {
         .select("*")
         .eq("guild_id", guild.id)
         .eq("inviter_id", targetId);
-        
+
       if (!error && data) {
         allInvites = data;
       }
     } catch (e) {
       console.error("Supabase fail in zaproszenia command:", e);
     }
-    
+
     const inMemoryInvited = new Set();
     for (const [key, storedInvite] of inviterOfMember.entries()) {
       const inviterId = getStoredInviterId(storedInvite);
@@ -12707,7 +12747,7 @@ async function handleAdminZaproszeniaCommand(interaction) {
         inMemoryInvited.add(key.split(":")[1]);
       }
     }
-    
+
     const allUserIds = new Set(allInvites.map(i => i.invited_user_id));
     for (const id of inMemoryInvited) allUserIds.add(id);
 
@@ -12732,11 +12772,11 @@ async function handleAdminZaproszeniaCommand(interaction) {
     const CLIENT_ROLE_ID =
       verificationRoles.get(guild.id) ||
       guild.roles.cache.find((r) => normFn(r.name).includes(normFn("klient")))?.id;
-    
+
     const verified = [];
     const unverified = [];
     const left = [];
-    
+
     for (const uid of allUserIds) {
       const mem = members.get(uid);
       if (mem) {
@@ -12749,12 +12789,12 @@ async function handleAdminZaproszeniaCommand(interaction) {
         left.push(uid);
       }
     }
-    
+
     let report = `**Szczegółowe logi zaproszeń dla <@${targetId}>**\n\n`;
-    
+
     if (allUserIds.size === 0 && totalUses > 0) {
-       report += `> \`ℹ️\` × **Brak logów szczegółowych z dawnych miesięcy.** Bot zaczął zbierać szczegóły (kto dokładnie wszedł) niedawno.\n\n`;
-       report += `> \`🔢\` × **Z historii starych linków Discorda wynika, że zaprosił łącznie: ${totalUses} osób**.\n`;
+      report += `> \`ℹ️\` × **Brak logów szczegółowych z dawnych miesięcy.** Bot zaczął zbierać szczegóły (kto dokładnie wszedł) niedawno.\n\n`;
+      report += `> \`🔢\` × **Z historii starych linków Discorda wynika, że zaprosił łącznie: ${totalUses} osób**.\n`;
     } else {
       report += `> \`✅\` **Zweryfikowani (Klient) [${verified.length}]:**\n`;
       if (verified.length > 0) {
@@ -12763,7 +12803,7 @@ async function handleAdminZaproszeniaCommand(interaction) {
         report += "Brak";
       }
       report += "\n\n";
-      
+
       report += `> \`⏳\` **Niezweryfikowani (na serwerze) [${unverified.length}]:**\n`;
       if (unverified.length > 0) {
         report += unverified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (unverified.length > 40 ? "..." : "");
@@ -12771,21 +12811,21 @@ async function handleAdminZaproszeniaCommand(interaction) {
         report += "Brak";
       }
       report += "\n\n";
-      
+
       report += `> \`❌\` **Wyszli z serwera [${left.length}]:**\n`;
       if (left.length > 0) {
         report += left.slice(0, 40).map(u => `<@${u}>`).join(", ") + (left.length > 40 ? "..." : "");
       } else {
         report += "Brak";
       }
-      
+
       report += `\n\n> \`🔢\` **Suma starych zaproszeń (z linków Discorda):** ${totalUses} użyć.`;
     }
-    
+
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(report.substring(0, 4096));
-      
+
     await interaction.editReply({ embeds: [embed] });
   } catch (err) {
     console.error("Zaproszenia logs error:", err);
@@ -12817,10 +12857,10 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
   try {
     const guild = interaction.guild;
     const targetUserId = targetUser.id;
-    
+
     // Pobierz zaproszenia z Supabase
     const invitedUsers = await db.getInvitedUsersByInviter(guild.id, targetUserId);
-    
+
     if (invitedUsers.length === 0) {
       await interaction.reply({
         content: `> \`ℹ️\` × **Użytkownik** <@${targetUserId}> **nie ma żadnych aktywnych zaproszeń**.`,
@@ -12835,22 +12875,22 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
 
     // Filtruj tylko osoby które są nadal na serwerze
     let invitedList = [];
-    
+
     for (const invitedUser of invitedUsers) {
       try {
         // Sprawdź czy użytkownik jest nadal na serwerze
         if (currentMemberIds.has(invitedUser.invited_user_id)) {
           const member = guildMembers.get(invitedUser.invited_user_id);
-          
+
           // Sprawdź czy konto ma więcej niż 2 miesiące
           const accountAge = member.user.createdAt;
           const twoMonthsAgo = new Date(Date.now() - (60 * 24 * 60 * 60 * 1000)); // 60 dni
-          
+
           if (accountAge && accountAge > twoMonthsAgo) {
-            const joinedDate = invitedUser.created_at ? 
-              new Date(invitedUser.created_at).toLocaleDateString('pl-PL') : 
+            const joinedDate = invitedUser.created_at ?
+              new Date(invitedUser.created_at).toLocaleDateString('pl-PL') :
               'Nieznana data';
-            
+
             invitedList.push({
               user: member.user,
               date: joinedDate
@@ -12866,7 +12906,7 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
     // Usuń duplikaty z listy
     const uniqueInvites = [];
     const seenUsers = new Set();
-    
+
     for (const item of invitedList) {
       if (item.user && !seenUsers.has(item.user.id)) {
         seenUsers.add(item.user.id);
@@ -12881,10 +12921,10 @@ async function handleSprawdzKogoZaprosilCommand(interaction) {
       .setDescription(`**Sprawdzasz:** <@${targetUserId}>\nUżytkownik zaprosił **${uniqueInvites.length}** osób`)
       .addFields({
         name: "--=--=--=--=LISTA=--=--=--=--=--=",
-        value: uniqueInvites.length > 0 
-          ? uniqueInvites.map(item => 
-              `@${item.user.username} (${item.date})`
-            ).join('\n')
+        value: uniqueInvites.length > 0
+          ? uniqueInvites.map(item =>
+            `@${item.user.username} (${item.date})`
+          ).join('\n')
           : "Brak aktywnych zaproszeń na serwerze"
       })
       .setTimestamp();
@@ -13286,7 +13326,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     // Przenieś do kategorii TICKETY PRZEJĘTE
     const przejetaKategoriaId = "1457446529395593338";
     const przejetaKategoria = await client.channels.fetch(przejetaKategoriaId).catch(() => null);
-    
+
     if (przejetaKategoria) {
       await ch.setParent(przejetaKategoriaId).catch((err) => {
         console.error("Błąd przenoszenia do kategorii TICKETY PRZEJĘTE:", err);
@@ -13478,7 +13518,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     // Przywróć oryginalną kategorię jeśli istnieje
     if (ticketData.originalCategoryId) {
       const originalCategory = await client.channels.fetch(ticketData.originalCategoryId).catch(() => null);
-      
+
       if (originalCategory) {
         await ch.setParent(ticketData.originalCategoryId).catch((err) => {
           console.error("Błąd przywracania oryginalnej kategorii:", err);
@@ -13492,7 +13532,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     // Przywróć uprawnienia w zależności od oryginalnej kategorii
     if (ticketData.originalCategoryId) {
       const categoryId = ticketData.originalCategoryId;
-      
+
       // Zakup 0-20 - wszystkie rangi widzą
       if (categoryId === "1449526840942268526") {
         await ch.permissionOverwrites.set([
@@ -13774,9 +13814,9 @@ async function openRewardClaimTicket(interaction) {
   if (!availability.hasAnyClaim) {
     const missingInviteLine = availability.nextInviteMilestone
       ? `> \`📨\` × Do kolejnej nagrody z zaproszeń brakuje Ci \`${Math.max(
-          0,
-          availability.nextInviteMilestone.threshold - availability.displayedInvites,
-        )}\` zaproszeń.`
+        0,
+        availability.nextInviteMilestone.threshold - availability.displayedInvites,
+      )}\` zaproszeń.`
       : "> `📨` × Wszystkie aktualne nagrody z zaproszeń masz już odebrane.";
 
     await interaction.reply({
@@ -13830,12 +13870,12 @@ async function openRewardClaimTicket(interaction) {
     .setColor(COLOR_BLUE)
     .setDescription(
       `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-        `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
-        `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-        `### ・ \`📋\` × Informacje z formularza:\n` +
-        `${formInfo}`,
+      `### ・ \`👤\` × Informacje o kliencie:\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+      `### ・ \`📋\` × Informacje z formularza:\n` +
+      `${formInfo}`,
     )
     .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
     .setTimestamp();
@@ -13987,7 +14027,7 @@ async function handleModalSubmit(interaction) {
       });
       return;
     }
-    
+
     // Simulate /opinia command logic with the new modal fields
     const normalize = (s = "") =>
       s
@@ -14045,12 +14085,12 @@ async function handleModalSubmit(interaction) {
 
     try {
       const targetChannel = interaction.guild.channels.cache.get(allowedChannelId) || await interaction.guild.channels.fetch(allowedChannelId);
-      
+
       let botWebhook = null;
       try {
         const webhooks = await targetChannel.fetchWebhooks();
         botWebhook = webhooks.find((w) => w.owner?.id === client.user.id && w.name === "ZAKUP_ITy_OPINIE");
-      } catch (e) {}
+      } catch (e) { }
 
       if (!botWebhook) {
         botWebhook = await targetChannel.createWebhook({
@@ -14114,9 +14154,10 @@ async function handleModalSubmit(interaction) {
     const profile = normalizeSellerPaymentProfile({
       phone: interaction.fields.getTextInputValue("phone"),
       transferTitle: interaction.fields.getTextInputValue("transfer_title"),
+      recipient: interaction.fields.getTextInputValue("recipient"),
       paypalEmail: interaction.fields.getTextInputValue("paypal_email"),
       ltcWallet: interaction.fields.getTextInputValue("ltc_wallet"),
-      mypscEmail: interaction.fields.getTextInputValue("mypsc_email"),
+      // mypscEmail: interaction.fields.getTextInputValue("mypsc_email"), // tymczasowo wylaczone ze wzgledu na limit 5 pol
       updatedAt: Date.now(),
     });
 
@@ -14961,10 +15002,10 @@ async function handleModalSubmit(interaction) {
     codeData.used = true;
     activeCodes.delete(enteredCode);
     await db.deleteActiveCode(enteredCode);
-    
+
     // Aktualizuj w Supabase
     await db.updateActiveCode(enteredCode, { used: true });
-    
+
     scheduleSavePersistentState();
 
     const redeemEmbed = new EmbedBuilder()
@@ -15235,6 +15276,7 @@ async function handleModalSubmit(interaction) {
   let ticketTopic;
   let forceOwnerOnlyVisibility = false;
   let preferredChannelName = null;
+  let paymentMethod = null;
 
   switch (interaction.customId) {
     case "modal_testpanel_purchase":
@@ -15332,11 +15374,26 @@ async function handleModalSubmit(interaction) {
         selectedPayment,
       );
 
+      paymentMethod = selectedPayment;
       formInfo =
         `> <a:arrowwhite:1491476759290449984> × **Co chcesz kupić:** \`${itemToBuy}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Serwer:** \`${serverLabel}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Kwota:** \`${kwotaNum}zł\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentLabel}\``;
+
+      const currentTicketData = {
+        claimedBy: null,
+        userId: user.id,
+        locked: false,
+        ticketTypeLabel,
+        formInfo,
+        paymentMethod: selectedPayment, // Przechowujemy forme platnosci
+        openedAt: Date.now(),
+      };
+      // To bedzie uzyte pozniej przy zapisywaniu do ticketOwners w ticket creation logic
+      // Ale musimy sie upewnic, ze to trafi do ticketOwners.
+      // Widze ze ticketOwners.set jest na koncu dlugiego bloku.
+      // Musze znalezc gdzie modal_zakup zapisuje do ticketOwners.
       break;
     }
     case "modal_mody_zakup": {
@@ -15399,10 +15456,11 @@ async function handleModalSubmit(interaction) {
       );
       ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
+      const paymentMethodLabel = getAutorynekPaymentLabel(paymentMethodRaw);
 
+      paymentMethod = paymentMethodRaw;
       formInfo = `> <a:arrowwhite:1491476759290449984> × **Mod:** \`${modName}\`\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethod}\`\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethodLabel}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Ilość modów:** \`${modsCount}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Łączna kwota:** \`${totalPrice}zł\``;
       break;
@@ -15434,11 +15492,12 @@ async function handleModalSubmit(interaction) {
       );
       ticketTopic = "Zakup AutoRynku (20zł)";
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
-      const paymentMethod = getAutorynekPaymentLabel(paymentMethodRaw);
+      const paymentMethodLabel = getAutorynekPaymentLabel(paymentMethodRaw);
 
+      paymentMethod = paymentMethodRaw;
       formInfo =
         `> <a:arrowwhite:1491476759290449984> × **Cena:** \`20zł\`\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethod}\``;
+        `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethodLabel}\``;
       break;
     }
     case "modal_sprzedaz": {
@@ -15621,10 +15680,10 @@ async function handleModalSubmit(interaction) {
 
         const channel = await interaction.guild.channels.create(createOptions);
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-      .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+        const embed = new EmbedBuilder()
+          .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
+          .setDescription(
+            `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
             `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
@@ -15673,6 +15732,7 @@ async function handleModalSubmit(interaction) {
           locked: false,
           ticketTypeLabel,
           formInfo,
+          paymentMethod: interaction.fields.getTextInputValue("payment_method") || null, // Best effort capture
           openedAt: Date.now(),
         });
         scheduleSavePersistentState();
@@ -15803,7 +15863,7 @@ async function handleModalSubmit(interaction) {
     // Dodaj rangi limitów w zależności od kategorii
     if (parentToUse && !forceOwnerOnlyVisibility) {
       const categoryId = parentToUse;
-      
+
       // Zakup 0-20 - wszystkie rangi widzą
       if (categoryId === "1449526840942268526") {
         createOptions.permissionOverwrites.push(
@@ -15899,12 +15959,12 @@ async function handleModalSubmit(interaction) {
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("Przejmij")
-          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary);
+      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary);
 
     const unclaimButton = new ButtonBuilder()
       .setCustomId(`ticket_unclaim_${channel.id}`)
       .setLabel("Odprzejmij")
-          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary)
+      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary)
       .setDisabled(true);
 
     buttons.push(claimButton, unclaimButton);
@@ -15926,9 +15986,17 @@ async function handleModalSubmit(interaction) {
       ticketTypeLabel,
       ownerOnlyPurchase: forceOwnerOnlyVisibility,
       formInfo,
+      paymentMethod,
       openedAt: Date.now(),
     });
     scheduleSavePersistentState();
+
+    // Dodatkowe instrukcje dla PSC
+    if (paymentMethod === "psc") {
+      await channel.send({ content: "> `💳` × **Wymagane dane:** Podaj kod PSC oraz zdjęcie paragonu." }).catch(() => null);
+    } else if (paymentMethod === "psc_bez_paragonu") {
+      await channel.send({ content: "> `💳` × **Wymagane dane:** Podaj kod PSC." }).catch(() => null);
+    }
 
     // LOG: ticket creation in logi-ticket channel (if exists)
     try {
@@ -15971,7 +16039,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (ticketData && ticketData.userId === message.author.id && !ticketData.claimedBy && !ticketData.firstMessageReceived) {
     ticketData.firstMessageReceived = true;
     ticketOwners.set(message.channel.id, ticketData);
-    
+
     const type = ticketData.ticketTypeLabel;
     if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
       setTimeout(async () => {
@@ -16161,7 +16229,7 @@ client.on(Events.MessageCreate, async (message) => {
     // Catch all types of mentions: @user, @!user, @here, @everyone, and role mentions
     const mentionRegex = /<@!?(\d+)>|@here|@everyone|<@&(\d+)>/g;
     const mentions = content.match(mentionRegex) || [];
-    
+
     if (mentions.length >= 5) {
       // delete message first
       try {
@@ -16169,12 +16237,12 @@ client.on(Events.MessageCreate, async (message) => {
       } catch (e) {
         // ignore
       }
-      
+
       // attempt to timeout the member for 1 hour (3600 seconds)
       try {
         const member = message.member;
         const guild = message.guild;
-        
+
         if (member && typeof member.timeout === "function") {
           const ms = 60 * 60 * 1000; // 1 hour
           await member.timeout(ms, "Masowy ping - 5+ oznaczeń w jednej wiadomości");
@@ -16185,8 +16253,8 @@ client.on(Events.MessageCreate, async (message) => {
           );
           if (!mutedRole) {
             try {
-              mutedRole = await guild.roles.create({ 
-                name: "Muted", 
+              mutedRole = await guild.roles.create({
+                name: "Muted",
                 permissions: [],
                 reason: "Rola dla masowego pingowania"
               });
@@ -16194,10 +16262,10 @@ client.on(Events.MessageCreate, async (message) => {
               mutedRole = null;
             }
           }
-          
+
           if (mutedRole) {
             await member.roles.add(mutedRole, "Masowy ping - 5+ oznaczeń");
-            
+
             // schedule removal in 1 hour
             setTimeout(async () => {
               try {
@@ -16398,7 +16466,7 @@ client.on(Events.MessageCreate, async (message) => {
       try {
         const senderId = message.author.id; // ID osoby która wysłała +rep
         console.log(`[+rep] Sprawdzam tickety oczekujące na +rep od użytkownika ${senderId}`);
-        
+
         // Przeszukaj wszystkie tickety oczekujące na +rep
         for (const [ticketChannelId, ticketData] of pendingTicketClose.entries()) {
           console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
@@ -17242,7 +17310,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
           : null;
       const currentVanityCode =
         typeof currentVanityData?.code === "string" &&
-        currentVanityData.code.trim()
+          currentVanityData.code.trim()
           ? currentVanityData.code.trim()
           : null;
 
@@ -17300,7 +17368,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
       const accountAgeMs =
         Date.now() - (member.user.createdTimestamp || Date.now());
       isFakeAccount = accountAgeMs < ACCOUNT_AGE_THRESHOLD_MS;
-      
+
       // Debug: loguj wiek konta
       const accountAgeDays = Math.floor(accountAgeMs / (24 * 60 * 60 * 1000));
       console.log(`[invite] Konto ${member.user.tag} (${member.id}) ma ${accountAgeDays} dni. Fake: ${isFakeAccount}`);
@@ -17408,17 +17476,17 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
     // store who invited this member (and whether it was counted)
     const memberKey = `${member.guild.id}:${member.id}`;
-      inviterOfMember.set(memberKey, {
-        inviterId,
-        counted: !!(
-          inviterId &&
-          countThisInvite &&
-          !isFakeAccount &&
-          (inviterId !== ownerId || countOwnerInvites)
-        ),
-        isFake: !!isFakeAccount,
-        isVanity: !!usedVanityCode,
-        vanityCode: usedVanityCode || null,
+    inviterOfMember.set(memberKey, {
+      inviterId,
+      counted: !!(
+        inviterId &&
+        countThisInvite &&
+        !isFakeAccount &&
+        (inviterId !== ownerId || countOwnerInvites)
+      ),
+      isFake: !!isFakeAccount,
+      isVanity: !!usedVanityCode,
+      vanityCode: usedVanityCode || null,
     });
 
     if (inviterId) {
@@ -17462,7 +17530,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
         typeof inviterId === "string" && /^\d{17,20}$/.test(inviterId);
       const currentInvites = hasValidInviterId ? gMap.get(inviterId) || 0 : 0;
       const inviteWord = getInviteWord(currentInvites);
-      
+
       try {
         let message;
         if (usedVanityCode) {
@@ -17478,7 +17546,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
           message = `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> (został zaproszony przez właściciela)`;
         } else {
           // Normalne zaproszenie
-          message = isFakeAccount 
+          message = isFakeAccount
             ? `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}! (konto ma mniej niż 2 mies.)`
             : `> \`✉️\` × <@${inviterId}> zaprosił <@${member.id}> i ma teraz **${currentInvites}** ${inviteWord}!`;
         }
@@ -17504,7 +17572,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
     if (ch || member.guild.systemChannel) {
       const targetCh = ch || member.guild.systemChannel;
-      
+
       const avatarUrl = member.displayAvatarURL({ extension: "png", forceStatic: false, size: 256 })
         || member.user.displayAvatarURL({ extension: "png", size: 256 });
 
@@ -17569,7 +17637,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
     const gMap = inviteCounts.get(member.guild.id);
     const ownerId = member.guild.ownerId;
     const countOwnerInvites = isOwnerInviteCountingEnabled(member.guild.id);
-    
+
     // Odejmujemy zaproszenia tylko jeśli nie jest właścicielem, chyba że opcja liczenia właścicielowi jest włączona
     if (counted && inviterId && (inviterId !== ownerId || countOwnerInvites)) {
       const prev = gMap.get(inviterId) || 0;
@@ -17643,7 +17711,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
       // compute newCount for message (inviteCounts after possible decrement)
       const currentCount = gMap.get(inviterId) || 0;
       const inviteWord = getInviteWord(currentCount);
-      
+
       try {
         let message;
         if (vanityCode) {
@@ -17760,9 +17828,9 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(
-          "```\n" +
-          "📩 New Shop × ZAPROSZENIA\n" +
-          "```\n" +
+      "```\n" +
+      "📩 New Shop × ZAPROSZENIA\n" +
+      "```\n" +
       `> \`👤\` × <@${userId}> **posiada:** \`${displayedInvites}\` **${inviteWord}**!\n` +
       `${rewardStatusLine}\n` +
       `> \`👥\` × **Prawdziwe osoby które dołączyły:** \`${displayedInvites}\`\n` +
@@ -17808,7 +17876,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     await interaction.editReply({
       content:
         pendingInviteRewardDelivery.deliveredCount > 0
-        ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
+          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
           : pendingInviteRewardDelivery.blocked
             ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
             : "> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane."
@@ -18069,7 +18137,7 @@ async function handleHelpCommand(interaction) {
         content: "> `❌` × **Błąd** podczas wyświetlania **pomocy**.",
         flags: [MessageFlags.Ephemeral],
       });
-    } catch (_error) {}
+    } catch (_error) { }
   }
 }
 
@@ -18109,7 +18177,7 @@ function formatBlockTime(remainingMs) {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  
+
   if (hours > 0) {
     return `${hours} godzin ${minutes} minut ${seconds} sekund`;
   } else if (minutes > 0) {
@@ -18277,10 +18345,10 @@ async function handleKonkursCreateModal(interaction) {
     );
     const attachment = new AttachmentBuilder(gifPath, { name: "konkurs_start.gif" });
     embed.setImage("attachment://konkurs_start.gif");
-    
+
     const row = new ActionRowBuilder().addComponents(joinBtn);
-    sent = await targetChannel.send({ 
-      embeds: [embed], 
+    sent = await targetChannel.send({
+      embeds: [embed],
       components: [row],
       files: [attachment]
     });
@@ -18288,8 +18356,8 @@ async function handleKonkursCreateModal(interaction) {
     console.warn("Nie udało się załadować GIFa przy tworzeniu konkursu:", err);
     // Fallback: wyślij bez GIFa
     const row = new ActionRowBuilder().addComponents(joinBtn);
-    sent = await targetChannel.send({ 
-      embeds: [embed], 
+    sent = await targetChannel.send({
+      embeds: [embed],
       components: [row]
     });
   }
@@ -18484,10 +18552,10 @@ async function handleKonkursCreateModal(interaction) {
     );
     const attachment = new AttachmentBuilder(gifPath, { name: "konkurs_start.gif" });
     embed.setImage("attachment://konkurs_start.gif");
-    
+
     const row = new ActionRowBuilder().addComponents(joinBtn);
-    sent = await targetChannel.send({ 
-      embeds: [embed], 
+    sent = await targetChannel.send({
+      embeds: [embed],
       components: [row],
       files: [attachment]
     });
@@ -18495,8 +18563,8 @@ async function handleKonkursCreateModal(interaction) {
     console.warn("Nie udało się załadować GIFa przy tworzeniu konkursu:", err);
     // Fallback: wyślij bez GIFa
     const row = new ActionRowBuilder().addComponents(joinBtn);
-    sent = await targetChannel.send({ 
-      embeds: [embed], 
+    sent = await targetChannel.send({
+      embeds: [embed],
       components: [row]
     });
   }
@@ -18664,8 +18732,8 @@ async function handleKonkursJoinDirect(interaction, msgId) {
           `🕐 **•** Koniec konkursu: ${formatTimeDelta(contest.endsAt - Date.now())}\n` +
           `👑 **•** Liczba zwycięzców: **${contest.winnersCount}**\n` +
           `👥 **•** Liczba uczestników: **${participantsCount}**`;
-        
-        
+
+
 
         if (contest.invitesRequired > 0) {
           const inviteForm = getPersonForm(contest.invitesRequired);
@@ -18675,11 +18743,11 @@ async function handleKonkursJoinDirect(interaction, msgId) {
         // Pobierz istniejący embed i zachowaj czarny kwadrat
         const existingEmbed = EmbedBuilder.from(origMsg.embeds[0]);
         const originalDescription = existingEmbed.data.description || '';
-        
+
         // Wyodrębnij czarny kwadrat z oryginalnego opisu
         const blackBoxMatch = originalDescription.match(/```[\s\S]*?```/);
         const blackBox = blackBoxMatch ? blackBoxMatch[0] : '';
-        
+
         // Połącz czarny kwadrat z nowym opisem
         const fullDescription = blackBox + '\n' + updatedDescription;
         existingEmbed.setDescription(fullDescription);
@@ -18701,17 +18769,17 @@ async function handleKonkursJoinDirect(interaction, msgId) {
           );
           const attachment = new AttachmentBuilder(gifPath, { name: "konkurs_start.gif" });
           existingEmbed.setImage("attachment://konkurs_start.gif");
-          
-          await origMsg.edit({ 
-            embeds: [existingEmbed], 
+
+          await origMsg.edit({
+            embeds: [existingEmbed],
             components: [row],
             files: [attachment]
           }).catch(() => null);
         } catch (err) {
           console.warn("Nie udało się załadować GIFa przy edycji konkursu:", err);
           // Fallback: usuń załączniki bez GIFa
-          await origMsg.edit({ 
-            embeds: [existingEmbed], 
+          await origMsg.edit({
+            embeds: [existingEmbed],
             components: [row],
             attachments: []
           }).catch(() => null);
@@ -18771,9 +18839,9 @@ async function endContestByMessageId(messageId) {
   const podsumowanieEmbed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(
-       "```\n" +
+      "```\n" +
       "🎉 Konkurs zakończony 🎉\n" +
-       "```\n" +
+      "```\n" +
       `**🎁 **•** Nagroda:** ${meta.prize}\n\n` +
       `**🏆 **•** Zwycięzcy:**\n${winnersDetails}`,
     )
@@ -18800,9 +18868,9 @@ async function endContestByMessageId(messageId) {
       const finalEmbed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
         .setDescription(
-           "```\n" +
+          "```\n" +
           "🎉 Konkurs zakończony 🎉\n" +
-           "```\n" +
+          "```\n" +
           `**🎁 **•** Nagroda:** ${meta.prize}\n\n` +
           `**🏆 **•** Zwycięzcy:**\n${publicWinners}`,
         )
@@ -18885,7 +18953,7 @@ async function handleEndGiveawaysCommand(interaction) {
 
   const now = Date.now();
   const activeContests = Array.from(contests.entries()).filter(([_, meta]) => meta.endsAt > now);
-  
+
   if (activeContests.length === 0) {
     await interaction.reply({
       content: "> `ℹ️` × **Brak aktywnych konkursów** do zakończenia.",
@@ -18925,7 +18993,7 @@ async function handleEndGiveawaysCommand(interaction) {
     .setFooter(getBrandFooterBuilderObject());
 
   let description = "";
-  
+
   if (endedContests.length > 0) {
     description += `## \`✅\` Pomyślnie zakończone konkursy (${endedContests.length}):\n\n`;
     endedContests.forEach((contest, index) => {
@@ -18964,15 +19032,15 @@ async function handleKonkursLeave(interaction, msgId) {
   }
 
   const userId = interaction.user.id;
-  
+
   // Sprawdź blokadę opuszczania konkursu
   const userBlocks = contestLeaveBlocks.get(userId) || {};
   const contestBlock = userBlocks[msgId];
-  
+
   if (contestBlock && contestBlock.blockedUntil > Date.now()) {
     const remainingTime = contestBlock.blockedUntil - Date.now();
     const timeString = formatBlockTime(remainingTime);
-    
+
     await interaction.update({
       content: `> \`⏳\` × Musisz poczekać **${timeString}**, aby ponownie opuścić konkurs.`,
       components: [],
@@ -18999,18 +19067,18 @@ async function handleKonkursLeave(interaction, msgId) {
 
   // Zwiększ licznik wyjść i nałóż blokadę jeśli to drugie wyjście
   const currentLeaveCount = (contestBlock?.leaveCount || 0) + 1;
-  
+
   if (currentLeaveCount >= 2) {
     // Nałóż blokadę 30 minut
     const blockedUntil = Date.now() + (30 * 60 * 1000); // 30 minut
-    
+
     if (!userBlocks[msgId]) {
       userBlocks[msgId] = { leaveCount: 0, blockedUntil: 0 };
     }
-    
+
     userBlocks[msgId].leaveCount = currentLeaveCount;
     userBlocks[msgId].blockedUntil = blockedUntil;
-    
+
     contestLeaveBlocks.set(userId, userBlocks);
     scheduleSavePersistentState();
   } else {
@@ -19018,7 +19086,7 @@ async function handleKonkursLeave(interaction, msgId) {
     if (!userBlocks[msgId]) {
       userBlocks[msgId] = { leaveCount: 0, blockedUntil: 0 };
     }
-    
+
     userBlocks[msgId].leaveCount = currentLeaveCount;
     contestLeaveBlocks.set(userId, userBlocks);
     scheduleSavePersistentState();
@@ -19050,11 +19118,11 @@ async function handleKonkursLeave(interaction, msgId) {
         // Pobierz istniejący embed i zachowaj czarny kwadrat
         const embed = origMsg.embeds[0]?.toJSON() || {};
         const originalDescription = embed.description || '';
-        
+
         // Wyodrębnij czarny kwadrat z oryginalnego opisu
         const blackBoxMatch = originalDescription.match(/```[\s\S]*?```/);
         const blackBox = blackBoxMatch ? blackBoxMatch[0] : '';
-        
+
         // Połącz czarny kwadrat z nowym opisem
         embed.description = blackBox + '\n' + updatedDescription;
 
@@ -19074,17 +19142,17 @@ async function handleKonkursLeave(interaction, msgId) {
           );
           const attachment = new AttachmentBuilder(gifPath, { name: "konkurs_start.gif" });
           embed.image = { url: "attachment://konkurs_start.gif" };
-          
-          await origMsg.edit({ 
-            embeds: [embed], 
+
+          await origMsg.edit({
+            embeds: [embed],
             components: [row],
             files: [attachment]
           }).catch(() => null);
         } catch (err) {
           console.warn("Nie udało się załadować GIFa przy edycji konkursu (leave):", err);
           // Fallback: usuń załączniki bez GIFa
-          await origMsg.edit({ 
-            embeds: [embed], 
+          await origMsg.edit({
+            embeds: [embed],
             components: [row],
             attachments: []
           }).catch(() => null);
@@ -19587,7 +19655,7 @@ async function checkWeeklyReset() {
 client.on('messageCreate', async (message) => {
   // Ignoruj wiadomości od botów
   if (message.author.bot) return;
-  
+
   // Sprawdź czy wiadomość jest na kanale rozliczeń
   if (message.channelId === ROZLICZENIA_CHANNEL_ID) {
     // Jeśli to nie jest komenda rozliczenia, usuń wiadomość
@@ -19599,8 +19667,8 @@ client.on('messageCreate', async (message) => {
             color: 0xff0000,
             title: "❌ Ograniczenie kanału",
             description: `Na kanale <#${ROZLICZENIA_CHANNEL_ID}> można używać tylko komend rozliczeń!\n\n` +
-                     `**Dostępne komendy:**\n` +
-                     `• \`/rozliczenie [kwota]\` - dodaj sprzedaż`,
+              `**Dostępne komendy:**\n` +
+              `• \`/rozliczenie [kwota]\` - dodaj sprzedaż`,
             footer: getBrandFooterObject()
           }]
         });
@@ -19609,7 +19677,7 @@ client.on('messageCreate', async (message) => {
       }
       return;
     }
-    
+
     // Odśwież wiadomość ROZLICZENIA TYGODNIOWE
     setTimeout(sendRozliczeniaMessage, 1000); // Małe opóźnienie dla pewności
   }
@@ -19673,8 +19741,8 @@ async function sendMonitoringEmbed(title, description, color) {
     };
 
     const req = https.request(options, (res) => {
-      res.on('data', () => {});
-      res.on('end', () => {});
+      res.on('data', () => { });
+      res.on('end', () => { });
     });
 
     req.on('error', (err) => {
@@ -19692,10 +19760,10 @@ async function sendMonitoringEmbed(title, description, color) {
 function getBotStatus() {
   const ping = client.ws?.ping || 0;
   const uptime = Date.now() - startTime;
-  
+
   let status = "🟢 Stabilny";
   let statusColor = 0x00ff00;
-  
+
   if (ping > 400 || errorCount > 5) {
     status = "🔴 Krytyczny";
     statusColor = 0xff0000;
@@ -19730,7 +19798,7 @@ setInterval(async () => {
 // 2. Alert przy błędzie krytycznym (bot padnie)
 process.on("uncaughtException", async (err) => {
   console.error("🔴 Błąd krytyczny:", err);
-  
+
   errorCount++;
   lastErrorTime = Date.now();
 
@@ -19774,7 +19842,7 @@ setInterval(async () => {
 
     const req = https.request(options, (res) => {
       const responseTime = Date.now() - startTime;
-      
+
       if (res.statusCode === 200) {
         const description = `🌐 **Monitor HTTP:** Aktywny\n📡 **Response time:** ${responseTime}ms\n📊 **Status:** HTTP ${res.statusCode}`;
         sendMonitoringEmbed("🟢 Monitor HTTP - OK", description, 0x00ff00);
@@ -19897,7 +19965,7 @@ async function validateBotToken() {
 // 8. Komenda statusu (opcjonalnie - można dodać do slash commands)
 async function sendStatusReport(channel) {
   const status = await checkBotStatus();
-  
+
   const embed = new EmbedBuilder()
     .setColor(status.statusColor)
     .setTitle("📊 Status Bota")
@@ -19929,23 +19997,23 @@ console.log("[WS_TEST] Testuję połączenie WebSocket z Discord...");
 try {
   const WebSocket = require('ws');
   const ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
-  
+
   const wsTimeout = setTimeout(() => {
     console.error("[WS_TEST] WebSocket timeout - Render.com blokuje połączenia!");
     ws.terminate();
   }, 10000);
-  
+
   ws.on('open', () => {
     console.log("[WS_TEST] WebSocket połączony pomyślnie!");
     clearTimeout(wsTimeout);
     ws.close();
   });
-  
+
   ws.on('error', (err) => {
     console.error("[WS_TEST] WebSocket error:", err.message);
     clearTimeout(wsTimeout);
   });
-  
+
   ws.on('close', () => {
     console.log("[WS_TEST] WebSocket zamknięty");
   });
@@ -19970,7 +20038,7 @@ client.on("messageDelete", async (message) => {
       { name: "Załączniki", value: attachments.substring(0, 1024) }
     )
     .setTimestamp();
-  
+
   const files = [];
   if (message.attachments.size > 0) {
     message.attachments.forEach(att => {
@@ -19988,12 +20056,12 @@ client.on("messageCreate", async (message) => {
   if (message.attachments.size === 0) return;
   const logCh = await getLogiTicketChannel(message.guild);
   if (!logCh) return;
-  
+
   const files = [];
   message.attachments.forEach(att => {
     files.push({ attachment: att.url, name: att.name || "zalacznik.png" });
   });
-  
+
   const embed = new EmbedBuilder()
     .setColor(0x00ff00)
     .setTitle("🖼️ Przesłano załącznik w tickecie")
@@ -20002,7 +20070,7 @@ client.on("messageCreate", async (message) => {
       { name: "Kanał", value: `<#${message.channel.id}>` }
     )
     .setTimestamp();
-    
+
   await logCh.send({ embeds: [embed], files }).catch(() => null);
 });
 
@@ -20180,7 +20248,7 @@ app.get('/', (req, res) => {
     bot_tag: client.user ? client.user.tag : 'Not connected',
     ready: client.isReady()
   };
-  
+
   // Sprawdź czy request chce JSON czy HTML
   if (req.headers.accept && req.headers.accept.includes('application/json')) {
     res.json(status, null, 2);
@@ -20205,6 +20273,6 @@ app.get('/health', (req, res) => {
     uptime: client.uptime ? Math.floor(client.uptime / 1000) : 0,
     guilds: client.isReady() ? client.guilds.cache.size : 0
   };
-  
+
   res.status(200).json(status, null, 2);
 });
