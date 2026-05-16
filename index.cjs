@@ -330,16 +330,6 @@ let pendingRename = false;
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
-const OPINION_STAR = "⭐";
-const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
-const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
-  const value = index + 1;
-  return {
-    label: `${OPINION_STAR.repeat(value)} (${value}/5)`,
-    value: String(value),
-    default: value === 5,
-  };
-});
 
 // FREE KASA cooldown (12h) and allowed channel
 const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -5464,6 +5454,8 @@ async function handleButtonInteraction(interaction) {
   const botName = client.user?.username || "NEWSHOP";
 
   if (customId === "btn_wystaw_opinie") {
+    // Sprawdź cooldown (30 min)
+    const OPINION_COOLDOWN_MS = 30 * 60 * 1000;
     const lastUsed = opinionCooldowns.get(interaction.user.id) || 0;
     if (Date.now() - lastUsed < OPINION_COOLDOWN_MS) {
       const remaining = OPINION_COOLDOWN_MS - (Date.now() - lastUsed);
@@ -5474,7 +5466,46 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
-    await interaction.showModal(buildOpinionModal());
+    const modal = new ModalBuilder()
+      .setCustomId("modal_wystaw_opinie")
+      .setTitle("⭐ MC BAZAR – Opinia");
+
+    const czasInput = new TextInputBuilder()
+      .setCustomId("czas_oczekiwania")
+      .setLabel("Czas oczekiwania *")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder("np. ⭐⭐⭐⭐⭐");
+
+    const przebiegInput = new TextInputBuilder()
+      .setCustomId("przebieg_transakcji")
+      .setLabel("Przebieg transakcji *")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder("np. ⭐⭐⭐⭐⭐");
+
+    const realizacjaInput = new TextInputBuilder()
+      .setCustomId("realizacja_wymiany")
+      .setLabel("Realizacja wymiany *")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder("np. ⭐⭐⭐⭐⭐");
+
+    const trescInput = new TextInputBuilder()
+      .setCustomId("tresc_opinii")
+      .setLabel("Opinia *")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true)
+      .setPlaceholder("Bardzo polecam sklep...");
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(czasInput),
+      new ActionRowBuilder().addComponents(przebiegInput),
+      new ActionRowBuilder().addComponents(realizacjaInput),
+      new ActionRowBuilder().addComponents(trescInput)
+    );
+
+    await interaction.showModal(modal);
     return;
   }
 
@@ -11826,98 +11857,6 @@ function getModalStringSelectValueSafe(interaction, customId) {
   }
 }
 
-function buildOpinionRatingSelect(customId) {
-  return new StringSelectMenuBuilder()
-    .setCustomId(customId)
-    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(OPINION_RATING_OPTIONS);
-}
-
-function parseOpinionRatingValue(raw) {
-  if (raw == null) return null;
-  const text = String(raw).trim();
-  const number = Number.parseInt(text.replace(/[^0-9]/g, ""), 10);
-  if (Number.isFinite(number) && number >= 1 && number <= 5) return number;
-
-  const starCount = (text.match(/\u2B50|★|🌟/gu) || []).length;
-  return starCount >= 1 && starCount <= 5 ? starCount : null;
-}
-
-function getOpinionRatingValue(interaction, customId) {
-  const selected = getModalStringSelectValueSafe(interaction, customId);
-  if (selected) return parseOpinionRatingValue(selected) || 5;
-  return parseOpinionRatingValue(getModalTextInputValueSafe(interaction, customId)) || 5;
-}
-
-function formatOpinionStars(value) {
-  const count = Math.max(1, Math.min(5, Number(value) || 1));
-  return `\`${OPINION_STAR.repeat(count)}\``;
-}
-
-function formatOpinionText(value) {
-  const clean = String(value || "")
-    .replace(/`/g, "ʼ")
-    .trim();
-  return `\`${clean || "-"}\``;
-}
-
-function buildOpinionModal() {
-  const trescInput = new TextInputBuilder()
-    .setCustomId("tresc_opinii")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(true)
-    .setMaxLength(900)
-    .setValue(OPINION_DEFAULT_TEXT)
-    .setPlaceholder(OPINION_DEFAULT_TEXT);
-
-  return new ModalBuilder()
-    .setCustomId("modal_wystaw_opinie")
-    .setTitle(`${OPINION_STAR} NEW SHOP - Opinia`)
-    .addLabelComponents(
-      new LabelBuilder()
-        .setLabel("Czas oczekiwania")
-        .setStringSelectMenuComponent(buildOpinionRatingSelect("czas_oczekiwania")),
-      new LabelBuilder()
-        .setLabel("Przebieg transakcji")
-        .setStringSelectMenuComponent(buildOpinionRatingSelect("przebieg_transakcji")),
-      new LabelBuilder()
-        .setLabel("Realizacja wymiany")
-        .setStringSelectMenuComponent(buildOpinionRatingSelect("realizacja_wymiany")),
-      new LabelBuilder()
-        .setLabel("Opinia")
-        .setTextInputComponent(trescInput),
-    );
-}
-
-function buildOpinionButton() {
-  return new ButtonBuilder()
-    .setCustomId("btn_wystaw_opinie")
-    .setLabel("Wystaw opinię")
-    .setEmoji(OPINION_STAR)
-    .setStyle(ButtonStyle.Secondary);
-}
-
-function buildOpinionInstructionPayload() {
-  const container = new ContainerBuilder().setAccentColor(0xffd700);
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
-    ),
-  );
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(buildOpinionButton()),
-  );
-  appendBrandFooterToContainer(container, null);
-
-  return {
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
-  };
-}
-
 function buildTicketPanelPayload() {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
@@ -13914,18 +13853,12 @@ async function handleModalSubmit(interaction) {
   const cid = interaction.customId || "";
 
   if (cid === "modal_wystaw_opinie") {
-    const czas = getOpinionRatingValue(interaction, "czas_oczekiwania");
-    const przebieg = getOpinionRatingValue(interaction, "przebieg_transakcji");
-    const realizacja = getOpinionRatingValue(interaction, "realizacja_wymiany");
-    const tresc = getModalTextInputValueSafe(interaction, "tresc_opinii") || "";
-
-    if (!czas || !przebieg || !realizacja) {
-      await interaction.reply({
-        content: "> `❌` × Wybierz ocenę w każdej rozwijanej kategorii.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
+    const czas = interaction.fields.getTextInputValue("czas_oczekiwania");
+    const przebieg = interaction.fields.getTextInputValue("przebieg_transakcji");
+    const realizacja = interaction.fields.getTextInputValue("realizacja_wymiany");
+    const tresc = interaction.fields.getTextInputValue("tresc_opinii");
+    
+    // Simulate /opinia command logic with the new modal fields
     const normalize = (s = "") =>
       s
         .toString()
@@ -13952,62 +13885,68 @@ async function handleModalSubmit(interaction) {
 
     if (!allowedChannelId) {
       await interaction.reply({
-        content: "> `❌` × Nie znaleziono kanału opinii.",
+        content: `> \`❌\` × Nie znaleziono kanału opinii.`,
         flags: [MessageFlags.Ephemeral],
       });
       return;
     }
 
+    // Oznaczamy użycie cooldown
     opinionCooldowns.set(interaction.user.id, Date.now());
 
-    const safeTresc = formatOpinionText(tresc);
+    const safeTresc = tresc ? `\`${tresc}\`` : "`-`";
+
     const description = [
       "```",
-      "✅ New Shop × OPINIA",
+      "✅ MC BAZAR × OPINIA",
       "```",
-      `> \`👤\` **× Twórca opinii:** <@${interaction.user.id}>`,
-      `> \`📝\` **× Treść:** ${safeTresc}`,
-      "",
-      `> \`⏳\` **× Czas oczekiwania:** ${formatOpinionStars(czas)}`,
-      `> \`📋\` **× Jakość produktu:** ${formatOpinionStars(przebieg)}`,
-      `> \`💸\` **× Cena produktu:** ${formatOpinionStars(realizacja)}`,
-    ].join("\n");
+      `### ・ \`👤\` × Klient: <@${interaction.user.id}> (\`${interaction.user.id}\`)`,
+      `> \`💬\` **× Opinia:** ${safeTresc}`,
+      `> \`⏳\` **× Czas oczekiwania:** ${czas}`,
+      `> \`🤝\` **× Przebieg transakcji:** ${przebieg}`,
+      `> \`🔄\` **× Realizacja wymiany:** ${realizacja}`,
+    ].join("\\n");
 
     const opinionEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(description)
-      .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 128 }));
+      .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 128 }))
+      .setTimestamp();
+
+    const instructionEmbed = new EmbedBuilder()
+      .setColor(0xffd700)
+      .setDescription(
+        "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
+      );
+
+    const opinionButton = new ButtonBuilder()
+      .setCustomId("btn_wystaw_opinie")
+      .setLabel("Wystaw opinię")
+      .setEmoji("⭐")
+      .setStyle(ButtonStyle.Primary);
+
+    const actionRow = new ActionRowBuilder().addComponents(opinionButton);
 
     try {
-      const targetChannel =
-        interaction.guild.channels.cache.get(allowedChannelId) ||
-        await interaction.guild.channels.fetch(allowedChannelId);
-
+      const targetChannel = interaction.guild.channels.cache.get(allowedChannelId) || await interaction.guild.channels.fetch(allowedChannelId);
+      
       let botWebhook = null;
       try {
         const webhooks = await targetChannel.fetchWebhooks();
-        botWebhook = webhooks.find(
-          (w) => w.owner?.id === client.user.id && w.name === "ZAKUP_ITy_OPINIE",
-        );
-      } catch (e) {
-        botWebhook = null;
-      }
+        botWebhook = webhooks.find((w) => w.owner?.id === client.user.id && w.name === "ZAKUP_ITy_OPINIE");
+      } catch (e) {}
 
       if (!botWebhook) {
         botWebhook = await targetChannel.createWebhook({
           name: "ZAKUP_ITy_OPINIE",
           avatar: client.user.displayAvatarURL({ dynamic: true }),
-          reason: "Webhook do publikowania opinii",
         });
       }
 
       await botWebhook.send({
         content: "",
         embeds: [opinionEmbed],
-        username:
-          interaction.member?.displayName ||
-          interaction.user.globalName ||
-          interaction.user.username,
+        username: interaction.member?.displayName || interaction.user.globalName || interaction.user.username,
         avatarURL: interaction.user.displayAvatarURL({ dynamic: true, size: 128 }),
       });
 
@@ -14020,10 +13959,7 @@ async function handleModalSubmit(interaction) {
       if (!instrMsg) {
         const found = await findBotMessageWithEmbed(
           targetChannel,
-          (emb) =>
-            typeof emb.description === "string" &&
-            (emb.description.includes("Kliknij w przycisk na dole, aby podzielić się opinią") ||
-              emb.description.includes("Użyj **komendy**")),
+          (emb) => typeof emb.description === "string" && (emb.description.includes("Kliknij w przycisk na dole, aby podzielić się opinią") || emb.description.includes("Użyj **komendy**"))
         );
         if (found) instrMsg = found;
       }
@@ -14033,7 +13969,7 @@ async function handleModalSubmit(interaction) {
         lastOpinionInstruction.delete(allowedChannelId);
       }
 
-      const sent = await targetChannel.send(buildOpinionInstructionPayload());
+      const sent = await targetChannel.send({ embeds: [instructionEmbed], components: [actionRow] });
       lastOpinionInstruction.set(allowedChannelId, sent.id);
 
       await interaction.reply({
@@ -16548,8 +16484,19 @@ async function handleOpinionCommand(interaction) {
   const cena = interaction.options.getInteger("cena_produktu");
   const tresc = interaction.options.getString("tresc_opinii");
 
-  const starsInline = (n) => formatOpinionStars(n);
-  const safeTresc = formatOpinionText(tresc);
+  // helper na gwiazdki
+  const stars = (n) => {
+    const count = Math.max(0, Math.min(5, n || 0));
+    if (count === 0) return null;
+    return "⭐".repeat(count);
+  };
+  const starsInline = (n) => {
+    const s = stars(n);
+    return s ? `\`${s}\`` : "Brak ocena";
+  };
+
+  // wrap tresc in inline code backticks so it appears with dark bg in embed
+  const safeTresc = tresc ? `\`${tresc}\`` : "`-`";
 
   // Budujemy opis jako pojedynczy string — używamy tablicy i join(\n) żeby zachować czytelność
   const description = [
@@ -16570,7 +16517,23 @@ async function handleOpinionCommand(interaction) {
     .setDescription(description)
     .setThumbnail(
       interaction.user.displayAvatarURL({ dynamic: true, size: 128 }),
+    )
+    .setTimestamp();
+
+  // instrukcja — będzie na żółto i zaprosi do kliknięcia przycisku
+  const instructionEmbed = new EmbedBuilder()
+    .setColor(0xffd700)
+    .setDescription(
+      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
     );
+
+  const opinionButton = new ButtonBuilder()
+    .setCustomId("btn_wystaw_opinie")
+    .setLabel("Wystaw opinię")
+    .setEmoji("⭐")
+    .setStyle(ButtonStyle.Primary);
+
+  const actionRow = new ActionRowBuilder().addComponents(opinionButton);
   try {
     const channel = interaction.channel;
 
@@ -16649,7 +16612,7 @@ async function handleOpinionCommand(interaction) {
 
     // Send a fresh instruction message (so it will be at the bottom)
     try {
-      const sent = await channel.send(buildOpinionInstructionPayload());
+      const sent = await channel.send({ embeds: [instructionEmbed], components: [actionRow] });
       lastOpinionInstruction.set(channelId, sent.id);
     } catch (e) {
       // ignore (maybe no perms)
