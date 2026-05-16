@@ -3018,11 +3018,6 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("panelzaproszenia")
-    .setDescription("Wyślij panel do sprawdzania zaproszeń na kanał")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .toJSON(),
-  new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -8153,7 +8148,7 @@ function formatSellerPaymentValue(value) {
 function isPurchaseTicketForPaymentData(channel, ticketData = null) {
   const label = String(ticketData?.ticketTypeLabel || "").toUpperCase();
   if (label.startsWith("SPRZ")) return false;
-  
+
   // Domyślnie traktuj jako ticket zakupowy, chyba że wyraźnie oznaczony jako sprzedaż
   return true;
 }
@@ -8307,7 +8302,7 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
   if (!sellerPaymentProfileHasData(profile)) return;
 
   const method = String(ticketData?.paymentMethod || "").toLowerCase();
-  
+
   const lines = [];
   const addLine = (emoji, label, value) => {
     if (value && value !== "`Brak`" && value !== "Brak") {
