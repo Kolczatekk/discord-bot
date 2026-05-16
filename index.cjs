@@ -5480,7 +5480,7 @@ async function handleButtonInteraction(interaction) {
     return;
   }
 
-  if (customId === "seller_data_edit") {
+  if (customId === "seller_data_edit_main") {
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
         content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
@@ -5489,7 +5489,20 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
-    await interaction.showModal(buildSellerPaymentDataModal(interaction));
+    await interaction.showModal(buildSellerPaymentDataModalMain(interaction));
+    return;
+  }
+
+  if (customId === "seller_data_edit_extra") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.showModal(buildSellerPaymentDataModalExtra(interaction));
     return;
   }
 
@@ -5511,7 +5524,7 @@ async function handleButtonInteraction(interaction) {
     }
     const description = [
       "> `💳` × **Twoje Dane do płatności**",
-      `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
+      `> \`📱\` × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`,
       `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
       `> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`,
       `> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`,
@@ -8068,9 +8081,14 @@ function buildSellerPaymentPanelPayload(guildId) {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId("seller_data_edit")
-      .setLabel("Dodaj dane")
-      .setEmoji("💳")
+      .setCustomId("seller_data_edit_main")
+      .setLabel("BLIK/Przelew")
+      .setEmoji("📱")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("seller_data_edit_extra")
+      .setLabel("PP/LTC/MyPSC")
+      .setEmoji("🌐")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_view")
@@ -8090,15 +8108,15 @@ function buildSellerPaymentPanelPayload(guildId) {
   };
 }
 
-function buildSellerPaymentDataModal(interaction) {
+function buildSellerPaymentDataModalMain(interaction) {
   const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
   const modal = new ModalBuilder()
     .setCustomId("seller_data_modal")
-    .setTitle("Dane sprzedawcy");
+    .setTitle("Dane: BLIK / Przelew");
 
   const phoneInput = new TextInputBuilder()
     .setCustomId("phone")
-    .setLabel("Numer telefonu / BLIK")
+    .setLabel("Nr. telefonu / BLIK")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(80)
@@ -8119,6 +8137,25 @@ function buildSellerPaymentDataModal(interaction) {
     .setRequired(false)
     .setMaxLength(120)
     .setPlaceholder("np. Jan Kowalski");
+
+  setTextInputValueIfPresent(phoneInput, current.phone || "");
+  setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
+  setTextInputValueIfPresent(recipientInput, current.recipient || "");
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(phoneInput),
+    new ActionRowBuilder().addComponents(transferTitleInput),
+    new ActionRowBuilder().addComponents(recipientInput)
+  );
+
+  return modal;
+}
+
+function buildSellerPaymentDataModalExtra(interaction) {
+  const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
+  const modal = new ModalBuilder()
+    .setCustomId("seller_data_modal")
+    .setTitle("Dane: PP / LTC / MyPSC");
 
   const paypalEmailInput = new TextInputBuilder()
     .setCustomId("paypal_email")
@@ -8144,23 +8181,14 @@ function buildSellerPaymentDataModal(interaction) {
     .setMaxLength(120)
     .setPlaceholder("np. mypsc@example.com");
 
-  setTextInputValueIfPresent(phoneInput, current.phone || "");
-  setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
-  setTextInputValueIfPresent(recipientInput, current.recipient || "");
   setTextInputValueIfPresent(paypalEmailInput, current.paypalEmail || "");
   setTextInputValueIfPresent(ltcWalletInput, current.ltcWallet || "");
   setTextInputValueIfPresent(mypscEmailInput, current.mypscEmail || "");
 
   modal.addComponents(
-    new ActionRowBuilder().addComponents(phoneInput),
-    new ActionRowBuilder().addComponents(transferTitleInput),
-    new ActionRowBuilder().addComponents(recipientInput),
     new ActionRowBuilder().addComponents(paypalEmailInput),
-    new ActionRowBuilder().addComponents(ltcWalletInput)
-    // Uwaga: discord pozwala na max 5 pol w modalu. MyPSC zostalo wypchniete. 
-    // Musimy zdecydowac co usunac lub jak to podzielic. 
-    // Na razie zostawiam MyPSC poza modalem lub usune LTC jesli to mniej wazne.
-    // Ale w discord.js ActionRow moze byc max 5.
+    new ActionRowBuilder().addComponents(ltcWalletInput),
+    new ActionRowBuilder().addComponents(mypscEmailInput)
   );
 
   return modal;
@@ -8194,48 +8222,44 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
   if (!isPurchaseTicketForPaymentData(channel, ticketData)) return;
 
   const profile = getSellerPaymentProfile(guildId, sellerId);
-  const hasData = sellerPaymentProfileHasData(profile);
-  const method = String(ticketData?.paymentMethod || "").toLowerCase();
+  if (!sellerPaymentProfileHasData(profile)) return; // Jeśli brak danych, nie wysyłaj nic
 
+  const method = String(ticketData?.paymentMethod || "").toLowerCase();
   const descriptionLines = ["> `💳` × **Dane do płatności**"];
 
-  if (hasData) {
-    // Zawsze pokazuj Odbiorce i Tytul jesli to BLIK lub przelew
-    if (method.includes("blik") || method.includes("przelew") || !method) {
-      descriptionLines.push(`> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}`);
-      descriptionLines.push(`> \`📱\` × **nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`);
-      descriptionLines.push(`> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`);
-    }
+  // Zawsze pokazuj Odbiorce i Tytul jesli to BLIK lub przelew
+  if (method.includes("blik") || method.includes("przelew") || !method) {
+    descriptionLines.push(`> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}`);
+    descriptionLines.push(`> \`📱\` × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`);
+    descriptionLines.push(`> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`);
+  }
 
-    if (method === "paypal" || !method) {
-      descriptionLines.push(`> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`);
-    }
+  if (method === "paypal" || !method) {
+    descriptionLines.push(`> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`);
+  }
 
-    if (method === "ltc" || !method) {
-      descriptionLines.push(`> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`);
-    }
+  if (method === "ltc" || !method) {
+    descriptionLines.push(`> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`);
+  }
 
-    if (method === "mypsc" || !method) {
-      descriptionLines.push(`> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`);
-    }
+  if (method === "mypsc" || !method) {
+    descriptionLines.push(`> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`);
+  }
 
-    // Jesli zadna z powyzszych nie pasuje a mamy dane, pokaz wszystko (fallback)
-    if (descriptionLines.length === 1) {
-      descriptionLines.push(`> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}`);
-      descriptionLines.push(`> \`📱\` × **nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`);
-      descriptionLines.push(`> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`);
-      descriptionLines.push(`> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`);
-      descriptionLines.push(`> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`);
-      descriptionLines.push(`> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`);
-    }
-  } else {
-    descriptionLines.push("> `⚠️` × **Brak danych.** Sprzedawca nie uzupełnił jeszcze panelu płatności.");
+  // Jesli zadna z powyzszych nie pasuje (np. metoda psc nie ma danych sprzedawcy), 
+  // ale mamy jakiekolwiek inne dane, pokaz wszystko jako fallback
+  if (descriptionLines.length === 1) {
+    descriptionLines.push(`> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}`);
+    descriptionLines.push(`> \`📱\` × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`);
+    descriptionLines.push(`> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`);
+    descriptionLines.push(`> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`);
+    descriptionLines.push(`> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`);
+    descriptionLines.push(`> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`);
   }
 
   const description = descriptionLines.join("\n");
-
   const embed = new EmbedBuilder()
-    .setColor(hasData ? COLOR_BLUE : COLOR_YELLOW)
+    .setColor(COLOR_BLUE)
     .setDescription(description);
 
   await channel.send({ embeds: [embed] }).catch(() => null);
@@ -13410,6 +13434,22 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       // Payment info only for purchases, not for sales (SPRZEDAŻ)
       if (ticketData.ticketTypeLabel !== "SPRZEDAŻ") {
         await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId, ticketData);
+        
+        // Dodatkowe instrukcje dla PSC - tylko po przejęciu i tylko dla zakupów
+        const method = String(ticketData?.paymentMethod || "").toLowerCase();
+        if (method === "psc" || method === "psc_bez_paragonu") {
+          const pscEmbed = new EmbedBuilder()
+            .setColor(COLOR_BLUE)
+            .setDescription(
+              "```\n" +
+              "💳 New Shop × WYMAGANE DANE\n" +
+              "```\n" +
+              (method === "psc" 
+                ? "> <a:arrowwhite:1491476759290449984> × **Podaj** kod **PSC** oraz **zdjęcie paragonu**.\n> <a:arrowwhite:1491476759290449984> × Sprzedawca sprawdzi kod po otrzymaniu danych."
+                : "> <a:arrowwhite:1491476759290449984> × **Podaj** kod **PSC**.\n> <a:arrowwhite:1491476759290449984> × Sprzedawca sprawdzi kod po otrzymaniu danych.")
+            );
+          await ch.send({ embeds: [pscEmbed] }).catch(() => null);
+        }
       }
     } catch (e) {
       console.error("Error sending payment profile:", e);
@@ -15991,12 +16031,7 @@ async function handleModalSubmit(interaction) {
     });
     scheduleSavePersistentState();
 
-    // Dodatkowe instrukcje dla PSC
-    if (paymentMethod === "psc") {
-      await channel.send({ content: "> `💳` × **Wymagane dane:** Podaj kod PSC oraz zdjęcie paragonu." }).catch(() => null);
-    } else if (paymentMethod === "psc_bez_paragonu") {
-      await channel.send({ content: "> `💳` × **Wymagane dane:** Podaj kod PSC." }).catch(() => null);
-    }
+    // LOG: ticket creation in logi-ticket channel (if exists)
 
     // LOG: ticket creation in logi-ticket channel (if exists)
     try {
