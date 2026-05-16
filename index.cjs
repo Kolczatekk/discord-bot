@@ -1050,8 +1050,8 @@ async function saveStateToSupabase(data) {
 
 // ----------------- FREE KASA -----------------
 function pickFreeKasaReward() {
-  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 10% (wygrywa średnio raz na 10 losowań).
-  const WIN_CHANCE = 10.0;
+  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 25% (wygrywa średnio raz na 4 losowania).
+  const WIN_CHANCE = 25.0;
 
   if (Math.random() * 100 > WIN_CHANCE) {
     return null; // Pusty los
@@ -8324,6 +8324,9 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
     addLine("`👝`", "Portfel LTC", profile.ltcWallet);
   } else if (method === "mypsc") {
     addLine("`🌐`", "MyPSC", profile.mypscEmail);
+  } else if (method === "psc" || method === "psc_bez_paragonu") {
+    // PSC - brak danych bankowych do pokazania, embed z instrukcią PSC jest osobno
+    return;
   } else {
     addLine("`📱`", "Telefon", profile.phone);
     addLine("`🧾`", "Tytuł przelewu", profile.transferTitle);
@@ -12107,7 +12110,7 @@ function buildOpinionInstructionPayload() {
   const container = new ContainerBuilder().setAccentColor(0xffd700);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!"
+      "`📊` × Kliknij w przycisk na dole, aby podzielić się **opinią** o **naszym serwerze**!"
     )
   );
 
