@@ -330,6 +330,16 @@ let pendingRename = false;
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
+const OPINION_STAR = "⭐";
+const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
+const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
+  const value = index + 1;
+  return {
+    label: `${OPINION_STAR.repeat(value)} (${value}/5)`,
+    value: String(value),
+    default: value === 5,
+  };
+});
 
 // FREE KASA cooldown (12h) and allowed channel
 const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -5466,46 +5476,7 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
-    const modal = new ModalBuilder()
-      .setCustomId("modal_wystaw_opinie")
-      .setTitle("⭐ MC BAZAR – Opinia");
-
-    const czasInput = new TextInputBuilder()
-      .setCustomId("czas_oczekiwania")
-      .setLabel("Czas oczekiwania *")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setPlaceholder("np. ⭐⭐⭐⭐⭐");
-
-    const przebiegInput = new TextInputBuilder()
-      .setCustomId("przebieg_transakcji")
-      .setLabel("Przebieg transakcji *")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setPlaceholder("np. ⭐⭐⭐⭐⭐");
-
-    const realizacjaInput = new TextInputBuilder()
-      .setCustomId("realizacja_wymiany")
-      .setLabel("Realizacja wymiany *")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setPlaceholder("np. ⭐⭐⭐⭐⭐");
-
-    const trescInput = new TextInputBuilder()
-      .setCustomId("tresc_opinii")
-      .setLabel("Opinia *")
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true)
-      .setPlaceholder("Bardzo polecam sklep...");
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(czasInput),
-      new ActionRowBuilder().addComponents(przebiegInput),
-      new ActionRowBuilder().addComponents(realizacjaInput),
-      new ActionRowBuilder().addComponents(trescInput)
-    );
-
-    await interaction.showModal(modal);
+    await interaction.showModal(buildOpinionModal());
     return;
   }
 
@@ -5519,6 +5490,35 @@ async function handleButtonInteraction(interaction) {
     }
 
     await interaction.showModal(buildSellerPaymentDataModal(interaction));
+    return;
+  }
+
+  if (customId === "seller_data_view") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+    const profile = getSellerPaymentProfile(interaction.guildId, interaction.user.id);
+    if (!sellerPaymentProfileHasData(profile)) {
+      await interaction.reply({
+        content: "> `⚠️` × **Brak danych.** Nie uzupełniłeś jeszcze panelu płatności.",
+        flags: [MessageFlags.Ephemeral]
+      });
+      return;
+    }
+    const description = [
+      "> `💳` × **Twoje Dane do płatności**",
+      `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
+      `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
+      `> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`,
+      `> \`⛓️\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`,
+      `> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`,
+    ].join("\n");
+    const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(description);
+    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
     return;
   }
 
@@ -7996,7 +7996,9 @@ function normalizeSellerPaymentProfile(profile = {}) {
   return {
     phone: String(profile.phone || "").trim().slice(0, 80),
     transferTitle: String(profile.transferTitle || "").trim().slice(0, 120),
-    receiverName: String(profile.receiverName || "").trim().slice(0, 120),
+    paypalEmail: String(profile.paypalEmail || "").trim().slice(0, 120),
+    ltcWallet: String(profile.ltcWallet || "").trim().slice(0, 180),
+    mypscEmail: String(profile.mypscEmail || "").trim().slice(0, 120),
     updatedAt: Number(profile.updatedAt || Date.now()),
   };
 }
@@ -8006,7 +8008,9 @@ function sellerPaymentProfileHasData(profile) {
     profile &&
     (String(profile.phone || "").trim() ||
       String(profile.transferTitle || "").trim() ||
-      String(profile.receiverName || "").trim())
+      String(profile.paypalEmail || "").trim() ||
+      String(profile.ltcWallet || "").trim() ||
+      String(profile.mypscEmail || "").trim())
   );
 }
 
@@ -8054,8 +8058,7 @@ function buildSellerPaymentPanelPayload(guildId) {
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "> `🧾` × Ustaw swoje dane do płatności raz, a bot pokaże je po przejęciu ticketa.\n" +
-          "> `🔒` × Dane widzi tylko osoba w tickecie, bo wiadomość trafia na prywatny kanał.",
+        "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa.",
       ),
     );
 
@@ -8064,8 +8067,13 @@ function buildSellerPaymentPanelPayload(guildId) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_edit")
-      .setLabel("Ustaw dane")
+      .setLabel("Dodaj dane")
       .setEmoji("💳")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("seller_data_view")
+      .setLabel("Moje Dane")
+      .setEmoji("🔍")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_clear")
@@ -8088,7 +8096,7 @@ function buildSellerPaymentDataModal(interaction) {
 
   const phoneInput = new TextInputBuilder()
     .setCustomId("phone")
-    .setLabel("Numer telefonu")
+    .setLabel("Numer telefonu / BLIK")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(80)
@@ -8096,28 +8104,48 @@ function buildSellerPaymentDataModal(interaction) {
 
   const transferTitleInput = new TextInputBuilder()
     .setCustomId("transfer_title")
-    .setLabel("Tytuł przelewu")
+    .setLabel("Tytuł przelewu / Odbiorca")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
-    .setPlaceholder("np. Nick Discord / zamówienie");
+    .setPlaceholder("np. Zamówienie DC / Jan K.");
 
-  const receiverInput = new TextInputBuilder()
-    .setCustomId("receiver_name")
-    .setLabel("Nazwa odbiorcy")
+  const paypalEmailInput = new TextInputBuilder()
+    .setCustomId("paypal_email")
+    .setLabel("PayPal (E-mail)")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
-    .setPlaceholder("np. Imię / nazwa odbiorcy");
+    .setPlaceholder("np. paypal@example.com");
+
+  const ltcWalletInput = new TextInputBuilder()
+    .setCustomId("ltc_wallet")
+    .setLabel("Portfel LTC")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(180)
+    .setPlaceholder("np. Lhq9...");
+
+  const mypscEmailInput = new TextInputBuilder()
+    .setCustomId("mypsc_email")
+    .setLabel("MyPSC (Konto / E-mail)")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(120)
+    .setPlaceholder("np. mypsc@example.com");
 
   setTextInputValueIfPresent(phoneInput, current.phone || "");
   setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
-  setTextInputValueIfPresent(receiverInput, current.receiverName || "");
+  setTextInputValueIfPresent(paypalEmailInput, current.paypalEmail || "");
+  setTextInputValueIfPresent(ltcWalletInput, current.ltcWallet || "");
+  setTextInputValueIfPresent(mypscEmailInput, current.mypscEmail || "");
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(phoneInput),
     new ActionRowBuilder().addComponents(transferTitleInput),
-    new ActionRowBuilder().addComponents(receiverInput),
+    new ActionRowBuilder().addComponents(paypalEmailInput),
+    new ActionRowBuilder().addComponents(ltcWalletInput),
+    new ActionRowBuilder().addComponents(mypscEmailInput)
   );
 
   return modal;
@@ -8157,7 +8185,9 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
         "> `💳` × **Dane do płatności**",
         `> \`📱\` × **Telefon:** ${formatSellerPaymentValue(profile.phone)}`,
         `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
-        `> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.receiverName)}`,
+        `> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`,
+        `> \`⛓️\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`,
+        `> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`,
       ].join("\n")
     : [
         "> `💳` × **Dane do płatności**",
@@ -11857,6 +11887,98 @@ function getModalStringSelectValueSafe(interaction, customId) {
   }
 }
 
+function buildOpinionRatingSelect(customId) {
+  return new StringSelectMenuBuilder()
+    .setCustomId(customId)
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(OPINION_RATING_OPTIONS);
+}
+
+function parseOpinionRatingValue(raw) {
+  if (raw == null) return null;
+  const text = String(raw).trim();
+  const number = Number.parseInt(text.replace(/[^0-9]/g, ""), 10);
+  if (Number.isFinite(number) && number >= 1 && number <= 5) return number;
+
+  const starCount = (text.match(/\u2B50|★|🌟/gu) || []).length;
+  return starCount >= 1 && starCount <= 5 ? starCount : null;
+}
+
+function getOpinionRatingValue(interaction, customId) {
+  const selected = getModalStringSelectValueSafe(interaction, customId);
+  if (selected) return parseOpinionRatingValue(selected) || 5;
+  return parseOpinionRatingValue(getModalTextInputValueSafe(interaction, customId)) || 5;
+}
+
+function formatOpinionStars(value) {
+  const count = Math.max(1, Math.min(5, Number(value) || 1));
+  return `\`${OPINION_STAR.repeat(count)}\``;
+}
+
+function formatOpinionText(value) {
+  const clean = String(value || "")
+    .replace(/`/g, "ʼ")
+    .trim();
+  return `\`${clean || "-"}\``;
+}
+
+function buildOpinionModal() {
+  const trescInput = new TextInputBuilder()
+    .setCustomId("tresc_opinii")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(900)
+    .setValue(OPINION_DEFAULT_TEXT)
+    .setPlaceholder(OPINION_DEFAULT_TEXT);
+
+  return new ModalBuilder()
+    .setCustomId("modal_wystaw_opinie")
+    .setTitle(`${OPINION_STAR} NEW SHOP - Opinia`)
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Czas oczekiwania")
+        .setStringSelectMenuComponent(buildOpinionRatingSelect("czas_oczekiwania")),
+      new LabelBuilder()
+        .setLabel("Przebieg transakcji")
+        .setStringSelectMenuComponent(buildOpinionRatingSelect("przebieg_transakcji")),
+      new LabelBuilder()
+        .setLabel("Realizacja wymiany")
+        .setStringSelectMenuComponent(buildOpinionRatingSelect("realizacja_wymiany")),
+      new LabelBuilder()
+        .setLabel("Opinia")
+        .setTextInputComponent(trescInput),
+    );
+}
+
+function buildOpinionButton() {
+  return new ButtonBuilder()
+    .setCustomId("btn_wystaw_opinie")
+    .setLabel("Wystaw opinię")
+    .setEmoji(OPINION_STAR)
+    .setStyle(ButtonStyle.Secondary);
+}
+
+function buildOpinionInstructionPayload() {
+  const container = new ContainerBuilder().setAccentColor(0xffd700);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
+    ),
+  );
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(buildOpinionButton()),
+  );
+  appendBrandFooterToContainer(container, null);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
 function buildTicketPanelPayload() {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
@@ -13853,10 +13975,18 @@ async function handleModalSubmit(interaction) {
   const cid = interaction.customId || "";
 
   if (cid === "modal_wystaw_opinie") {
-    const czas = interaction.fields.getTextInputValue("czas_oczekiwania");
-    const przebieg = interaction.fields.getTextInputValue("przebieg_transakcji");
-    const realizacja = interaction.fields.getTextInputValue("realizacja_wymiany");
-    const tresc = interaction.fields.getTextInputValue("tresc_opinii");
+    const czas = getOpinionRatingValue(interaction, "czas_oczekiwania");
+    const przebieg = getOpinionRatingValue(interaction, "przebieg_transakcji");
+    const realizacja = getOpinionRatingValue(interaction, "realizacja_wymiany");
+    const tresc = getModalTextInputValueSafe(interaction, "tresc_opinii") || "";
+
+    if (!czas || !przebieg || !realizacja) {
+      await interaction.reply({
+        content: "> `❌` × Wybierz ocenę w każdej rozwijanej kategorii.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
     
     // Simulate /opinia command logic with the new modal fields
     const normalize = (s = "") =>
@@ -13894,38 +14024,24 @@ async function handleModalSubmit(interaction) {
     // Oznaczamy użycie cooldown
     opinionCooldowns.set(interaction.user.id, Date.now());
 
-    const safeTresc = tresc ? `\`${tresc}\`` : "`-`";
+    const safeTresc = formatOpinionText(tresc);
 
     const description = [
       "```",
-      "✅ MC BAZAR × OPINIA",
+      "✅ New Shop × OPINIA",
       "```",
-      `### ・ \`👤\` × Klient: <@${interaction.user.id}> (\`${interaction.user.id}\`)`,
-      `> \`💬\` **× Opinia:** ${safeTresc}`,
-      `> \`⏳\` **× Czas oczekiwania:** ${czas}`,
-      `> \`🤝\` **× Przebieg transakcji:** ${przebieg}`,
-      `> \`🔄\` **× Realizacja wymiany:** ${realizacja}`,
-    ].join("\\n");
+      `> \`👤\` **× Twórca opinii:** <@${interaction.user.id}>`,
+      `> \`📝\` **× Treść:** ${safeTresc}`,
+      "",
+      `> \`⏳\` **× Czas oczekiwania:** ${formatOpinionStars(czas)}`,
+      `> \`📋\` **× Jakość produktu:** ${formatOpinionStars(przebieg)}`,
+      `> \`💸\` **× Cena produktu:** ${formatOpinionStars(realizacja)}`,
+    ].join("\n");
 
     const opinionEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(description)
-      .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 128 }))
-      .setTimestamp();
-
-    const instructionEmbed = new EmbedBuilder()
-      .setColor(0xffd700)
-      .setDescription(
-        "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
-      );
-
-    const opinionButton = new ButtonBuilder()
-      .setCustomId("btn_wystaw_opinie")
-      .setLabel("Wystaw opinię")
-      .setEmoji("⭐")
-      .setStyle(ButtonStyle.Primary);
-
-    const actionRow = new ActionRowBuilder().addComponents(opinionButton);
+      .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 128 }));
 
     try {
       const targetChannel = interaction.guild.channels.cache.get(allowedChannelId) || await interaction.guild.channels.fetch(allowedChannelId);
@@ -13969,7 +14085,7 @@ async function handleModalSubmit(interaction) {
         lastOpinionInstruction.delete(allowedChannelId);
       }
 
-      const sent = await targetChannel.send({ embeds: [instructionEmbed], components: [actionRow] });
+      const sent = await targetChannel.send(buildOpinionInstructionPayload());
       lastOpinionInstruction.set(allowedChannelId, sent.id);
 
       await interaction.reply({
@@ -13998,7 +14114,9 @@ async function handleModalSubmit(interaction) {
     const profile = normalizeSellerPaymentProfile({
       phone: interaction.fields.getTextInputValue("phone"),
       transferTitle: interaction.fields.getTextInputValue("transfer_title"),
-      receiverName: interaction.fields.getTextInputValue("receiver_name"),
+      paypalEmail: interaction.fields.getTextInputValue("paypal_email"),
+      ltcWallet: interaction.fields.getTextInputValue("ltc_wallet"),
+      mypscEmail: interaction.fields.getTextInputValue("mypsc_email"),
       updatedAt: Date.now(),
     });
 
@@ -16484,19 +16602,11 @@ async function handleOpinionCommand(interaction) {
   const cena = interaction.options.getInteger("cena_produktu");
   const tresc = interaction.options.getString("tresc_opinii");
 
-  // helper na gwiazdki
-  const stars = (n) => {
-    const count = Math.max(0, Math.min(5, n || 0));
-    if (count === 0) return null;
-    return "⭐".repeat(count);
-  };
   const starsInline = (n) => {
-    const s = stars(n);
-    return s ? `\`${s}\`` : "Brak ocena";
+    return formatOpinionStars(n);
   };
 
-  // wrap tresc in inline code backticks so it appears with dark bg in embed
-  const safeTresc = tresc ? `\`${tresc}\`` : "`-`";
+  const safeTresc = formatOpinionText(tresc);
 
   // Budujemy opis jako pojedynczy string — używamy tablicy i join(\n) żeby zachować czytelność
   const description = [
@@ -16517,23 +16627,7 @@ async function handleOpinionCommand(interaction) {
     .setDescription(description)
     .setThumbnail(
       interaction.user.displayAvatarURL({ dynamic: true, size: 128 }),
-    )
-    .setTimestamp();
-
-  // instrukcja — będzie na żółto i zaprosi do kliknięcia przycisku
-  const instructionEmbed = new EmbedBuilder()
-    .setColor(0xffd700)
-    .setDescription(
-      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
     );
-
-  const opinionButton = new ButtonBuilder()
-    .setCustomId("btn_wystaw_opinie")
-    .setLabel("Wystaw opinię")
-    .setEmoji("⭐")
-    .setStyle(ButtonStyle.Primary);
-
-  const actionRow = new ActionRowBuilder().addComponents(opinionButton);
   try {
     const channel = interaction.channel;
 
@@ -16612,7 +16706,7 @@ async function handleOpinionCommand(interaction) {
 
     // Send a fresh instruction message (so it will be at the bottom)
     try {
-      const sent = await channel.send({ embeds: [instructionEmbed], components: [actionRow] });
+      const sent = await channel.send(buildOpinionInstructionPayload());
       lastOpinionInstruction.set(channelId, sent.id);
     } catch (e) {
       // ignore (maybe no perms)
