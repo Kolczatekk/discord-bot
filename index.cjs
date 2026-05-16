@@ -3013,6 +3013,16 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("panelzaproszenia")
+    .setDescription("Wyślij panel do sprawdzania zaproszeń na kanał")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("panelzaproszenia")
+    .setDescription("Wyślij panel do sprawdzania zaproszeń na kanał")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -5473,6 +5483,11 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
 
+  if (customId === "btn_sprawdz_zaproszenia") {
+    await handleSprawdzZaproszeniaCommand(interaction);
+    return;
+  }
+
   if (customId === "btn_wystaw_opinie") {
     // Sprawdź cooldown (30 min)
     const OPINION_COOLDOWN_MS = 30 * 60 * 1000;
@@ -6435,6 +6450,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
+      break;
+    case "panelzaproszenia":
+      await handlePanelZaproszeniaCommand(interaction);
       break;
     case "help":
       await handleHelpCommand(interaction);
@@ -12108,6 +12126,54 @@ function buildOpinionInstructionPayload() {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
   };
+}
+
+function buildZaproszeniaInstructionPayload() {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "`📧` × Kliknij w przycisk na dole, aby sprawdzić swoje **zaproszenia** na serwerze!"
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const btn = new ButtonBuilder()
+    .setCustomId("btn_sprawdz_zaproszenia")
+    .setLabel("Sprawdź zaproszenia")
+    .setEmoji("🔎")
+    .setStyle(ButtonStyle.Secondary);
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(btn)
+  );
+
+  appendBrandFooterToContainer(container, null);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
+async function handlePanelZaproszeniaCommand(interaction) {
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.reply({
+      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const payload = buildZaproszeniaInstructionPayload();
+
+  await interaction.channel.send(payload);
+
+  await interaction.reply({
+    content: "> `✅` × Wysłano panel sprawdzania zaproszeń na kanał.",
+    flags: [MessageFlags.Ephemeral],
+  });
 }
 
 function buildTicketPanelPayload() {
@@ -17906,7 +17972,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   if (nowTs - lastTs < 30_000) {
     const remain = Math.ceil((30_000 - (nowTs - lastTs)) / 1000);
     await interaction.reply({
-      content: `> \`❌\` × Możesz użyć komendy </sprawdz-zaproszenia:1464015495932940398> ponownie za \`${remain}s\` `,
+      content: `> \`❌\` × Możesz sprawdzić swoje zaproszenia ponownie za \`${remain}s\` `,
       flags: [MessageFlags.Ephemeral]
     });
     return;
