@@ -5479,6 +5479,8 @@ async function handleButtonInteraction(interaction) {
   const botName = client.user?.username || "NEWSHOP";
 
   if (customId === "btn_sprawdz_zaproszenia") {
+    // Usuń stary panel (jak opinie)
+    await interaction.message.delete().catch(() => null);
     await handleSprawdzZaproszeniaCommand(interaction);
     return;
   }
@@ -12127,7 +12129,7 @@ function buildZaproszeniaInstructionPayload() {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "`📧` × Kliknij w przycisk na dole, aby sprawdzić swoje **zaproszenia** na serwerze!"
+      "`✉️` × Kliknij w przycisk na dole, aby sprawdzić swoje **zaproszenia** na serwerze!"
     )
   );
 
@@ -12136,7 +12138,7 @@ function buildZaproszeniaInstructionPayload() {
   const btn = new ButtonBuilder()
     .setCustomId("btn_sprawdz_zaproszenia")
     .setLabel("Sprawdź zaproszenia")
-    .setEmoji("🔎")
+    .setEmoji("📩")
     .setStyle(ButtonStyle.Secondary);
 
   container.addActionRowComponents(
@@ -18059,13 +18061,8 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
           lastInviteInstruction.delete(zapCh.id);
         }
 
-        const instructionInviteEmbed = new EmbedBuilder()
-          .setColor(0xffffff)
-          .setDescription(
-            "`📩` × Użyj **komendy** </sprawdz-zaproszenia:1464015495932940398>, aby sprawdzić swoje **zaproszenia**"
-          );
-
-        const sent = await zapCh.send({ embeds: [instructionInviteEmbed] });
+        const instructionPayload = buildZaproszeniaInstructionPayload();
+        const sent = await zapCh.send(instructionPayload);
         lastInviteInstruction.set(zapCh.id, sent.id);
         scheduleSavePersistentState();
       }
