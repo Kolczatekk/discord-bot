@@ -5514,6 +5514,19 @@ async function handleButtonInteraction(interaction) {
     await interaction.showModal(buildSellerPaymentDataModalMain(interaction));
     return;
   }
+
+  if (customId === "seller_data_edit_extra") {
+    if (!isAdminOrSeller(interaction.member)) {
+      await interaction.reply({
+        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    await interaction.showModal(buildSellerPaymentDataModalExtra(interaction));
+    return;
+  }
   if (customId === "seller_data_clear") {
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
