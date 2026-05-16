@@ -332,6 +332,7 @@ const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 const OPINION_BTN_STAR = "<:star:1505298878096871546>";
 const OPINION_STAR = "⭐";
+const OPINION_NO_STAR = "✩";
 const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
@@ -12040,7 +12041,8 @@ function getOpinionRatingValue(interaction, customId) {
 
 function formatOpinionStars(value) {
   const count = Math.max(1, Math.min(5, Number(value) || 1));
-  return `\`${OPINION_STAR.repeat(count)}\``;
+  const emptyCount = 5 - count;
+  return `\`${OPINION_STAR.repeat(count)}${OPINION_NO_STAR.repeat(emptyCount)}\``;
 }
 
 function formatOpinionText(value) {
@@ -12070,7 +12072,7 @@ function buildOpinionModal() {
         .setLabel("Przebieg transakcji")
         .setStringSelectMenuComponent(buildOpinionRatingSelect("przebieg_transakcji")),
       new LabelBuilder()
-        .setLabel("Realizacja wymiany")
+        .setLabel("Cena produktu")
         .setStringSelectMenuComponent(buildOpinionRatingSelect("realizacja_wymiany")),
       new LabelBuilder()
         .setLabel("Opinia")
@@ -14170,12 +14172,15 @@ async function handleModalSubmit(interaction) {
     const safeTresc = formatOpinionText(tresc);
 
     const description = [
+      "```",
+      "✅ New Shop × OPINIA",
+      "```",
       `> \`👤\` **× Twórca opinii:** <@${interaction.user.id}>`,
       `> \`📝\` **× Treść:** ${safeTresc}`,
       "",
       `> \`⏳\` **× Czas oczekiwania:** ${formatOpinionStars(czas)}`,
       `> \`📋\` **× Jakość produktu:** ${formatOpinionStars(przebieg)}`,
-      `> \`💸\` **× Realizacja wymiany:** ${formatOpinionStars(realizacja)}`,
+      `> \`💸\` **× Cena produktu:** ${formatOpinionStars(realizacja)}`,
     ].join("\n");
 
     const opinionEmbed = new EmbedBuilder()
@@ -16812,12 +16817,15 @@ async function handleOpinionCommand(interaction) {
 
   // Budujemy opis jako pojedynczy string
   const description = [
+    "```",
+    "✅ New Shop × OPINIA",
+    "```",
     `> \`👤\` **× Twórca opinii:** <@${interaction.user.id}>`,
     `> \`📝\` **× Treść:** ${safeTresc}`,
     "",
     `> \`⌛\` **× Czas oczekiwania:** ${starsInline(czas)}`,
     `> \`📋\` **× Jakość produktu:** ${starsInline(jakosc)}`,
-    `> \`💸\` **× Realizacja wymiany:** ${starsInline(cena)}`,
+    `> \`💸\` **× Cena produktu:** ${starsInline(cena)}`,
   ].join("\n");
 
   // Tworzymy embed z poprawnym description
