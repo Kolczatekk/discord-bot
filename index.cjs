@@ -330,7 +330,7 @@ let pendingRename = false;
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
-const OPINION_STAR = "⭐";
+const OPINION_STAR = "<:star:1505298878096871546>";
 const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
@@ -6307,6 +6307,58 @@ async function handleButtonInteraction(interaction) {
     return;
   }
 
+  // Seller choice for adding data
+  if (customId === "seller_data_add_choice") {
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription("> `➕` × Wybierz jakie dane chcesz skonfigurować:");
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("seller_data_edit_main")
+        .setLabel("BLIK/PRZELEW")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("seller_data_edit_extra")
+        .setLabel("PAYPAL/LTC/MYPSC")
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [row],
+      flags: [MessageFlags.Ephemeral]
+    });
+    return;
+  }
+
+  if (customId === "seller_data_view") {
+    const profile = getSellerPaymentProfile(interaction.guildId, interaction.user.id);
+    if (!sellerPaymentProfileHasData(profile)) {
+      await interaction.reply({
+        content: "> `❌` × Nie masz skonfigurowanych żadnych danych.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setTitle("Twoje Dane Płatności")
+      .setDescription(
+        `> \`👤\` **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
+        `> \`📱\` **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
+        `> \`🧾\` **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
+        `> \`✉️\` **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
+        `> \`👝\` **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
+        `> \`🌐\` **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
+      )
+      .setBrandFooter();
+
+    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+    return;
+  }
+
   // --- NEW: Seller Payment View in Ticket ---
   if (customId.startsWith("ticket_view_payment_")) {
     const sellerId = customId.replace("ticket_view_payment_", "");
@@ -8145,34 +8197,21 @@ function isPurchaseTicketForPaymentData(channel, ticketData = null) {
 }
 
 function buildSellerPaymentPanelPayload(guildId) {
-  const container = new ContainerBuilder()
-    .setAccentColor(COLOR_BLUE)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "```\n" +
-        "💳 New Shop × DANE SPRZEDAWCY\n" +
-        "```",
-      ),
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      "```\n" +
+      "💳 New Shop × DANE SPRZEDAWCY\n" +
+      "```\n" +
+      "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa."
     )
-    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa.",
-      ),
-    );
-
-  appendBrandFooterToContainer(container, guildId);
+    .setBrandFooter();
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId("seller_data_edit_main")
-      .setLabel("BLIK/Przelew")
-      .setEmoji("📱")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("seller_data_edit_extra")
-      .setLabel("PP/LTC/MyPSC")
-      .setEmoji("🌐")
+      .setCustomId("seller_data_add_choice")
+      .setLabel("Dodaj dane")
+      .setEmoji("➕")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_view")
@@ -8183,13 +8222,10 @@ function buildSellerPaymentPanelPayload(guildId) {
       .setCustomId("seller_data_clear")
       .setLabel("Wyczyść")
       .setEmoji("🗑️")
-      .setStyle(ButtonStyle.Secondary),
+      .setStyle(ButtonStyle.Secondary)
   );
 
-  return {
-    components: [container, row],
-    flags: MessageFlags.IsComponentsV2,
-  };
+  return { embeds: [embed], components: [row] };
 }
 
 function buildSellerPaymentDataModalMain(interaction) {
@@ -8308,27 +8344,47 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
   const profile = getSellerPaymentProfile(guildId, sellerId);
   if (!sellerPaymentProfileHasData(profile)) return;
 
+  const method = String(ticketData?.paymentMethod || "").toLowerCase();
+  
+  const lines = [
+    "```\n💳 New Shop × DANE DO PŁATNOŚCI\n```"
+  ];
+
+  const addLine = (emoji, label, value) => {
+    if (value && value !== "`Brak`" && value !== "Brak") {
+      lines.push(`> ${emoji} × **${label}:** ${value}`);
+    }
+  };
+
+  // Logika filtrowania - TYLKO pasujące dane
+  if (method.includes("blik") || method.includes("przelew")) {
+    addLine("`👤`", "Odbiorca", formatSellerPaymentValue(profile.recipient));
+    addLine("`📱`", "Nr. telefonu", formatSellerPaymentValue(profile.phone));
+    addLine("`🧾`", "Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
+  } else if (method === "paypal") {
+    addLine("`✉️`", "PayPal", formatSellerPaymentValue(profile.paypalEmail));
+  } else if (method === "ltc") {
+    addLine("`👝`", "Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
+  } else if (method === "mypsc") {
+    addLine("`🌐`", "MyPSC", formatSellerPaymentValue(profile.mypscEmail));
+  } else {
+    // Jeśli metoda nieustalona, pokaż wszystko co dostępne
+    addLine("`👤`", "Odbiorca", formatSellerPaymentValue(profile.recipient));
+    addLine("`📱`", "Nr. telefonu", formatSellerPaymentValue(profile.phone));
+    addLine("`🧾`", "Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
+    addLine("`✉️`", "PayPal", formatSellerPaymentValue(profile.paypalEmail));
+    addLine("`👝`", "Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
+    addLine("`🌐`", "MyPSC", formatSellerPaymentValue(profile.mypscEmail));
+  }
+
+  if (lines.length === 1) return;
+
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-      "💳 New Shop × DANE DO PŁATNOŚCI\n" +
-      "```\n" +
-      "> `❗` × Kliknij przycisk poniżej, aby wyświetlić dane do płatności."
-    );
+    .setDescription(lines.join("\n"))
+    .setBrandFooter();
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`ticket_view_payment_${sellerId}`)
-      .setLabel("Dodaj dane")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("💳")
-  );
-
-  await channel.send({
-    embeds: [embed],
-    components: [row]
-  }).catch(() => null);
+  await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
 async function handlePanelWeryfikacjaCommand(interaction) {
@@ -12095,12 +12151,19 @@ function buildOpinionInstructionPayload() {
   const container = new ContainerBuilder().setAccentColor(0xffd700);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!",
-    ),
+      "```\n" +
+      "✅ New Shop × OPINIE\n" +
+      "```\n" +
+      "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!"
+    )
   );
+
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(buildOpinionButton()),
   );
+
   appendBrandFooterToContainer(container, null);
 
   return {
@@ -14181,7 +14244,7 @@ async function handleModalSubmit(interaction) {
       "",
       `> \`⏳\` **× Czas oczekiwania:** ${formatOpinionStars(czas)}`,
       `> \`📋\` **× Jakość produktu:** ${formatOpinionStars(przebieg)}`,
-      `> \`💸\` **× Cena produktu:** ${formatOpinionStars(realizacja)}`,
+      `> \`💸\` **× Realizacja wymiany:** ${formatOpinionStars(realizacja)}`,
     ].join("\n");
 
     const opinionEmbed = new EmbedBuilder()
