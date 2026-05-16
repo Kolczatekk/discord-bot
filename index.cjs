@@ -331,6 +331,7 @@ let pendingRename = false;
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 const OPINION_STAR = "<:star:1505298878096871546>";
+const OPINION_NO_STAR = "⭐"; // Będę używał zwykłej gwiazdki jako placeholder, jeśli nie podasz ID dla no_star
 const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
@@ -5497,49 +5498,6 @@ async function handleButtonInteraction(interaction) {
     await interaction.showModal(buildSellerPaymentDataModalMain(interaction));
     return;
   }
-
-  if (customId === "seller_data_edit_extra") {
-    if (!isAdminOrSeller(interaction.member)) {
-      await interaction.reply({
-        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.showModal(buildSellerPaymentDataModalExtra(interaction));
-    return;
-  }
-
-  if (customId === "seller_data_view") {
-    if (!isAdminOrSeller(interaction.member)) {
-      await interaction.reply({
-        content: "> `❗` × Ten panel jest tylko dla sprzedawców.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-    const profile = getSellerPaymentProfile(interaction.guildId, interaction.user.id);
-    if (!sellerPaymentProfileHasData(profile)) {
-      await interaction.reply({
-        content: "> `⚠️` × **Brak danych.** Nie uzupełniłeś jeszcze panelu płatności.",
-        flags: [MessageFlags.Ephemeral]
-      });
-      return;
-    }
-    const description = [
-      "> `💳` × **Twoje Dane do płatności**",
-      `> \`📱\` × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}`,
-      `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}`,
-      `> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}`,
-      `> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}`,
-      `> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`,
-    ].join("\n");
-    const embed = new EmbedBuilder().setColor(COLOR_BLUE).setDescription(description);
-    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-    return;
-  }
-
   if (customId === "seller_data_clear") {
     if (!isAdminOrSeller(interaction.member)) {
       await interaction.reply({
@@ -8345,46 +8303,50 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
   if (!sellerPaymentProfileHasData(profile)) return;
 
   const method = String(ticketData?.paymentMethod || "").toLowerCase();
-  
-  const lines = [
-    "```\n💳 New Shop × DANE DO PŁATNOŚCI\n```"
-  ];
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
 
+  const lines = [];
   const addLine = (emoji, label, value) => {
     if (value && value !== "`Brak`" && value !== "Brak") {
-      lines.push(`> ${emoji} × **${label}:** ${value}`);
+      lines.push(`> ${emoji} × **${label}:** ${formatSellerPaymentValue(value)}`);
     }
   };
 
-  // Logika filtrowania - TYLKO pasujące dane
+  lines.push("> `💳` × **Dane do płatności**");
+
   if (method.includes("blik") || method.includes("przelew")) {
-    addLine("`👤`", "Odbiorca", formatSellerPaymentValue(profile.recipient));
-    addLine("`📱`", "Nr. telefonu", formatSellerPaymentValue(profile.phone));
-    addLine("`🧾`", "Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
+    addLine("`📱`", "Telefon", profile.phone);
+    addLine("`🧾`", "Tytuł przelewu", profile.transferTitle);
+    addLine("`👤`", "Odbiorca", profile.recipient);
   } else if (method === "paypal") {
-    addLine("`✉️`", "PayPal", formatSellerPaymentValue(profile.paypalEmail));
+    addLine("`✉️`", "PayPal", profile.paypalEmail);
   } else if (method === "ltc") {
-    addLine("`👝`", "Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
+    addLine("`👝`", "Portfel LTC", profile.ltcWallet);
   } else if (method === "mypsc") {
-    addLine("`🌐`", "MyPSC", formatSellerPaymentValue(profile.mypscEmail));
+    addLine("`🌐`", "MyPSC", profile.mypscEmail);
   } else {
-    // Jeśli metoda nieustalona, pokaż wszystko co dostępne
-    addLine("`👤`", "Odbiorca", formatSellerPaymentValue(profile.recipient));
-    addLine("`📱`", "Nr. telefonu", formatSellerPaymentValue(profile.phone));
-    addLine("`🧾`", "Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
-    addLine("`✉️`", "PayPal", formatSellerPaymentValue(profile.paypalEmail));
-    addLine("`👝`", "Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
-    addLine("`🌐`", "MyPSC", formatSellerPaymentValue(profile.mypscEmail));
+    addLine("`📱`", "Telefon", profile.phone);
+    addLine("`🧾`", "Tytuł przelewu", profile.transferTitle);
+    addLine("`👤`", "Odbiorca", profile.recipient);
+    addLine("`✉️`", "PayPal", profile.paypalEmail);
+    addLine("`👝`", "Portfel LTC", profile.ltcWallet);
+    addLine("`🌐`", "MyPSC", profile.mypscEmail);
   }
 
   if (lines.length === 1) return;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(lines.join("\n"))
-    .setBrandFooter();
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder()
+      .setContent(lines.join("\n"))
+      .setGroup(true)
+  );
 
-  await channel.send({ embeds: [embed] }).catch(() => null);
+  appendBrandFooterToContainer(container, guildId);
+
+  await channel.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2
+  }).catch(() => null);
 }
 
 async function handlePanelWeryfikacjaCommand(interaction) {
@@ -12101,7 +12063,8 @@ function getOpinionRatingValue(interaction, customId) {
 
 function formatOpinionStars(value) {
   const count = Math.max(1, Math.min(5, Number(value) || 1));
-  return `\`${OPINION_STAR.repeat(count)}\``;
+  const emptyCount = 5 - count;
+  return OPINION_STAR.repeat(count) + ":no_star:".repeat(emptyCount);
 }
 
 function formatOpinionText(value) {
@@ -12151,9 +12114,6 @@ function buildOpinionInstructionPayload() {
   const container = new ContainerBuilder().setAccentColor(0xffd700);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "```\n" +
-      "✅ New Shop × OPINIE\n" +
-      "```\n" +
       "`📊` × Kliknij w przycisk na dole, aby podzielić się opinią o naszym serwerze!"
     )
   );
@@ -14236,9 +14196,6 @@ async function handleModalSubmit(interaction) {
     const safeTresc = formatOpinionText(tresc);
 
     const description = [
-      "```",
-      "✅ New Shop × OPINIA",
-      "```",
       `> \`👤\` **× Twórca opinii:** <@${interaction.user.id}>`,
       `> \`📝\` **× Treść:** ${safeTresc}`,
       "",
