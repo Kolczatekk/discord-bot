@@ -331,12 +331,12 @@ let pendingRename = false;
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 const OPINION_STAR = "<:star:1505298878096871546>";
-const OPINION_NO_STAR = "⭐"; // Będę używał zwykłej gwiazdki jako placeholder, jeśli nie podasz ID dla no_star
+const OPINION_NO_STAR = "<:no_star:1505298895121551500>";
 const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
   return {
-    label: `${OPINION_STAR.repeat(value)} (${value}/5)`,
+    label: `Ocena: ${value}/5`, // Zapobiega błędowi długości nazwy opcji w Discord API
     value: String(value),
     default: value === 5,
   };
@@ -8285,8 +8285,7 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
   if (!sellerPaymentProfileHasData(profile)) return;
 
   const method = String(ticketData?.paymentMethod || "").toLowerCase();
-  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-
+  
   const lines = [];
   const addLine = (emoji, label, value) => {
     if (value && value !== "`Brak`" && value !== "Brak") {
@@ -8317,18 +8316,11 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
 
   if (lines.length === 1) return;
 
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder()
-      .setContent(lines.join("\n"))
-      .setGroup(true)
-  );
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(lines.join("\n"));
 
-  appendBrandFooterToContainer(container, guildId);
-
-  await channel.send({
-    components: [container],
-    flags: MessageFlags.IsComponentsV2
-  }).catch(() => null);
+  await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
 async function handlePanelWeryfikacjaCommand(interaction) {
