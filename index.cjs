@@ -1050,8 +1050,8 @@ async function saveStateToSupabase(data) {
 
 // ----------------- FREE KASA -----------------
 function pickFreeKasaReward() {
-  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 25% (wygrywa średnio raz na 4 losowania).
-  const WIN_CHANCE = 25.0;
+  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 15% (wygrywa średnio raz na ok. 7 losowań).
+  const WIN_CHANCE = 15.0;
 
   if (Math.random() * 100 > WIN_CHANCE) {
     return null; // Pusty los
@@ -3012,11 +3012,7 @@ const commands = [
     .setDescription("Wyślij panel kalkulatora waluty na kanał")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
-  new SlashCommandBuilder()
-    .setName("panelzaproszenia")
-    .setDescription("Wyślij panel do sprawdzania zaproszeń na kanał")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .toJSON(),
+
   new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
@@ -4411,45 +4407,7 @@ client.once(Events.ClientReady, async (c) => {
                 c.name.toLowerCase().includes("zaproszenia")),
           ) || null;
         if (zapCh) {
-          // First try to use saved message ID from file
-          const savedId = lastInviteInstruction.get(zapCh.id);
-          let foundExisting = false;
-          if (savedId) {
-            try {
-              const savedMsg = await zapCh.messages
-                .fetch(savedId)
-                .catch(() => null);
-              if (savedMsg && savedMsg.author.id === client.user.id) {
-                console.log(
-                  `[ready] Używam zapisanej wiadomości informacyjnej: ${savedId} w kanale ${zapCh.id}`,
-                );
-                // Message exists, we're good
-                foundExisting = true;
-              }
-            } catch (e) {
-              // Message doesn't exist, try to find it
-            }
-          }
-
-          // If saved message doesn't exist, try to find it by content
-          if (!foundExisting) {
-            const foundInvite = await findBotMessageWithEmbed(
-              zapCh,
-              (emb) =>
-                typeof emb.description === "string" &&
-                (emb.description.includes(
-                  "Użyj **komendy** /sprawdz-zaproszenia",
-                ) ||
-                  emb.description.includes("sprawdz-zaproszenia")),
-            );
-            if (foundInvite) {
-              lastInviteInstruction.set(zapCh.id, foundInvite.id);
-              scheduleSavePersistentState();
-              console.log(
-                `[ready] Znalazłem istniejącą instrukcję zaproszeń: ${foundInvite.id} w kanale ${zapCh.id}`,
-              );
-            }
-          }
+          await ensureInvitePanel(zapCh).catch(() => null);
         }
       } catch (e) {
         // ignore
@@ -5479,8 +5437,6 @@ async function handleButtonInteraction(interaction) {
   const botName = client.user?.username || "NEWSHOP";
 
   if (customId === "btn_sprawdz_zaproszenia") {
-    // Usuń stary panel (jak opinie)
-    await interaction.message.delete().catch(() => null);
     await handleSprawdzZaproszeniaCommand(interaction);
     return;
   }
@@ -6461,9 +6417,7 @@ async function handleSlashCommand(interaction) {
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
       break;
-    case "panelzaproszenia":
-      await handlePanelZaproszeniaCommand(interaction);
-      break;
+
     case "help":
       await handleHelpCommand(interaction);
       break;
@@ -12169,24 +12123,32 @@ function buildZaproszeniaInstructionPayload() {
   };
 }
 
-async function handlePanelZaproszeniaCommand(interaction) {
-  const guildId = interaction.guildId;
-  if (!guildId) {
-    await interaction.reply({
-      content: "> `❌` × **Ta komenda** działa tylko na **serwerze**!",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
+async function ensureInvitePanel(channel) {
+  if (!channel) return;
+  try {
+    const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    let hasPanel = false;
+    if (messages) {
+      hasPanel = messages.some(msg => 
+        msg.author.id === client.user.id && 
+        msg.components && 
+        msg.components.some(row => 
+          row.components && row.components.some(btn => btn.customId === "btn_sprawdz_zaproszenia" || (btn.data && btn.data.custom_id === "btn_sprawdz_zaproszenia"))
+        )
+      );
+    }
+
+    if (hasPanel) {
+      return; // Panel już istnieje, nie usuwamy ani nie wysyłamy nowego
+    }
+
+    const payload = buildZaproszeniaInstructionPayload();
+    const sent = await channel.send(payload);
+    lastInviteInstruction.set(channel.id, sent.id);
+    scheduleSavePersistentState();
+  } catch (e) {
+    console.warn("Błąd w ensureInvitePanel:", e);
   }
-
-  const payload = buildZaproszeniaInstructionPayload();
-
-  await interaction.channel.send(payload);
-
-  await interaction.reply({
-    content: "> `✅` × Wysłano panel sprawdzania zaproszeń na kanał.",
-    flags: [MessageFlags.Ephemeral],
-  });
 }
 
 function buildTicketPanelPayload() {
@@ -16284,6 +16246,13 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
+  if (
+    message.guild &&
+    message.channel?.id === "1449159417445482566"
+  ) {
+    await ensureInvitePanel(message.channel).catch(() => null);
+  }
+
   if (message.guild) {
     const pendingKey = getPendingEmbedTestPublishKey(
       message.guild.id,
@@ -18064,23 +18033,11 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     // Publikacja embeda
     await targetChannel.send({ embeds: [embed] });
 
-    // Odświeżanie instrukcji
+    // Odświeżanie instrukcji - tylko jeśli panelu nie ma
     try {
       const zapCh = targetChannel;
       if (zapCh && zapCh.id) {
-        const prevId = lastInviteInstruction.get(zapCh.id);
-        if (prevId) {
-          const prevMsg = await zapCh.messages.fetch(prevId).catch(() => null);
-          if (prevMsg && prevMsg.deletable) {
-            await prevMsg.delete().catch(() => null);
-          }
-          lastInviteInstruction.delete(zapCh.id);
-        }
-
-        const instructionPayload = buildZaproszeniaInstructionPayload();
-        const sent = await zapCh.send(instructionPayload);
-        lastInviteInstruction.set(zapCh.id, sent.id);
-        scheduleSavePersistentState();
+        await ensureInvitePanel(zapCh);
       }
     } catch (e) {
       console.warn("Nie udało się odświeżyć instrukcji zaproszeń:", e);
