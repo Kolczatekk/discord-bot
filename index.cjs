@@ -12133,8 +12133,6 @@ async function ensureInvitePanel(channel) {
         );
       if (isPanel) {
         panelMessages.push(msg);
-      } else {
-        otherMessages.push(msg);
       }
     });
 
@@ -12144,11 +12142,6 @@ async function ensureInvitePanel(channel) {
       for (let i = 1; i < panelMessages.length; i++) {
         await panelMessages[i].delete().catch(() => null);
       }
-    }
-
-    // Usuwamy absolutnie każdą inną wiadomość, aby zachować 100% czystość kanału
-    for (const msg of otherMessages) {
-      await msg.delete().catch(() => null);
     }
 
     if (!activePanel) {
