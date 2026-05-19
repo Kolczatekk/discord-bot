@@ -17967,8 +17967,8 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   }
   sprawdzZaproszeniaCooldowns.set(interaction.user.id, nowTs);
 
-  // Teraz dopiero defer - robimy publiczny (nie ephemeral)
-  await interaction.deferReply({ ephemeral: false }).catch(() => null);
+  // Uruchamiamy cichy (ephemeral) deferReply dla natychmiastowego potwierdzenia interakcji
+  await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
   // ===== SPRAWDZ-ZAPROSZENIA – PEŁNY SCRIPT =====
 
@@ -18033,8 +18033,10 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     );
 
   try {
-    // Odpowiedź na zaproszenia wysyłamy jako ephemeral, gwarantując prywatność i brak spamu
-    await interaction.editReply({
+    const targetChannel = preferChannel ? preferChannel : interaction.channel;
+
+    // Wysyłamy statystyki jako kompletnie NIEZALEŻNĄ, publiczną wiadomość (brak jakiejkolwiek linii odpowiedzi "Oryginalna wiadomość została usunięta"!)
+    await targetChannel.send({
       content:
         pendingInviteRewardDelivery.deliveredCount > 0
           ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały załadowane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
@@ -18050,16 +18052,18 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     }
 
     // Wysyłamy nowy panel zaproszeń, aby wskoczył na sam dół kanału
-    const zapCh = preferChannel ? preferChannel : interaction.channel;
-    if (zapCh && zapCh.id) {
+    if (targetChannel && targetChannel.id) {
       const payload = buildZaproszeniaInstructionPayload();
-      const sent = await zapCh.send(payload);
-      lastInviteInstruction.set(zapCh.id, sent.id);
+      const sent = await targetChannel.send(payload);
+      lastInviteInstruction.set(targetChannel.id, sent.id);
       scheduleSavePersistentState();
 
       // Czyszczenie ewentualnych innych duplikatów paneli w tle (bez usuwania zwykłych wiadomości)
-      await ensureInvitePanel(zapCh).catch(() => null);
+      await ensureInvitePanel(targetChannel).catch(() => null);
     }
+
+    // Usuwamy nasz cichy, tymczasowy ephemeral, aby nie zostawiać żadnych śladów na ekranie klikającego
+    await interaction.deleteReply().catch(() => null);
 
   } catch (err) {
     console.error("Błąd przy publikacji sprawdz-zaproszenia:", err);
