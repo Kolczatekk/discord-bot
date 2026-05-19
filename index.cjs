@@ -4398,14 +4398,7 @@ client.once(Events.ClientReady, async (c) => {
 
       // Try to find previously sent invite instruction messages (zaproszenia)
       try {
-        const zapCh =
-          g.channels.cache.find(
-            (c) =>
-              c.type === ChannelType.GuildText &&
-              (c.name === "📨-×┃zaproszenia" ||
-                c.name.toLowerCase().includes("zaproszen") ||
-                c.name.toLowerCase().includes("zaproszenia")),
-          ) || null;
+        const zapCh = g.channels.cache.get("1449159417445482566") || null;
         if (zapCh) {
           await ensureInvitePanel(zapCh).catch(() => null);
         }
@@ -12124,28 +12117,48 @@ function buildZaproszeniaInstructionPayload() {
 }
 
 async function ensureInvitePanel(channel) {
-  if (!channel) return;
+  if (!channel || channel.id !== "1449159417445482566") return;
   try {
-    const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
-    let hasPanel = false;
-    if (messages) {
-      hasPanel = messages.some(msg => 
-        msg.author.id === client.user.id && 
+    const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+    if (!messages) return;
+
+    const panelMessages = [];
+    const otherMessages = [];
+
+    messages.forEach(msg => {
+      const isPanel = msg.author.id === client.user.id && 
         msg.components && 
         msg.components.some(row => 
           row.components && row.components.some(btn => btn.customId === "btn_sprawdz_zaproszenia" || (btn.data && btn.data.custom_id === "btn_sprawdz_zaproszenia"))
-        )
-      );
+        );
+      if (isPanel) {
+        panelMessages.push(msg);
+      } else {
+        otherMessages.push(msg);
+      }
+    });
+
+    let activePanel = null;
+    if (panelMessages.length > 0) {
+      activePanel = panelMessages[0]; // Trzymamy najnowszy panel
+      for (let i = 1; i < panelMessages.length; i++) {
+        await panelMessages[i].delete().catch(() => null);
+      }
     }
 
-    if (hasPanel) {
-      return; // Panel już istnieje, nie usuwamy ani nie wysyłamy nowego
+    // Usuwamy absolutnie każdą inną wiadomość, aby zachować 100% czystość kanału
+    for (const msg of otherMessages) {
+      await msg.delete().catch(() => null);
     }
 
-    const payload = buildZaproszeniaInstructionPayload();
-    const sent = await channel.send(payload);
-    lastInviteInstruction.set(channel.id, sent.id);
-    scheduleSavePersistentState();
+    if (!activePanel) {
+      const payload = buildZaproszeniaInstructionPayload();
+      const sent = await channel.send(payload);
+      lastInviteInstruction.set(channel.id, sent.id);
+      scheduleSavePersistentState();
+    } else {
+      lastInviteInstruction.set(channel.id, activePanel.id);
+    }
   } catch (e) {
     console.warn("Błąd w ensureInvitePanel:", e);
   }
@@ -18027,30 +18040,26 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     );
 
   try {
-    // Kanał docelowy
-    const targetChannel = preferChannel ? preferChannel : interaction.channel;
+    // Odpowiedź na zaproszenia wysyłamy wyłącznie jako prywatna wiadomość ephemeral, gwarantując czystość kanału
+    await interaction.editReply({
+      content:
+        pendingInviteRewardDelivery.deliveredCount > 0
+          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały załadowane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
+          : pendingInviteRewardDelivery.blocked
+            ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
+            : null,
+      embeds: [embed]
+    });
 
-    // Publikacja embeda
-    await targetChannel.send({ embeds: [embed] });
-
-    // Odświeżanie instrukcji - tylko jeśli panelu nie ma
+    // Upewniamy się, że panel jest jedyną i nienaruszoną wiadomością w kanale
     try {
-      const zapCh = targetChannel;
+      const zapCh = preferChannel ? preferChannel : interaction.channel;
       if (zapCh && zapCh.id) {
         await ensureInvitePanel(zapCh);
       }
     } catch (e) {
       console.warn("Nie udało się odświeżyć instrukcji zaproszeń:", e);
     }
-
-    await interaction.editReply({
-      content:
-        pendingInviteRewardDelivery.deliveredCount > 0
-          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
-          : pendingInviteRewardDelivery.blocked
-            ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
-            : "> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane."
-    });
 
   } catch (err) {
     console.error("Błąd przy publikacji sprawdz-zaproszenia:", err);
