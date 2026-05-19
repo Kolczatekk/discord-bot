@@ -12116,14 +12116,20 @@ function buildZaproszeniaInstructionPayload() {
   };
 }
 
+let isEnsuringInvitePanel = false;
+
 async function ensureInvitePanel(channel) {
   if (!channel || channel.id !== "1449159417445482566") return;
+  if (isEnsuringInvitePanel) return;
+  isEnsuringInvitePanel = true;
   try {
     const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-    if (!messages) return;
+    if (!messages) {
+      isEnsuringInvitePanel = false;
+      return;
+    }
 
     const panelMessages = [];
-    const otherMessages = [];
 
     messages.forEach(msg => {
       const isPanel = msg.author.id === client.user.id && 
@@ -12154,6 +12160,8 @@ async function ensureInvitePanel(channel) {
     }
   } catch (e) {
     console.warn("Błąd w ensureInvitePanel:", e);
+  } finally {
+    isEnsuringInvitePanel = false;
   }
 }
 
@@ -16254,7 +16262,8 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (
     message.guild &&
-    message.channel?.id === "1449159417445482566"
+    message.channel?.id === "1449159417445482566" &&
+    message.author.id !== client.user.id
   ) {
     await ensureInvitePanel(message.channel).catch(() => null);
   }
@@ -18057,9 +18066,6 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
       const sent = await targetChannel.send(payload);
       lastInviteInstruction.set(targetChannel.id, sent.id);
       scheduleSavePersistentState();
-
-      // Czyszczenie ewentualnych innych duplikatów paneli w tle (bez usuwania zwykłych wiadomości)
-      await ensureInvitePanel(targetChannel).catch(() => null);
     }
 
     // Usuwamy nasz cichy, tymczasowy ephemeral, aby nie zostawiać żadnych śladów na ekranie klikającego
