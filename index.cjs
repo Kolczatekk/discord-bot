@@ -17967,8 +17967,8 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   }
   sprawdzZaproszeniaCooldowns.set(interaction.user.id, nowTs);
 
-  // Teraz dopiero defer - tymczasowo ephemeral dla potwierdzenia
-  await interaction.deferReply({ ephemeral: true }).catch(() => null);
+  // Teraz dopiero defer - robimy publiczny (nie ephemeral)
+  await interaction.deferReply({ ephemeral: false }).catch(() => null);
 
   // ===== SPRAWDZ-ZAPROSZENIA – PEŁNY SCRIPT =====
 
@@ -18033,7 +18033,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     );
 
   try {
-    // Odpowiedź na zaproszenia wysyłamy wyłącznie jako prywatna wiadomość ephemeral, gwarantując czystość kanału
+    // Odpowiedź na zaproszenia wysyłamy jako ephemeral, gwarantując prywatność i brak spamu
     await interaction.editReply({
       content:
         pendingInviteRewardDelivery.deliveredCount > 0
@@ -18044,14 +18044,21 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
       embeds: [embed]
     });
 
-    // Upewniamy się, że panel jest jedyną i nienaruszoną wiadomością w kanale
-    try {
-      const zapCh = preferChannel ? preferChannel : interaction.channel;
-      if (zapCh && zapCh.id) {
-        await ensureInvitePanel(zapCh);
-      }
-    } catch (e) {
-      console.warn("Nie udało się odświeżyć instrukcji zaproszeń:", e);
+    // Usuwamy stary panel, w który kliknął użytkownik
+    if (interaction.message) {
+      await interaction.message.delete().catch(() => null);
+    }
+
+    // Wysyłamy nowy panel zaproszeń, aby wskoczył na sam dół kanału
+    const zapCh = preferChannel ? preferChannel : interaction.channel;
+    if (zapCh && zapCh.id) {
+      const payload = buildZaproszeniaInstructionPayload();
+      const sent = await zapCh.send(payload);
+      lastInviteInstruction.set(zapCh.id, sent.id);
+      scheduleSavePersistentState();
+
+      // Czyszczenie ewentualnych innych duplikatów paneli w tle (bez usuwania zwykłych wiadomości)
+      await ensureInvitePanel(zapCh).catch(() => null);
     }
 
   } catch (err) {
