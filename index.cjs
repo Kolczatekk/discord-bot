@@ -2147,8 +2147,7 @@ async function handleWezwijCommand(interaction) {
     return;
   }
 
-  const ticketData = ticketOwners.get(channel.id);
-  const ownerId = ticketData?.userId;
+  const ownerId = await resolveTicketOwnerId(channel);
 
   if (!ownerId) {
     await interaction.reply({
@@ -3990,12 +3989,12 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
-const ANARCHIA_LIFESTEAL_RATE = 6500;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 7000;
+const ANARCHIA_LIFESTEAL_RATE = 7500;
+const ANARCHIA_LIFESTEAL_BULK_RATE = 8000;
 const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 100;
-const ANARCHIA_BOXPVP_RATE = 750000;
+const ANARCHIA_BOXPVP_RATE = 600;
 const PYK_MC_RATE = 6000;
-const DONUT_SMP_RATE = 3_500_000;
+const DONUT_SMP_RATE = 5_500_000;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -4066,6 +4065,65 @@ function isTicketChannel(channel) {
     return true;
   if (isModernPurchaseTicketChannelName(channel.name)) return true;
   return false;
+}
+
+async function inferTicketOwnerFromChannel(channel) {
+  const guild = channel?.guild;
+  if (!guild?.members?.fetch) return null;
+
+  const overwrites = channel.permissionOverwrites?.cache;
+  if (!overwrites?.size) return null;
+
+  const candidates = [];
+  for (const [, ow] of overwrites) {
+    if (ow.type !== OverwriteType.Member) continue;
+    if (!ow.allow.has(PermissionsBitField.Flags.ViewChannel)) continue;
+    if (ow.id === guild.id) continue;
+    if (ow.id === client.user?.id) continue;
+    const member = await guild.members.fetch(ow.id).catch(() => null);
+    if (!member || member.user.bot) continue;
+    candidates.push(ow.id);
+  }
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  const nonGuildOwner = candidates.filter((id) => id !== guild.ownerId);
+  if (nonGuildOwner.length === 1) return nonGuildOwner[0];
+  if (nonGuildOwner.length > 0) return nonGuildOwner[0];
+  return candidates[0];
+}
+
+async function resolveTicketOwnerId(channel, options = {}) {
+  const { persist = true } = options;
+  if (!channel) return null;
+
+  const ticketData = ticketOwners.get(channel.id);
+  let ownerId =
+    ticketData?.userId ||
+    ticketData?.ownerId ||
+    rewardTicketClaims.get(channel.id)?.userId ||
+    null;
+
+  if (!ownerId) {
+    ownerId = await inferTicketOwnerFromChannel(channel);
+  }
+
+  if (ownerId && persist) {
+    const existing = ticketOwners.get(channel.id) || {};
+    if (!existing.userId) {
+      ticketOwners.set(channel.id, {
+        ...existing,
+        userId: ownerId,
+        claimedBy: existing.claimedBy ?? null,
+        ticketMessageId: existing.ticketMessageId ?? null,
+        locked: !!existing.locked,
+      });
+      scheduleSavePersistentState();
+    }
+  }
+
+  return ownerId;
 }
 
 // Helper: rebuild/edit ticket message components to reflect claim/unclaim state in a safe manner
@@ -5315,6 +5373,13 @@ async function handleModalSubmit(interaction) {
       formInfo,
       openedAt: Date.now(),
     });
+    if (isRewardTicketLabel(ticketTypeLabel)) {
+      rewardTicketClaims.set(channel.id, {
+        guildId: guild.id,
+        userId: user.id,
+        createdAt: Date.now(),
+      });
+    }
     scheduleSavePersistentState();
 
     await logTicketCreation(interaction.guild, channel, {
@@ -9635,7 +9700,7 @@ function createDefaultEmbedTestState(
     cashBody:
       "-# zakupiona kasa wysyłana jest na /gift\n" +
       "### :arrowwhite: :kasa_2:  `7,5k$ ➜ 1 ZŁ`\n\n" +
-      "### :arrowwhite: :kasa_2:  `8k$ ➜ 1 ZŁ` (powyżej 200zł)",
+      "### :arrowwhite: :kasa_2:  `8k$ ➜ 1 ZŁ` (powyżej 100zł)",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
       "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
@@ -12427,9 +12492,7 @@ async function handleTicketZakonczCommand(interaction) {
     interaction.options.getString("ile");
   const serwer = (interaction.options.getString("serwer") || "").trim();
 
-  // Pobierz właściciela ticketu
-  const ticketData = ticketOwners.get(channel.id);
-  const ticketOwnerId = ticketData?.userId;
+  const ticketOwnerId = await resolveTicketOwnerId(channel);
 
   if (!ticketOwnerId) {
     await interaction.reply({
@@ -12706,9 +12769,7 @@ async function handleZamknijZPowodemCommand(interaction) {
   const powodCustom = (interaction.options.getString("powod_custom") || "").trim();
   const powod = powodCustom || powodPreset;
 
-  // Pobierz właściciela ticketu
-  const ticketData = ticketOwners.get(channel.id);
-  const ticketOwnerId = ticketData?.userId;
+  const ticketOwnerId = await resolveTicketOwnerId(channel);
 
   if (!ticketOwnerId) {
     await interaction.reply({
@@ -15934,6 +15995,13 @@ async function handleModalSubmit(interaction) {
           paymentMethod: interaction.fields.getTextInputValue("payment_method") || null, // Best effort capture
           openedAt: Date.now(),
         });
+        if (isRewardTicketLabel(ticketTypeLabel)) {
+          rewardTicketClaims.set(channel.id, {
+            guildId: interaction.guild.id,
+            userId: user.id,
+            createdAt: Date.now(),
+          });
+        }
         scheduleSavePersistentState();
 
         await logTicketCreation(interaction.guild, channel, {
