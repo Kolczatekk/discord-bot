@@ -221,6 +221,7 @@ function generateClaimQuiz() {
 // ----------------------------------------------------------------
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
+const autoVerifySettings = new Map(); // guildId -> boolean
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
@@ -329,7 +330,7 @@ let pendingRename = false;
 
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
-const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
+const OPINION_COOLDOWN_MS = 48 * 60 * 60 * 1000; // 48 hours per user
 const OPINION_BTN_STAR = "<:star:1505298878096871546>";
 const OPINION_STAR = "⭐";
 const OPINION_NO_STAR = "✩";
@@ -601,6 +602,14 @@ client.on(Events.PresenceUpdate, async (_oldPresence, newPresence) => {
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {
+  // Autoverify
+  if (autoVerifySettings.get(member.guild.id)) {
+    const roleId = "1425935544273338532";
+    await member.roles.add(roleId).catch((error) => {
+      console.error(`[autoverify] Błąd nadawania roli klient dla ${member.user.tag}:`, error);
+    });
+  }
+
   await syncFreeKasaChannelAccess(member).catch((error) =>
     console.error("Błąd syncu free-kasa po dołączeniu:", error),
   );
@@ -1015,6 +1024,7 @@ function buildPersistentStateData() {
     opinieChannels: opinieChannelsObj,
     regulationPanels: regulationPanelsObj,
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
+    autoVerifySettings: Object.fromEntries(autoVerifySettings),
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
   };
@@ -2789,6 +2799,13 @@ async function loadPersistentState() {
         }
       }
 
+      // Load autoVerifySettings
+      if (botStateData.autoVerifySettings && typeof botStateData.autoVerifySettings === "object") {
+        for (const [guildId, val] of Object.entries(botStateData.autoVerifySettings)) {
+          autoVerifySettings.set(guildId, !!val);
+        }
+      }
+
       if (
         botStateData.sellerPaymentProfiles &&
         typeof botStateData.sellerPaymentProfiles === "object"
@@ -3318,6 +3335,21 @@ const commands = [
         .addChoices(
           { name: "ON", value: "on" },
           { name: "OFF", value: "off" },
+        )
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("autoverify")
+    .setDescription("Automatycznie nadawaj rolę klient nowym użytkownikom po dołączeniu")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption((option) =>
+      option
+        .setName("status")
+        .setDescription("Włącz lub wyłącz automatyczną weryfikację")
+        .setRequired(true)
+        .addChoices(
+          { name: "WLACZ", value: "wlacz" },
+          { name: "WYLACZ", value: "wylacz" }
         )
     )
     .toJSON(),
@@ -5500,8 +5532,7 @@ async function handleButtonInteraction(interaction) {
   }
 
   if (customId === "btn_wystaw_opinie") {
-    // Sprawdź cooldown (30 min)
-    const OPINION_COOLDOWN_MS = 30 * 60 * 1000;
+    // Sprawdź cooldown (48h)
     const lastUsed = opinionCooldowns.get(interaction.user.id) || 0;
     if (Date.now() - lastUsed < OPINION_COOLDOWN_MS) {
       const remaining = OPINION_COOLDOWN_MS - (Date.now() - lastUsed);
@@ -6532,6 +6563,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "zacznijliczycwlasicicielowi":
       await handleOwnerInviteCountingCommand(interaction);
+      break;
+    case "autoverify":
+      await handleAutoVerifyCommand(interaction);
       break;
     case "embed":
       await handleSendMessageCommand(interaction);
@@ -12351,6 +12385,37 @@ async function handleOwnerInviteCountingCommand(interaction) {
   });
 }
 
+async function handleAutoVerifyCommand(interaction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    await interaction.reply({
+      content: "> `❌` × Ta komenda działa tylko na serwerze.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (interaction.user.id !== guild.ownerId) {
+    await interaction.reply({
+      content: "> `❌` × Tej komendy może użyć tylko właściciel serwera.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const status = interaction.options.getString("status", true);
+  const enabled = status === "wlacz";
+  autoVerifySettings.set(guild.id, enabled);
+  scheduleSavePersistentState(true);
+
+  await interaction.reply({
+    content: enabled
+      ? "> `✅` × Automatyczna weryfikacja została **włączona**. Nowi użytkownicy będą automatycznie otrzymywać rolę klient."
+      : "> `✅` × Automatyczna weryfikacja została **wyłączona**.",
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
 async function handleTestPanelCommand(interaction) {
   if (interaction.user.id !== interaction.guild.ownerId) {
     await interaction.reply({
@@ -12974,7 +13039,20 @@ async function handleAdminZaproszeniaCommand(interaction) {
       return;
     }
 
-    const members = await guild.members.fetch();
+    const members = new Map();
+    if (allUserIds.size > 0) {
+      try {
+        const userIdsArr = Array.from(allUserIds);
+        for (let i = 0; i < userIdsArr.length; i += 100) {
+          const chunk = userIdsArr.slice(i, i + 100);
+          const fetchedChunk = await guild.members.fetch({ user: chunk }).catch(() => new Map());
+          fetchedChunk.forEach(m => members.set(m.id, m));
+        }
+      } catch (fetchErr) {
+        console.error("[zaproszenia] Error fetching specific members:", fetchErr);
+      }
+    }
+
     const normFn = (s = "") => (s).toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const CLIENT_ROLE_ID =
       verificationRoles.get(guild.id) ||
@@ -12997,41 +13075,60 @@ async function handleAdminZaproszeniaCommand(interaction) {
       }
     }
 
-    let report = `**Szczegółowe logi zaproszeń dla <@${targetId}>**\n\n`;
+    // Inicjalizacja map i pobranie statystyk z pamięci bota
+    if (!inviteCounts.has(guild.id)) inviteCounts.set(guild.id, new Map());
+    if (!inviteLeaves.has(guild.id)) inviteLeaves.set(guild.id, new Map());
+    if (!inviteFakeAccounts.has(guild.id)) inviteFakeAccounts.set(guild.id, new Map());
+    if (!inviteBonusInvites.has(guild.id)) inviteBonusInvites.set(guild.id, new Map());
 
-    if (allUserIds.size === 0 && totalUses > 0) {
-      report += `> \`ℹ️\` × **Brak logów szczegółowych z dawnych miesięcy.** Bot zaczął zbierać szczegóły (kto dokładnie wszedł) niedawno.\n\n`;
-      report += `> \`🔢\` × **Z historii starych linków Discorda wynika, że zaprosił łącznie: ${totalUses} osób**.\n`;
-    } else {
-      report += `> \`✅\` **Zweryfikowani (Klient) [${verified.length}]:**\n`;
-      if (verified.length > 0) {
-        report += verified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (verified.length > 40 ? "..." : "");
-      } else {
-        report += "Brak";
-      }
-      report += "\n\n";
+    const gMap = inviteCounts.get(guild.id);
+    const lMap = inviteLeaves.get(guild.id);
+    const fakeMap = inviteFakeAccounts.get(guild.id);
+    const bonusMap = inviteBonusInvites.get(guild.id);
 
-      report += `> \`⏳\` **Niezweryfikowani (na serwerze) [${unverified.length}]:**\n`;
-      if (unverified.length > 0) {
-        report += unverified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (unverified.length > 40 ? "..." : "");
-      } else {
-        report += "Brak";
-      }
-      report += "\n\n";
-
-      report += `> \`❌\` **Wyszli z serwera [${left.length}]:**\n`;
-      if (left.length > 0) {
-        report += left.slice(0, 40).map(u => `<@${u}>`).join(", ") + (left.length > 40 ? "..." : "");
-      } else {
-        report += "Brak";
-      }
-
-      report += `\n\n> \`🔢\` **Suma starych zaproszeń (z linków Discorda):** ${totalUses} użyć.`;
-    }
+    const validInvites = gMap.get(targetId) || 0;
+    const leftCount = lMap.get(targetId) || 0;
+    const fakeCount = fakeMap.get(targetId) || 0;
+    const bonusCount = bonusMap.get(targetId) || 0;
+    const displayedInvites = validInvites + bonusCount;
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(report.substring(0, 4096));
+      .setTitle("📩 New Shop × SZCZEGÓŁOWE ZAPROSZENIA")
+      .setDescription(
+        `###  Podsumowanie dla <@${targetId}>\n` +
+        `> \`⭐\` **Łączne zaproszenia:** \`${displayedInvites}\` \n` +
+        `> ├ \`✅\` Prawdziwe: \`${validInvites}\`\n` +
+        `> ├ \`🎁\` Dodatkowe: \`${bonusCount}\`\n` +
+        `> ├ \`🚶\` Opuścili serwer: \`${leftCount}\`\n` +
+        `> └ \`⚠️\` Konta < 2 mies. (fake): \`${fakeCount}\`\n` +
+        `> \`🔢\` **Suma starych użyć linków:** \`${totalUses}\` użyć\n\n` +
+        `###  Logi szczegółowe dołączeń\n` +
+        `*Wykaz użytkowników przypisanych w bazie bota:*`
+      )
+      .addFields(
+        {
+          name: `\`✅\` Zweryfikowani (Klient) [${verified.length}]`,
+          value: verified.length > 0 
+            ? verified.slice(0, 30).map(u => `<@${u}>`).join(", ") + (verified.length > 30 ? "..." : "")
+            : "*Brak*",
+          inline: false
+        },
+        {
+          name: `\`⏳\` Niezweryfikowani [${unverified.length}]`,
+          value: unverified.length > 0 
+            ? unverified.slice(0, 30).map(u => `<@${u}>`).join(", ") + (unverified.length > 30 ? "..." : "")
+            : "*Brak*",
+          inline: false
+        },
+        {
+          name: `\`❌\` Wyszli z serwera [${left.length}]`,
+          value: left.length > 0 
+            ? left.slice(0, 30).map(u => `<@${u}>`).join(", ") + (left.length > 30 ? "..." : "")
+            : "*Brak*",
+          inline: false
+        }
+      );
 
     await interaction.editReply({ embeds: [embed] });
   } catch (err) {
@@ -15893,11 +15990,9 @@ async function handleModalSubmit(interaction) {
       const expiryTs = codeData.expiresAt
         ? Math.floor(codeData.expiresAt / 1000)
         : null;
-      const expiryLine = expiryTs
-        ? `\n> <a:arrowwhite:1491476759290449984> × **Kod wygasa za:** <t:${expiryTs}:R>`
-        : "";
+      const expiryLine = "";
 
-      const formInfo = `> <a:arrowwhite:1491476759290449984> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1491476759290449984> × **Nagroda:** \`${codeData.rewardText || codeData.reward || INVITE_REWARD_TEXT || "70k$"}\`${expiryLine}`;
+      const formInfo = `> <a:arrowwhite:1491476759290449984> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1491476759290449984> × **Nagroda:** \`${codeData.rewardText || codeData.reward || INVITE_REWARD_TEXT || "70k$"}\``;
 
       try {
         let parentToUse = categoryId;
@@ -18159,7 +18254,16 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
       embeds: [embed]
     });
 
-    // Usuwamy stary panel, w który kliknął użytkownik
+    // Delete the old panel if we have its ID stored to prevent duplication
+    const lastPanelId = lastInviteInstruction.get(targetChannel.id);
+    if (lastPanelId) {
+      const lastMsg = await targetChannel.messages.fetch(lastPanelId).catch(() => null);
+      if (lastMsg) {
+        await lastMsg.delete().catch(() => null);
+      }
+    }
+
+    // Also delete the message in interaction if it exists
     if (interaction.message) {
       await interaction.message.delete().catch(() => null);
     }
