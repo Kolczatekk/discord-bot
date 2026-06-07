@@ -149,12 +149,6 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
       // Ustawiamy stopkę NEW SHOP TYLKO jeśli została jawnie włączona
       if (!data.footer && this._useBrandFooter) {
         data.footer = getBrandFooterObject();
-        if (data.description && typeof data.description === "string") {
-          const trimmed = data.description.trimEnd();
-          if (!trimmed.endsWith("\n\n---") && !trimmed.endsWith("\n\n___")) {
-            data.description = trimmed + "\n\n---";
-          }
-        }
       }
     }
 
@@ -17992,26 +17986,24 @@ client.on(Events.GuildMemberAdd, async (member) => {
     if (ch || member.guild.systemChannel) {
       const targetCh = ch || member.guild.systemChannel;
 
-      const avatarUrl = member.displayAvatarURL({ extension: "png", forceStatic: false, size: 256 })
-        || member.user.displayAvatarURL({ extension: "png", size: 256 });
+      const welcomeContainer = new ContainerBuilder()
+        .setAccentColor(COLOR_BLUE);
 
-      const welcomeEmbed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
+      welcomeContainer.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
           "```\n👋 New Shop × LOBBY\n```\n" +
           `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
           `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
           `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`
         )
-        .setBrandFooter();
+      );
 
-      if (avatarUrl) {
-        welcomeEmbed.setThumbnail(avatarUrl);
-      }
+      appendBrandFooterToContainer(welcomeContainer, member.guild.id);
 
       await targetCh.send({
         content: `<@${member.id}>`,
-        embeds: [welcomeEmbed],
+        components: [welcomeContainer],
+        flags: MessageFlags.IsComponentsV2,
       }).catch((err) => console.error("[lobby] Błąd wysyłania powitania:", err));
     } else {
       console.warn(`[lobby] Nie znaleziono kanału lobby ani systemChannel dla guild ${member.guild.id}`);
