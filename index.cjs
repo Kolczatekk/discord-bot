@@ -149,6 +149,11 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
       // Ustawiamy stopkę NEW SHOP TYLKO jeśli została jawnie włączona
       if (!data.footer && this._useBrandFooter) {
         data.footer = getBrandFooterObject();
+        if (data.description && typeof data.description === "string") {
+          if (!data.description.includes("──────────────────────────")) {
+            data.description = data.description.trimEnd() + "\n\n──────────────────────────";
+          }
+        }
       }
     }
 
@@ -1060,8 +1065,8 @@ async function saveStateToSupabase(data) {
 
 // ----------------- FREE KASA -----------------
 function pickFreeKasaReward() {
-  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 15% (wygrywa średnio raz na ok. 7 losowań).
-  const WIN_CHANCE = 15.0;
+  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 5% (wygrywa średnio raz na ok. 20 losowań).
+  const WIN_CHANCE = 5.0;
 
   if (Math.random() * 100 > WIN_CHANCE) {
     return null; // Pusty los
@@ -7059,18 +7064,18 @@ function isOwnerOnlyPurchaseTicket(channel, ticketMeta = null) {
 
   const label = String(ticketMeta?.ticketTypeLabel || "").toUpperCase();
   if (
-    ["ZAKUP AUTORYNKU", "ZAKUP AUTO RYNKU", "ZAKUP MODÓW", "ZAKUP MODA"].includes(label)
+    ["ZAKUP BOTÓW", "ZAKUP BOTA", "ZAKUP AUTORYNKU", "ZAKUP AUTO RYNKU", "ZAKUP MODÓW", "ZAKUP MODA"].includes(label)
   ) {
     return true;
   }
 
   const topic = String(channel?.topic || "").toLowerCase();
-  if (topic.includes("zakup autorynku") || topic.includes("zakup moda")) {
+  if (topic.includes("zakup botów") || topic.includes("zakup bota") || topic.includes("zakup autorynku") || topic.includes("zakup moda")) {
     return true;
   }
 
   const normalizedName = String(channel?.name || "").toLowerCase();
-  return /-(autorynek|mod|mody)$/.test(normalizedName);
+  return /-(boty|bot|autorynek|mod|mody)$/.test(normalizedName);
 }
 
 function getPurchaseStaffRoleIdsForCategory(categoryId) {
@@ -8568,9 +8573,9 @@ async function handleTicketCommand(interaction) {
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
-        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
+        label: "ᴢᴀᴋᴜᴘ ʙᴏᴛóᴡ",
         value: "zakup_autorynku",
-        description: "Kliknij, aby kupić najlepszy AutoRynek!",
+        description: "Kliknij, aby kupić najlepsze boty!",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
@@ -8699,9 +8704,9 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
   },
   {
     value: "zakup_autorynku",
-    label: "Zakup autorynku",
-    description: "Otwiera formularz zakupu autorynku",
-    emoji: "🏪",
+    label: "Zakup botów",
+    description: "Otwiera formularz zakupu botów",
+    emoji: "🤖",
   },
   {
     value: "zakup_moda",
@@ -8814,6 +8819,10 @@ function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
   }
 
   if (
+    normalized === "zakup botów" ||
+    normalized === "zakup botow" ||
+    normalized === "boty" ||
+    normalized === "bot" ||
     normalized === "zakup autorynku" ||
     normalized === "autorynek" ||
     normalized === "auto rynek"
@@ -11787,10 +11796,10 @@ const AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS = [
     emoji: "📩",
   },
   {
-    label: "Waluta Serwerowa 150k$",
-    testValue: "waluta_serwerowa_150k",
-    description: "Płatność walutą serwerową 150k$",
-    channelSlug: "waluta-serwerowa-150k",
+    label: "Waluta Serwerowa 300k$",
+    testValue: "waluta_serwerowa_300k",
+    description: "Płatność walutą serwerową 300k$",
+    channelSlug: "waluta-serwerowa-300k",
     emoji: { id: "1476700165082710178", name: "kasa_2" },
   },
 ];
@@ -11830,9 +11839,9 @@ const PANEL_CATEGORY_OPTIONS = [
     emoji: { id: "1480590181944791122", name: "autorynek" },
   },
   {
-    label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
+    label: "ᴢᴀᴋᴜᴘ ʙᴏᴛóᴡ",
     value: "zakup_autorynku",
-    description: "Kliknij, aby kupić najlepszy AutoRynek!",
+    description: "Kliknij, aby kupić najlepsze boty!",
     emoji: { id: "1480590181944791122", name: "autorynek" },
   },
   {
@@ -12062,7 +12071,7 @@ function isModernPurchaseTicketChannelName(name) {
     return true;
   }
 
-  if (/(?:^|.*-)(autorynek|mod|mody)$/.test(normalized)) {
+  if (/(?:^|.*-)(boty|bot|autorynek|mod|mody)$/.test(normalized)) {
     return true;
   }
 
@@ -13517,7 +13526,7 @@ async function showAutoRynekZakupModal(interaction) {
 
   const modal = new ModalBuilder()
     .setCustomId("modal_autorynek_zakup")
-    .setTitle("Zakup AutoRynku")
+    .setTitle("Zakup Botów")
     .addLabelComponents(
       new LabelBuilder()
         .setLabel("Forma płatności")
@@ -15840,20 +15849,28 @@ async function handleModalSubmit(interaction) {
           ? PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID
           : categories["zakup-20-50"];
       ticketType = "zakup-autorynku";
-      ticketTypeLabel = "ZAKUP AUTORYNKU";
+      ticketTypeLabel = "ZAKUP BOTÓW";
       forceOwnerOnlyVisibility = true;
       preferredChannelName = buildSpecialPurchaseTicketChannelName(
         interaction.member,
         user,
-        "autorynek",
+        "boty",
       );
-      ticketTopic = "Zakup AutoRynku (20zł)";
+      
+      let priceLabel = "20zł";
+      if (paymentMethodRaw === "waluta_serwerowa_300k") {
+        priceLabel = "300k$";
+      } else if (paymentMethodRaw === "zaproszenia") {
+        priceLabel = "Zaproszenia";
+      }
+
+      ticketTopic = `Zakup botów (${priceLabel})`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       const paymentMethodLabel = getAutorynekPaymentLabel(paymentMethodRaw);
 
       paymentMethod = paymentMethodRaw;
       formInfo =
-        `> <a:arrowwhite:1491476759290449984> × **Cena:** \`20zł\`\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Cena:** \`${priceLabel}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethodLabel}\``;
       break;
     }
@@ -19671,8 +19688,15 @@ function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
   if (ticketChannel.parentId && String(ticketChannel.parentId) === String(PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID)) {
     const normalizedName = String(ticketChannel.name || "").toLowerCase();
     const normalizedTopic = String(ticketChannel.topic || "").toLowerCase();
-    if (normalizedName.endsWith("-autorynek") || normalizedTopic.includes("zakup autorynku")) {
-      return "ZAKUP AUTORYNKU";
+    if (
+      normalizedName.endsWith("-boty") ||
+      normalizedName.endsWith("-bot") ||
+      normalizedTopic.includes("zakup botów") ||
+      normalizedTopic.includes("zakup bota") ||
+      normalizedName.endsWith("-autorynek") ||
+      normalizedTopic.includes("zakup autorynku")
+    ) {
+      return "ZAKUP BOTÓW";
     }
     if (
       normalizedName.endsWith("-mod") ||
