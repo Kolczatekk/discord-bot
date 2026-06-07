@@ -150,8 +150,9 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
       if (!data.footer && this._useBrandFooter) {
         data.footer = getBrandFooterObject();
         if (data.description && typeof data.description === "string") {
-          if (!data.description.includes("──────────────────────────")) {
-            data.description = data.description.trimEnd() + "\n\n──────────────────────────";
+          const trimmed = data.description.trimEnd();
+          if (!trimmed.endsWith("\n\n---") && !trimmed.endsWith("\n\n___")) {
+            data.description = trimmed + "\n\n---";
           }
         }
       }
