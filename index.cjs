@@ -15852,7 +15852,7 @@ async function handleModalSubmit(interaction) {
         "boty",
       );
       
-      let priceLabel = "20zł";
+      let priceLabel = "30zł";
       if (paymentMethodRaw === "waluta_serwerowa_300k") {
         priceLabel = "300k$";
       } else if (paymentMethodRaw === "zaproszenia") {
