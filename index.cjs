@@ -17986,27 +17986,26 @@ client.on(Events.GuildMemberAdd, async (member) => {
     if (ch || member.guild.systemChannel) {
       const targetCh = ch || member.guild.systemChannel;
 
-      const welcomeContainer = new ContainerBuilder()
-        .setAccentColor(COLOR_BLUE);
+      const avatarUrl = member.displayAvatarURL({ extension: "png", forceStatic: false, size: 256 })
+        || member.user.displayAvatarURL({ extension: "png", size: 256 });
 
-      welcomeContainer.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
+      const welcomeEmbed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
           "```\n👋 New Shop × LOBBY\n```\n" +
           `> \`😎\` **Witaj \`${member.user.username}\` na __NEW SHOP!__**\n` +
           `> \`🧑‍🤝‍🧑\` **Jesteś \`${member.guild.memberCount}\` osobą na naszym serwerze!**\n` +
           `> \`✨\` **Liczymy, że zostaniesz z nami na dłużej!**`
         )
-      );
+        .setBrandFooter();
 
-      appendBrandFooterToContainer(welcomeContainer, member.guild.id);
+      if (avatarUrl) {
+        welcomeEmbed.setThumbnail(avatarUrl);
+      }
 
       await targetCh.send({
         content: `<@${member.id}>`,
-      }).catch(() => null);
-
-      await targetCh.send({
-        components: [welcomeContainer],
-        flags: MessageFlags.IsComponentsV2,
+        embeds: [welcomeEmbed],
       }).catch((err) => console.error("[lobby] Błąd wysyłania powitania:", err));
     } else {
       console.warn(`[lobby] Nie znaleziono kanału lobby ani systemChannel dla guild ${member.guild.id}`);
