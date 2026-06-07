@@ -18002,6 +18002,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
       await targetCh.send({
         content: `<@${member.id}>`,
+      }).catch(() => null);
+
+      await targetCh.send({
         components: [welcomeContainer],
         flags: MessageFlags.IsComponentsV2,
       }).catch((err) => console.error("[lobby] Błąd wysyłania powitania:", err));
