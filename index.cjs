@@ -372,6 +372,7 @@ const DISBOARD_BUMP_INTERVAL_MS = 121 * 60 * 1000;
 
 let disboardBumpTimeout = null;
 let disboardBumpInFlight = false;
+let disboardBumpCommandVersion = null;
 
 function getDisboardBumpToken() {
   return (
@@ -379,6 +380,45 @@ function getDisboardBumpToken() {
     process.env.DISBOARD_BUMP_TOKEN ||
     ""
   ).trim();
+}
+
+async function resolveDisboardBumpCommandVersion(guildId, bumpToken) {
+  if (disboardBumpCommandVersion) {
+    return disboardBumpCommandVersion;
+  }
+
+  const endpoints = [
+    `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/guilds/${guildId}/commands`,
+    `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/commands`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        headers: { Authorization: bumpToken },
+      });
+      if (!response.ok) continue;
+
+      const commands = await response.json();
+      const bumpCommand = Array.isArray(commands)
+        ? commands.find((cmd) => cmd.id === DISBOARD_BUMP_COMMAND_ID)
+        : null;
+
+      if (bumpCommand?.version) {
+        disboardBumpCommandVersion = bumpCommand.version;
+        console.log(
+          `[DISBOARD] Wersja komendy /bump: ${disboardBumpCommandVersion}`,
+        );
+        return disboardBumpCommandVersion;
+      }
+    } catch (error) {
+      console.warn("[DISBOARD] Nie udało się pobrać wersji komendy:", error);
+    }
+  }
+
+  disboardBumpCommandVersion = 1;
+  console.warn("[DISBOARD] Używam domyślnej wersji komendy /bump: 1");
+  return disboardBumpCommandVersion;
 }
 
 async function invokeDisboardBump(channel) {
@@ -396,6 +436,11 @@ async function invokeDisboardBump(channel) {
     return false;
   }
 
+  const commandVersion = await resolveDisboardBumpCommandVersion(
+    guildId,
+    bumpToken,
+  );
+
   const response = await fetch("https://discord.com/api/v10/interactions", {
     method: "POST",
     headers: {
@@ -412,6 +457,7 @@ async function invokeDisboardBump(channel) {
         id: DISBOARD_BUMP_COMMAND_ID,
         name: "bump",
         type: 1,
+        version: commandVersion,
       },
       nonce: Date.now().toString(),
     }),
@@ -506,6 +552,16 @@ function handleDisboardBumpFeedback(message) {
     normalized.includes("podbij")
   ) {
     scheduleDisboardBump(DISBOARD_BUMP_INTERVAL_MS);
+    return;
+  }
+
+  const waitMatch = description.match(/(\d+)\s*(?:minute|minut|min)/i);
+  if (waitMatch) {
+    const waitMs = (parseInt(waitMatch[1], 10) + 1) * 60_000;
+    console.log(
+      `[DISBOARD] Cooldown DISBOARD — kolejna próba za ${waitMatch[1]} min`,
+    );
+    scheduleDisboardBump(waitMs);
   }
 }
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
