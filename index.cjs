@@ -29,6 +29,7 @@ const {
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 // Load local .env when running on a PC (Render ma własne env vars)
 try {
@@ -362,6 +363,151 @@ const FREE_KASA_STATUS_GUIDE_IMAGE_PATH = path.join(
   FREE_KASA_STATUS_GUIDE_IMAGE_NAME,
 );
 const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
+
+// DISBOARD auto-bump (/bump co 121 min)
+const DISBOARD_APP_ID = "302050872383242240";
+const DISBOARD_BUMP_COMMAND_ID = "947088344167366698";
+const DISBOARD_BUMP_CHANNEL_ID = "1350603811512909914";
+const DISBOARD_BUMP_INTERVAL_MS = 121 * 60 * 1000;
+
+let disboardBumpTimeout = null;
+let disboardBumpInFlight = false;
+
+function getDisboardBumpToken() {
+  return (
+    process.env.DISBOARD_BUMP_USER_TOKEN ||
+    process.env.DISBOARD_BUMP_TOKEN ||
+    ""
+  ).trim();
+}
+
+async function invokeDisboardBump(channel) {
+  const bumpToken = getDisboardBumpToken();
+  if (!bumpToken) {
+    console.warn(
+      "[DISBOARD] Brak DISBOARD_BUMP_USER_TOKEN w .env — nie można wysłać /bump",
+    );
+    return false;
+  }
+
+  const guildId = channel.guildId;
+  if (!guildId) {
+    console.error("[DISBOARD] Kanał bump nie należy do żadnego serwera");
+    return false;
+  }
+
+  const response = await fetch("https://discord.com/api/v10/interactions", {
+    method: "POST",
+    headers: {
+      Authorization: bumpToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: 2,
+      application_id: DISBOARD_APP_ID,
+      guild_id: guildId,
+      channel_id: channel.id,
+      session_id: crypto.randomBytes(16).toString("hex"),
+      data: {
+        id: DISBOARD_BUMP_COMMAND_ID,
+        name: "bump",
+        type: 1,
+      },
+      nonce: Date.now().toString(),
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.error(
+      `[DISBOARD] Nie udało się wysłać /bump: HTTP ${response.status} ${body}`,
+    );
+    return false;
+  }
+
+  console.log(
+    `[DISBOARD] Wysłano /bump na kanale ${channel.name} (${channel.id})`,
+  );
+  return true;
+}
+
+function scheduleDisboardBump(delayMs = DISBOARD_BUMP_INTERVAL_MS) {
+  if (disboardBumpTimeout) {
+    clearTimeout(disboardBumpTimeout);
+    disboardBumpTimeout = null;
+  }
+
+  disboardBumpTimeout = setTimeout(() => {
+    runDisboardBumpCycle().catch((error) =>
+      console.error("[DISBOARD] Błąd cyklu bumpa:", error),
+    );
+  }, delayMs);
+
+  const nextAt = new Date(Date.now() + delayMs).toLocaleString("pl-PL");
+  console.log(
+    `[DISBOARD] Następny bump zaplanowany za ${Math.round(delayMs / 60000)} min (${nextAt})`,
+  );
+}
+
+async function runDisboardBumpCycle() {
+  if (disboardBumpInFlight) {
+    scheduleDisboardBump(60_000);
+    return;
+  }
+
+  disboardBumpInFlight = true;
+  try {
+    const channel = await client.channels
+      .fetch(DISBOARD_BUMP_CHANNEL_ID)
+      .catch(() => null);
+
+    if (!channel || !channel.isTextBased()) {
+      console.error(
+        `[DISBOARD] Nie znaleziono kanału bump: ${DISBOARD_BUMP_CHANNEL_ID}`,
+      );
+      scheduleDisboardBump();
+      return;
+    }
+
+    await invokeDisboardBump(channel);
+  } catch (error) {
+    console.error("[DISBOARD] Błąd podczas wysyłania /bump:", error);
+  } finally {
+    disboardBumpInFlight = false;
+    scheduleDisboardBump();
+  }
+}
+
+function setupDisboardAutoBump() {
+  if (!getDisboardBumpToken()) {
+    console.warn(
+      "[DISBOARD] Auto-bump wyłączony — dodaj DISBOARD_BUMP_USER_TOKEN do .env (token konta z uprawnieniem /bump)",
+    );
+    return;
+  }
+
+  console.log(
+    `[DISBOARD] Auto-bump włączony: co ${DISBOARD_BUMP_INTERVAL_MS / 60000} min na kanale ${DISBOARD_BUMP_CHANNEL_ID}`,
+  );
+  scheduleDisboardBump(30_000);
+}
+
+function handleDisboardBumpFeedback(message) {
+  if (message.channelId !== DISBOARD_BUMP_CHANNEL_ID) return;
+  if (message.author?.id !== DISBOARD_APP_ID) return;
+
+  const description = message.embeds?.[0]?.description;
+  if (!description || typeof description !== "string") return;
+
+  const normalized = description.toLowerCase();
+  if (
+    normalized.includes("bump done") ||
+    normalized.includes("podbito") ||
+    normalized.includes("podbij")
+  ) {
+    scheduleDisboardBump(DISBOARD_BUMP_INTERVAL_MS);
+  }
+}
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
 const FREE_KASA_REWARD_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
@@ -4552,6 +4698,16 @@ client.once(Events.ClientReady, async (c) => {
       );
     });
   }, FREE_KASA_SYNC_INTERVAL_MS);
+
+  setupDisboardAutoBump();
+});
+
+client.on(Events.MessageCreate, (message) => {
+  try {
+    handleDisboardBumpFeedback(message);
+  } catch (error) {
+    console.error("[DISBOARD] Błąd obsługi odpowiedzi DISBOARD:", error);
+  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
