@@ -369,10 +369,18 @@ const DISBOARD_APP_ID = "302050872383242240";
 const DISBOARD_BUMP_COMMAND_ID = "947088344167366698";
 const DISBOARD_BUMP_CHANNEL_ID = "1350603811512909914";
 const DISBOARD_BUMP_INTERVAL_MS = 121 * 60 * 1000;
+const DISBOARD_BUMP_RETRY_MS = 10 * 60 * 1000;
+const DISBOARD_BUMP_ERROR_RETRY_MS = 5 * 60 * 1000;
 
 let disboardBumpTimeout = null;
 let disboardBumpInFlight = false;
 let disboardBumpCommandVersion = null;
+
+function parseDisboardCooldownMinutes(text) {
+  if (!text || typeof text !== "string") return null;
+  const match = text.match(/(\d+)\s*min/i);
+  return match ? parseInt(match[1], 10) : null;
+}
 
 function getDisboardBumpToken() {
   return (
@@ -427,13 +435,13 @@ async function invokeDisboardBump(channel) {
     console.warn(
       "[DISBOARD] Brak DISBOARD_BUMP_USER_TOKEN w .env — nie można wysłać /bump",
     );
-    return false;
+    return { sent: false, cooldownMinutes: null };
   }
 
   const guildId = channel.guildId;
   if (!guildId) {
     console.error("[DISBOARD] Kanał bump nie należy do żadnego serwera");
-    return false;
+    return { sent: false, cooldownMinutes: null };
   }
 
   const commandVersion = await resolveDisboardBumpCommandVersion(
@@ -463,18 +471,40 @@ async function invokeDisboardBump(channel) {
     }),
   });
 
+  const rawBody = await response.text().catch(() => "");
+
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
     console.error(
-      `[DISBOARD] Nie udało się wysłać /bump: HTTP ${response.status} ${body}`,
+      `[DISBOARD] Nie udało się wysłać /bump: HTTP ${response.status} ${rawBody}`,
     );
-    return false;
+    return { sent: false, cooldownMinutes: null };
+  }
+
+  let cooldownMinutes = parseDisboardCooldownMinutes(rawBody);
+  if (!cooldownMinutes && rawBody) {
+    try {
+      const parsed = JSON.parse(rawBody);
+      const embedText =
+        parsed?.data?.embeds?.[0]?.description ||
+        parsed?.embeds?.[0]?.description ||
+        "";
+      cooldownMinutes = parseDisboardCooldownMinutes(embedText);
+    } catch {
+      // odpowiedź nie-JSON — już sprawdziliśmy rawBody
+    }
+  }
+
+  if (cooldownMinutes) {
+    console.log(
+      `[DISBOARD] Cooldown DISBOARD — kolejna próba za ${cooldownMinutes} min`,
+    );
+    return { sent: true, cooldownMinutes };
   }
 
   console.log(
     `[DISBOARD] Wysłano /bump na kanale ${channel.name} (${channel.id})`,
   );
-  return true;
+  return { sent: true, cooldownMinutes: null };
 }
 
 function scheduleDisboardBump(delayMs = DISBOARD_BUMP_INTERVAL_MS) {
@@ -502,6 +532,8 @@ async function runDisboardBumpCycle() {
   }
 
   disboardBumpInFlight = true;
+  let nextDelay = DISBOARD_BUMP_INTERVAL_MS;
+
   try {
     const channel = await client.channels
       .fetch(DISBOARD_BUMP_CHANNEL_ID)
@@ -511,16 +543,23 @@ async function runDisboardBumpCycle() {
       console.error(
         `[DISBOARD] Nie znaleziono kanału bump: ${DISBOARD_BUMP_CHANNEL_ID}`,
       );
-      scheduleDisboardBump();
-      return;
+      nextDelay = DISBOARD_BUMP_RETRY_MS;
+    } else {
+      const result = await invokeDisboardBump(channel);
+      if (result.cooldownMinutes) {
+        nextDelay = (result.cooldownMinutes + 1) * 60_000;
+      } else if (result.sent) {
+        nextDelay = DISBOARD_BUMP_RETRY_MS;
+      } else {
+        nextDelay = DISBOARD_BUMP_ERROR_RETRY_MS;
+      }
     }
-
-    await invokeDisboardBump(channel);
   } catch (error) {
     console.error("[DISBOARD] Błąd podczas wysyłania /bump:", error);
+    nextDelay = DISBOARD_BUMP_ERROR_RETRY_MS;
   } finally {
     disboardBumpInFlight = false;
-    scheduleDisboardBump();
+    scheduleDisboardBump(nextDelay);
   }
 }
 
@@ -546,22 +585,24 @@ function handleDisboardBumpFeedback(message) {
   if (!description || typeof description !== "string") return;
 
   const normalized = description.toLowerCase();
-  if (
-    normalized.includes("bump done") ||
-    normalized.includes("podbito") ||
-    normalized.includes("podbij")
-  ) {
-    scheduleDisboardBump(DISBOARD_BUMP_INTERVAL_MS);
+
+  if (normalized.includes("poczekaj")) {
+    const cooldownMinutes = parseDisboardCooldownMinutes(description);
+    if (cooldownMinutes) {
+      console.log(
+        `[DISBOARD] Cooldown DISBOARD — kolejna próba za ${cooldownMinutes} min`,
+      );
+      scheduleDisboardBump((cooldownMinutes + 1) * 60_000);
+    }
     return;
   }
 
-  const waitMatch = description.match(/(\d+)\s*(?:minute|minut|min)/i);
-  if (waitMatch) {
-    const waitMs = (parseInt(waitMatch[1], 10) + 1) * 60_000;
-    console.log(
-      `[DISBOARD] Cooldown DISBOARD — kolejna próba za ${waitMatch[1]} min`,
-    );
-    scheduleDisboardBump(waitMs);
+  if (
+    normalized.includes("bump done") ||
+    normalized.includes("podbito") ||
+    normalized.includes("bumped")
+  ) {
+    scheduleDisboardBump(DISBOARD_BUMP_INTERVAL_MS);
   }
 }
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
