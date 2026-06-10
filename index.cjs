@@ -371,10 +371,42 @@ const DISBOARD_BUMP_CHANNEL_ID = "1350603811512909914";
 const DISBOARD_BUMP_INTERVAL_MS = 121 * 60 * 1000;
 const DISBOARD_BUMP_RETRY_MS = 10 * 60 * 1000;
 const DISBOARD_BUMP_ERROR_RETRY_MS = 5 * 60 * 1000;
+const DISBOARD_BUMP_VERSION_RETRY_MS = 30 * 60 * 1000;
 
 let disboardBumpTimeout = null;
 let disboardBumpInFlight = false;
 let disboardBumpCommandVersion = null;
+
+function clearDisboardCommandVersionCache() {
+  disboardBumpCommandVersion = null;
+}
+
+function isDisboardInvalidVersionError(body) {
+  return (
+    typeof body === "string" &&
+    body.includes("INTERACTION_APPLICATION_COMMAND_INVALID_VERSION")
+  );
+}
+
+function extractDisboardBumpVersionFromPayload(rawText, commandId) {
+  if (!rawText || typeof rawText !== "string") return null;
+
+  const patterns = [
+    new RegExp(
+      `"id"\\s*:\\s*"${commandId}"[\\s\\S]{0,400}?"version"\\s*:\\s*"?([0-9]+)"?`,
+    ),
+    new RegExp(
+      `"version"\\s*:\\s*"?([0-9]+)"?[\\s\\S]{0,400}?"id"\\s*:\\s*"${commandId}"`,
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = rawText.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
+}
 
 function parseDisboardCooldownMinutes(text) {
   if (!text || typeof text !== "string") return null;
@@ -390,14 +422,30 @@ function getDisboardBumpToken() {
   ).trim();
 }
 
-async function resolveDisboardBumpCommandVersion(guildId, bumpToken) {
-  if (disboardBumpCommandVersion) {
+async function resolveDisboardBumpCommandVersion(
+  guildId,
+  bumpToken,
+  forceRefresh = false,
+) {
+  if (disboardBumpCommandVersion && !forceRefresh) {
+    return disboardBumpCommandVersion;
+  }
+
+  const envVersion = process.env.DISBOARD_BUMP_COMMAND_VERSION?.trim();
+  if (envVersion && !forceRefresh) {
+    disboardBumpCommandVersion = envVersion;
+    console.log(
+      `[DISBOARD] Wersja komendy /bump z env: ${disboardBumpCommandVersion}`,
+    );
     return disboardBumpCommandVersion;
   }
 
   const endpoints = [
+    `https://discord.com/api/v10/guilds/${guildId}/application-command-index`,
+    `https://discord.com/api/v9/guilds/${guildId}/application-command-index`,
     `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/guilds/${guildId}/commands`,
     `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/commands`,
+    `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/commands/${DISBOARD_BUMP_COMMAND_ID}`,
   ];
 
   for (const endpoint of endpoints) {
@@ -405,15 +453,21 @@ async function resolveDisboardBumpCommandVersion(guildId, bumpToken) {
       const response = await fetch(endpoint, {
         headers: { Authorization: bumpToken },
       });
-      if (!response.ok) continue;
+      const rawText = await response.text().catch(() => "");
 
-      const commands = await response.json();
-      const bumpCommand = Array.isArray(commands)
-        ? commands.find((cmd) => cmd.id === DISBOARD_BUMP_COMMAND_ID)
-        : null;
+      if (!response.ok) {
+        console.warn(
+          `[DISBOARD] Nie udało się pobrać wersji (${response.status}) z ${endpoint}`,
+        );
+        continue;
+      }
 
-      if (bumpCommand?.version) {
-        disboardBumpCommandVersion = bumpCommand.version;
+      const versionFromRaw = extractDisboardBumpVersionFromPayload(
+        rawText,
+        DISBOARD_BUMP_COMMAND_ID,
+      );
+      if (versionFromRaw) {
+        disboardBumpCommandVersion = versionFromRaw;
         console.log(
           `[DISBOARD] Wersja komendy /bump: ${disboardBumpCommandVersion}`,
         );
@@ -424,9 +478,10 @@ async function resolveDisboardBumpCommandVersion(guildId, bumpToken) {
     }
   }
 
-  disboardBumpCommandVersion = 1;
-  console.warn("[DISBOARD] Używam domyślnej wersji komendy /bump: 1");
-  return disboardBumpCommandVersion;
+  console.error(
+    "[DISBOARD] Nie znaleziono wersji /bump — ustaw DISBOARD_BUMP_COMMAND_VERSION w Render (F12 → Network → interactions → Payload → version)",
+  );
+  return null;
 }
 
 async function invokeDisboardBump(channel) {
@@ -444,41 +499,67 @@ async function invokeDisboardBump(channel) {
     return { sent: false, cooldownMinutes: null };
   }
 
-  const commandVersion = await resolveDisboardBumpCommandVersion(
-    guildId,
-    bumpToken,
-  );
-
-  const response = await fetch("https://discord.com/api/v10/interactions", {
-    method: "POST",
-    headers: {
-      Authorization: bumpToken,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      type: 2,
-      application_id: DISBOARD_APP_ID,
-      guild_id: guildId,
-      channel_id: channel.id,
-      session_id: crypto.randomBytes(16).toString("hex"),
-      data: {
-        id: DISBOARD_BUMP_COMMAND_ID,
-        name: "bump",
-        type: 1,
-        version: commandVersion,
-      },
-      nonce: Date.now().toString(),
-    }),
-  });
-
-  const rawBody = await response.text().catch(() => "");
-
-  if (!response.ok) {
-    console.error(
-      `[DISBOARD] Nie udało się wysłać /bump: HTTP ${response.status} ${rawBody}`,
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const commandVersion = await resolveDisboardBumpCommandVersion(
+      guildId,
+      bumpToken,
+      attempt > 0,
     );
-    return { sent: false, cooldownMinutes: null };
+
+    if (!commandVersion) {
+      return { sent: false, cooldownMinutes: null, invalidVersion: true };
+    }
+
+    const response = await fetch("https://discord.com/api/v10/interactions", {
+      method: "POST",
+      headers: {
+        Authorization: bumpToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: 2,
+        application_id: DISBOARD_APP_ID,
+        guild_id: guildId,
+        channel_id: channel.id,
+        session_id: crypto.randomBytes(16).toString("hex"),
+        data: {
+          id: DISBOARD_BUMP_COMMAND_ID,
+          name: "bump",
+          type: 1,
+          version: commandVersion,
+        },
+        nonce: Date.now().toString(),
+      }),
+    });
+
+    const rawBody = await response.text().catch(() => "");
+
+    if (!response.ok) {
+      if (isDisboardInvalidVersionError(rawBody) && attempt === 0) {
+        clearDisboardCommandVersionCache();
+        console.warn(
+          "[DISBOARD] Nieaktualna wersja komendy — pobieram ponownie...",
+        );
+        continue;
+      }
+
+      console.error(
+        `[DISBOARD] Nie udało się wysłać /bump: HTTP ${response.status} ${rawBody}`,
+      );
+      return {
+        sent: false,
+        cooldownMinutes: null,
+        invalidVersion: isDisboardInvalidVersionError(rawBody),
+      };
+    }
+
+    return processDisboardBumpResponse(channel, rawBody);
   }
+
+  return { sent: false, cooldownMinutes: null, invalidVersion: true };
+}
+
+function processDisboardBumpResponse(channel, rawBody) {
 
   let cooldownMinutes = parseDisboardCooldownMinutes(rawBody);
   if (!cooldownMinutes && rawBody) {
@@ -498,13 +579,13 @@ async function invokeDisboardBump(channel) {
     console.log(
       `[DISBOARD] Cooldown DISBOARD — kolejna próba za ${cooldownMinutes} min`,
     );
-    return { sent: true, cooldownMinutes };
+    return { sent: true, cooldownMinutes, invalidVersion: false };
   }
 
   console.log(
     `[DISBOARD] Wysłano /bump na kanale ${channel.name} (${channel.id})`,
   );
-  return { sent: true, cooldownMinutes: null };
+  return { sent: true, cooldownMinutes: null, invalidVersion: false };
 }
 
 function scheduleDisboardBump(delayMs = DISBOARD_BUMP_INTERVAL_MS) {
@@ -548,6 +629,8 @@ async function runDisboardBumpCycle() {
       const result = await invokeDisboardBump(channel);
       if (result.cooldownMinutes) {
         nextDelay = (result.cooldownMinutes + 1) * 60_000;
+      } else if (result.invalidVersion) {
+        nextDelay = DISBOARD_BUMP_VERSION_RETRY_MS;
       } else if (result.sent) {
         nextDelay = DISBOARD_BUMP_RETRY_MS;
       } else {
