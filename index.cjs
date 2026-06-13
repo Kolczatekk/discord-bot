@@ -29,7 +29,6 @@ const {
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 
 // Load local .env when running on a PC (Render ma własne env vars)
 try {
@@ -222,7 +221,6 @@ function generateClaimQuiz() {
 // ----------------------------------------------------------------
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
-const autoVerifySettings = new Map(); // guildId -> boolean
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
@@ -331,7 +329,7 @@ let pendingRename = false;
 
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
-const OPINION_COOLDOWN_MS = 48 * 60 * 60 * 1000; // 48 hours per user
+const OPINION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes per user
 const OPINION_BTN_STAR = "<:star:1505298878096871546>";
 const OPINION_STAR = "⭐";
 const OPINION_NO_STAR = "✩";
@@ -363,331 +361,6 @@ const FREE_KASA_STATUS_GUIDE_IMAGE_PATH = path.join(
   FREE_KASA_STATUS_GUIDE_IMAGE_NAME,
 );
 const FREE_KASA_SYNC_INTERVAL_MS = 30_000;
-
-// DISBOARD auto-bump (/bump co 121 min)
-const DISBOARD_APP_ID = "302050872383242240";
-const DISBOARD_BUMP_COMMAND_ID = "947088344167366698";
-const DISBOARD_BUMP_CHANNEL_ID = "1350603811512909914";
-const DISBOARD_BUMP_INTERVAL_MS = 121 * 60 * 1000;
-const DISBOARD_BUMP_RETRY_MS = 10 * 60 * 1000;
-const DISBOARD_BUMP_ERROR_RETRY_MS = 5 * 60 * 1000;
-const DISBOARD_BUMP_VERSION_RETRY_MS = 30 * 60 * 1000;
-
-let disboardBumpTimeout = null;
-let disboardBumpInFlight = false;
-let disboardBumpCommandVersion = null;
-
-function clearDisboardCommandVersionCache() {
-  disboardBumpCommandVersion = null;
-}
-
-function isDisboardInvalidVersionError(body) {
-  return (
-    typeof body === "string" &&
-    body.includes("INTERACTION_APPLICATION_COMMAND_INVALID_VERSION")
-  );
-}
-
-function extractDisboardBumpVersionFromPayload(rawText, commandId) {
-  if (!rawText || typeof rawText !== "string") return null;
-
-  const patterns = [
-    new RegExp(
-      `"id"\\s*:\\s*"${commandId}"[\\s\\S]{0,400}?"version"\\s*:\\s*"?([0-9]+)"?`,
-    ),
-    new RegExp(
-      `"version"\\s*:\\s*"?([0-9]+)"?[\\s\\S]{0,400}?"id"\\s*:\\s*"${commandId}"`,
-    ),
-  ];
-
-  for (const pattern of patterns) {
-    const match = rawText.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-
-  return null;
-}
-
-function parseDisboardCooldownMinutes(text) {
-  if (!text || typeof text !== "string") return null;
-  const match = text.match(/(\d+)\s*min/i);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-function getDisboardBumpToken() {
-  return (
-    process.env.DISBOARD_BUMP_USER_TOKEN ||
-    process.env.DISBOARD_BUMP_TOKEN ||
-    ""
-  ).trim();
-}
-
-async function resolveDisboardBumpCommandVersion(
-  guildId,
-  bumpToken,
-  forceRefresh = false,
-) {
-  if (disboardBumpCommandVersion && !forceRefresh) {
-    return disboardBumpCommandVersion;
-  }
-
-  const envVersion = process.env.DISBOARD_BUMP_COMMAND_VERSION?.trim();
-  if (envVersion && !forceRefresh) {
-    disboardBumpCommandVersion = envVersion;
-    console.log(
-      `[DISBOARD] Wersja komendy /bump z env: ${disboardBumpCommandVersion}`,
-    );
-    return disboardBumpCommandVersion;
-  }
-
-  const endpoints = [
-    `https://discord.com/api/v10/guilds/${guildId}/application-command-index`,
-    `https://discord.com/api/v9/guilds/${guildId}/application-command-index`,
-    `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/guilds/${guildId}/commands`,
-    `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/commands`,
-    `https://discord.com/api/v10/applications/${DISBOARD_APP_ID}/commands/${DISBOARD_BUMP_COMMAND_ID}`,
-  ];
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint, {
-        headers: { Authorization: bumpToken },
-      });
-      const rawText = await response.text().catch(() => "");
-
-      if (!response.ok) {
-        console.warn(
-          `[DISBOARD] Nie udało się pobrać wersji (${response.status}) z ${endpoint}`,
-        );
-        continue;
-      }
-
-      const versionFromRaw = extractDisboardBumpVersionFromPayload(
-        rawText,
-        DISBOARD_BUMP_COMMAND_ID,
-      );
-      if (versionFromRaw) {
-        disboardBumpCommandVersion = versionFromRaw;
-        console.log(
-          `[DISBOARD] Wersja komendy /bump: ${disboardBumpCommandVersion}`,
-        );
-        return disboardBumpCommandVersion;
-      }
-    } catch (error) {
-      console.warn("[DISBOARD] Nie udało się pobrać wersji komendy:", error);
-    }
-  }
-
-  console.error(
-    "[DISBOARD] Nie znaleziono wersji /bump — ustaw DISBOARD_BUMP_COMMAND_VERSION w Render (F12 → Network → interactions → Payload → version)",
-  );
-  return null;
-}
-
-async function invokeDisboardBump(channel) {
-  const bumpToken = getDisboardBumpToken();
-  if (!bumpToken) {
-    console.warn(
-      "[DISBOARD] Brak DISBOARD_BUMP_USER_TOKEN w .env — nie można wysłać /bump",
-    );
-    return { sent: false, cooldownMinutes: null };
-  }
-
-  const guildId = channel.guildId;
-  if (!guildId) {
-    console.error("[DISBOARD] Kanał bump nie należy do żadnego serwera");
-    return { sent: false, cooldownMinutes: null };
-  }
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const commandVersion = await resolveDisboardBumpCommandVersion(
-      guildId,
-      bumpToken,
-      attempt > 0,
-    );
-
-    if (!commandVersion) {
-      return { sent: false, cooldownMinutes: null, invalidVersion: true };
-    }
-
-    const response = await fetch("https://discord.com/api/v10/interactions", {
-      method: "POST",
-      headers: {
-        Authorization: bumpToken,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        type: 2,
-        application_id: DISBOARD_APP_ID,
-        guild_id: guildId,
-        channel_id: channel.id,
-        session_id: crypto.randomBytes(16).toString("hex"),
-        data: {
-          id: DISBOARD_BUMP_COMMAND_ID,
-          name: "bump",
-          type: 1,
-          version: commandVersion,
-        },
-        nonce: Date.now().toString(),
-      }),
-    });
-
-    const rawBody = await response.text().catch(() => "");
-
-    if (!response.ok) {
-      if (isDisboardInvalidVersionError(rawBody) && attempt === 0) {
-        clearDisboardCommandVersionCache();
-        console.warn(
-          "[DISBOARD] Nieaktualna wersja komendy — pobieram ponownie...",
-        );
-        continue;
-      }
-
-      console.error(
-        `[DISBOARD] Nie udało się wysłać /bump: HTTP ${response.status} ${rawBody}`,
-      );
-      return {
-        sent: false,
-        cooldownMinutes: null,
-        invalidVersion: isDisboardInvalidVersionError(rawBody),
-      };
-    }
-
-    return processDisboardBumpResponse(channel, rawBody);
-  }
-
-  return { sent: false, cooldownMinutes: null, invalidVersion: true };
-}
-
-function processDisboardBumpResponse(channel, rawBody) {
-
-  let cooldownMinutes = parseDisboardCooldownMinutes(rawBody);
-  if (!cooldownMinutes && rawBody) {
-    try {
-      const parsed = JSON.parse(rawBody);
-      const embedText =
-        parsed?.data?.embeds?.[0]?.description ||
-        parsed?.embeds?.[0]?.description ||
-        "";
-      cooldownMinutes = parseDisboardCooldownMinutes(embedText);
-    } catch {
-      // odpowiedź nie-JSON — już sprawdziliśmy rawBody
-    }
-  }
-
-  if (cooldownMinutes) {
-    console.log(
-      `[DISBOARD] Cooldown DISBOARD — kolejna próba za ${cooldownMinutes} min`,
-    );
-    return { sent: true, cooldownMinutes, invalidVersion: false };
-  }
-
-  console.log(
-    `[DISBOARD] Wysłano /bump na kanale ${channel.name} (${channel.id})`,
-  );
-  return { sent: true, cooldownMinutes: null, invalidVersion: false };
-}
-
-function scheduleDisboardBump(delayMs = DISBOARD_BUMP_INTERVAL_MS) {
-  if (disboardBumpTimeout) {
-    clearTimeout(disboardBumpTimeout);
-    disboardBumpTimeout = null;
-  }
-
-  disboardBumpTimeout = setTimeout(() => {
-    runDisboardBumpCycle().catch((error) =>
-      console.error("[DISBOARD] Błąd cyklu bumpa:", error),
-    );
-  }, delayMs);
-
-  const nextAt = new Date(Date.now() + delayMs).toLocaleString("pl-PL");
-  console.log(
-    `[DISBOARD] Następny bump zaplanowany za ${Math.round(delayMs / 60000)} min (${nextAt})`,
-  );
-}
-
-async function runDisboardBumpCycle() {
-  if (disboardBumpInFlight) {
-    scheduleDisboardBump(60_000);
-    return;
-  }
-
-  disboardBumpInFlight = true;
-  let nextDelay = DISBOARD_BUMP_INTERVAL_MS;
-
-  try {
-    const channel = await client.channels
-      .fetch(DISBOARD_BUMP_CHANNEL_ID)
-      .catch(() => null);
-
-    if (!channel || !channel.isTextBased()) {
-      console.error(
-        `[DISBOARD] Nie znaleziono kanału bump: ${DISBOARD_BUMP_CHANNEL_ID}`,
-      );
-      nextDelay = DISBOARD_BUMP_RETRY_MS;
-    } else {
-      const result = await invokeDisboardBump(channel);
-      if (result.cooldownMinutes) {
-        nextDelay = (result.cooldownMinutes + 1) * 60_000;
-      } else if (result.invalidVersion) {
-        nextDelay = DISBOARD_BUMP_VERSION_RETRY_MS;
-      } else if (result.sent) {
-        nextDelay = DISBOARD_BUMP_RETRY_MS;
-      } else {
-        nextDelay = DISBOARD_BUMP_ERROR_RETRY_MS;
-      }
-    }
-  } catch (error) {
-    console.error("[DISBOARD] Błąd podczas wysyłania /bump:", error);
-    nextDelay = DISBOARD_BUMP_ERROR_RETRY_MS;
-  } finally {
-    disboardBumpInFlight = false;
-    scheduleDisboardBump(nextDelay);
-  }
-}
-
-function setupDisboardAutoBump() {
-  if (!getDisboardBumpToken()) {
-    console.warn(
-      "[DISBOARD] Auto-bump wyłączony — dodaj DISBOARD_BUMP_USER_TOKEN do .env (token konta z uprawnieniem /bump)",
-    );
-    return;
-  }
-
-  console.log(
-    `[DISBOARD] Auto-bump włączony: co ${DISBOARD_BUMP_INTERVAL_MS / 60000} min na kanale ${DISBOARD_BUMP_CHANNEL_ID}`,
-  );
-  scheduleDisboardBump(30_000);
-}
-
-function handleDisboardBumpFeedback(message) {
-  if (message.channelId !== DISBOARD_BUMP_CHANNEL_ID) return;
-  if (message.author?.id !== DISBOARD_APP_ID) return;
-
-  const description = message.embeds?.[0]?.description;
-  if (!description || typeof description !== "string") return;
-
-  const normalized = description.toLowerCase();
-
-  if (normalized.includes("poczekaj")) {
-    const cooldownMinutes = parseDisboardCooldownMinutes(description);
-    if (cooldownMinutes) {
-      console.log(
-        `[DISBOARD] Cooldown DISBOARD — kolejna próba za ${cooldownMinutes} min`,
-      );
-      scheduleDisboardBump((cooldownMinutes + 1) * 60_000);
-    }
-    return;
-  }
-
-  if (
-    normalized.includes("bump done") ||
-    normalized.includes("podbito") ||
-    normalized.includes("bumped")
-  ) {
-    scheduleDisboardBump(DISBOARD_BUMP_INTERVAL_MS);
-  }
-}
 const FREE_KASA_ACCESS_ROLE_NAME = "free-kasa-access";
 const FREE_KASA_SETUP_CACHE_MS = 2 * 60 * 1000;
 const FREE_KASA_REWARD_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
@@ -705,8 +378,8 @@ const PURCHASE_CODE_USAGE_TEXT =
 const REWARD_CODE_USAGE_TEXT =
   "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ODBIERZ NAGRODĘ**.";
 const INVITE_REWARD_MILESTONES = [
-  { threshold: 5, amount: 90_000, label: "90k$" },
-  { threshold: 10, amount: 200_000, label: "200k$" },
+  { threshold: 5, amount: 70_000, label: "70k$" },
+  { threshold: 10, amount: 160_000, label: "160k$" },
 ];
 const BASE_SELLER_ROLE_ID = "1350786945944391733";
 const PURCHASE_STAFF_ROLE_IDS = [
@@ -827,7 +500,7 @@ const guildVanityUses = new Map(); // guildId -> last known vanity invite uses
 const inviteCounts = new Map(); // guildId -> Map<inviterId, count>  (current cycle count)
 const inviterOfMember = new Map(); // `${guildId}:${memberId}` -> inviterId
 const INVITE_REWARD_THRESHOLD = 5;
-const INVITE_REWARD_TEXT = "90k$";
+const INVITE_REWARD_TEXT = "70k$";
 
 // Nowa struktura do śledzenia nagród za konkretne progi
 // guildId -> Map<userId, Set<rewardLevel>> gdzie rewardLevel to "5", "10", "15", etc.
@@ -928,14 +601,6 @@ client.on(Events.PresenceUpdate, async (_oldPresence, newPresence) => {
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {
-  // Autoverify
-  if (autoVerifySettings.get(member.guild.id)) {
-    const roleId = "1425935544273338532";
-    await member.roles.add(roleId).catch((error) => {
-      console.error(`[autoverify] Błąd nadawania roli klient dla ${member.user.tag}:`, error);
-    });
-  }
-
   await syncFreeKasaChannelAccess(member).catch((error) =>
     console.error("Błąd syncu free-kasa po dołączeniu:", error),
   );
@@ -1350,7 +1015,6 @@ function buildPersistentStateData() {
     opinieChannels: opinieChannelsObj,
     regulationPanels: regulationPanelsObj,
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
-    autoVerifySettings: Object.fromEntries(autoVerifySettings),
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
   };
@@ -1386,8 +1050,8 @@ async function saveStateToSupabase(data) {
 
 // ----------------- FREE KASA -----------------
 function pickFreeKasaReward() {
-  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 5% (wygrywa średnio raz na ok. 20 losowań).
-  const WIN_CHANCE = 5.0;
+  // Szansa na wygraną czegokolwiek (w procentach). Ustawione na 15% (wygrywa średnio raz na ok. 7 losowań).
+  const WIN_CHANCE = 15.0;
 
   if (Math.random() * 100 > WIN_CHANCE) {
     return null; // Pusty los
@@ -2483,7 +2147,8 @@ async function handleWezwijCommand(interaction) {
     return;
   }
 
-  const ownerId = await resolveTicketOwnerId(channel);
+  const ticketData = ticketOwners.get(channel.id);
+  const ownerId = ticketData?.userId;
 
   if (!ownerId) {
     await interaction.reply({
@@ -3125,13 +2790,6 @@ async function loadPersistentState() {
         }
       }
 
-      // Load autoVerifySettings
-      if (botStateData.autoVerifySettings && typeof botStateData.autoVerifySettings === "object") {
-        for (const [guildId, val] of Object.entries(botStateData.autoVerifySettings)) {
-          autoVerifySettings.set(guildId, !!val);
-        }
-      }
-
       if (
         botStateData.sellerPaymentProfiles &&
         typeof botStateData.sellerPaymentProfiles === "object"
@@ -3389,7 +3047,7 @@ const commands = [
         .addChoices(
           { name: "Anarchia LF", value: "Anarchia LF" },
           { name: "Anarchia BoxPvP", value: "Anarchia BoxPvP" },
-          { name: "Pyk MC", value: "Pyk MC" },
+          { name: "MineStar LF", value: "MineStar LF" },
           { name: "Donut SMP", value: "Donut SMP" }
         )
     )
@@ -3661,21 +3319,6 @@ const commands = [
         .addChoices(
           { name: "ON", value: "on" },
           { name: "OFF", value: "off" },
-        )
-    )
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("autoverify")
-    .setDescription("Automatycznie nadawaj rolę klient nowym użytkownikom po dołączeniu")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption((option) =>
-      option
-        .setName("status")
-        .setDescription("Włącz lub wyłącz automatyczną weryfikację")
-        .setRequired(true)
-        .addChoices(
-          { name: "WLACZ", value: "wlacz" },
-          { name: "WYLACZ", value: "wylacz" }
         )
     )
     .toJSON(),
@@ -4347,12 +3990,14 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
-const ANARCHIA_LIFESTEAL_RATE = 7500;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 8000;
+const ANARCHIA_LIFESTEAL_RATE = 6500;
+const ANARCHIA_LIFESTEAL_BULK_RATE = 7000;
 const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 100;
-const ANARCHIA_BOXPVP_RATE = 600;
-const PYK_MC_RATE = 6000;
-const DONUT_SMP_RATE = 5_500_000;
+const ANARCHIA_BOXPVP_RATE = 750000;
+const MINESTAR_LF_RATE = 300;
+const MINESTAR_LF_BULK_RATE = 400;
+const MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
+const DONUT_SMP_RATE = 3_500_000;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -4370,12 +4015,22 @@ function getAnarchiaLifestealRateForWaluta(waluta, methodRaw) {
     : ANARCHIA_LIFESTEAL_RATE;
 }
 
+function getMinestarLfRateForWaluta(waluta, methodRaw) {
+  const basePlnHighRate = Number(waluta) / MINESTAR_LF_BULK_RATE;
+  const { fee: highRateFee } = calculateFeePln(basePlnHighRate, methodRaw);
+  const totalPlnHighRate = round2(basePlnHighRate + highRateFee);
+
+  return totalPlnHighRate >= MINESTAR_LF_BULK_THRESHOLD_PLN
+    ? MINESTAR_LF_BULK_RATE
+    : MINESTAR_LF_RATE;
+}
+
 function getRateForPlnAmount(pln, serverRaw) {
   const server = (serverRaw || "").toString().trim().toUpperCase();
 
   if (server === "ANARCHIA_BOXPVP") return ANARCHIA_BOXPVP_RATE;
   if (server === "ANARCHIA_LIFESTEAL") return getAnarchiaLifestealRateForPln(pln);
-  if (server === "PYK_MC") return PYK_MC_RATE;
+  if (server === "MINESTAR_LF") return Number(pln) >= MINESTAR_LF_BULK_THRESHOLD_PLN ? MINESTAR_LF_BULK_RATE : MINESTAR_LF_RATE;
   if (server === "DONUT_SMP") return DONUT_SMP_RATE;
 
   // fallback (stary cennik)
@@ -4423,65 +4078,6 @@ function isTicketChannel(channel) {
     return true;
   if (isModernPurchaseTicketChannelName(channel.name)) return true;
   return false;
-}
-
-async function inferTicketOwnerFromChannel(channel) {
-  const guild = channel?.guild;
-  if (!guild?.members?.fetch) return null;
-
-  const overwrites = channel.permissionOverwrites?.cache;
-  if (!overwrites?.size) return null;
-
-  const candidates = [];
-  for (const [, ow] of overwrites) {
-    if (ow.type !== OverwriteType.Member) continue;
-    if (!ow.allow.has(PermissionsBitField.Flags.ViewChannel)) continue;
-    if (ow.id === guild.id) continue;
-    if (ow.id === client.user?.id) continue;
-    const member = await guild.members.fetch(ow.id).catch(() => null);
-    if (!member || member.user.bot) continue;
-    candidates.push(ow.id);
-  }
-
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-
-  const nonGuildOwner = candidates.filter((id) => id !== guild.ownerId);
-  if (nonGuildOwner.length === 1) return nonGuildOwner[0];
-  if (nonGuildOwner.length > 0) return nonGuildOwner[0];
-  return candidates[0];
-}
-
-async function resolveTicketOwnerId(channel, options = {}) {
-  const { persist = true } = options;
-  if (!channel) return null;
-
-  const ticketData = ticketOwners.get(channel.id);
-  let ownerId =
-    ticketData?.userId ||
-    ticketData?.ownerId ||
-    rewardTicketClaims.get(channel.id)?.userId ||
-    null;
-
-  if (!ownerId) {
-    ownerId = await inferTicketOwnerFromChannel(channel);
-  }
-
-  if (ownerId && persist) {
-    const existing = ticketOwners.get(channel.id) || {};
-    if (!existing.userId) {
-      ticketOwners.set(channel.id, {
-        ...existing,
-        userId: ownerId,
-        claimedBy: existing.claimedBy ?? null,
-        ticketMessageId: existing.ticketMessageId ?? null,
-        locked: !!existing.locked,
-      });
-      scheduleSavePersistentState();
-    }
-  }
-
-  return ownerId;
 }
 
 // Helper: rebuild/edit ticket message components to reflect claim/unclaim state in a safe manner
@@ -4814,7 +4410,14 @@ client.once(Events.ClientReady, async (c) => {
 
       // Try to find previously sent invite instruction messages (zaproszenia)
       try {
-        const zapCh = g.channels.cache.get("1449159417445482566") || null;
+        const zapCh =
+          g.channels.cache.find(
+            (c) =>
+              c.type === ChannelType.GuildText &&
+              (c.name === "📨-×┃zaproszenia" ||
+                c.name.toLowerCase().includes("zaproszen") ||
+                c.name.toLowerCase().includes("zaproszenia")),
+          ) || null;
         if (zapCh) {
           await ensureInvitePanel(zapCh).catch(() => null);
         }
@@ -4878,16 +4481,6 @@ client.once(Events.ClientReady, async (c) => {
       );
     });
   }, FREE_KASA_SYNC_INTERVAL_MS);
-
-  setupDisboardAutoBump();
-});
-
-client.on(Events.MessageCreate, (message) => {
-  try {
-    handleDisboardBumpFeedback(message);
-  } catch (error) {
-    console.error("[DISBOARD] Błąd obsługi odpowiedzi DISBOARD:", error);
-  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -5741,13 +5334,6 @@ async function handleModalSubmit(interaction) {
       formInfo,
       openedAt: Date.now(),
     });
-    if (isRewardTicketLabel(ticketTypeLabel)) {
-      rewardTicketClaims.set(channel.id, {
-        guildId: guild.id,
-        userId: user.id,
-        createdAt: Date.now(),
-      });
-    }
     scheduleSavePersistentState();
 
     await logTicketCreation(interaction.guild, channel, {
@@ -5868,7 +5454,8 @@ async function handleButtonInteraction(interaction) {
   }
 
   if (customId === "btn_wystaw_opinie") {
-    // Sprawdź cooldown (48h)
+    // Sprawdź cooldown (30 min)
+    const OPINION_COOLDOWN_MS = 30 * 60 * 1000;
     const lastUsed = opinionCooldowns.get(interaction.user.id) || 0;
     if (Date.now() - lastUsed < OPINION_COOLDOWN_MS) {
       const remaining = OPINION_COOLDOWN_MS - (Date.now() - lastUsed);
@@ -6900,9 +6487,6 @@ async function handleSlashCommand(interaction) {
     case "zacznijliczycwlasicicielowi":
       await handleOwnerInviteCountingCommand(interaction);
       break;
-    case "autoverify":
-      await handleAutoVerifyCommand(interaction);
-      break;
     case "embed":
       await handleSendMessageCommand(interaction);
       break;
@@ -7395,18 +6979,18 @@ function isOwnerOnlyPurchaseTicket(channel, ticketMeta = null) {
 
   const label = String(ticketMeta?.ticketTypeLabel || "").toUpperCase();
   if (
-    ["ZAKUP BOTÓW", "ZAKUP BOTA", "ZAKUP AUTORYNKU", "ZAKUP AUTO RYNKU", "ZAKUP MODÓW", "ZAKUP MODA"].includes(label)
+    ["ZAKUP AUTORYNKU", "ZAKUP AUTO RYNKU", "ZAKUP MODÓW", "ZAKUP MODA"].includes(label)
   ) {
     return true;
   }
 
   const topic = String(channel?.topic || "").toLowerCase();
-  if (topic.includes("zakup botów") || topic.includes("zakup bota") || topic.includes("zakup autorynku") || topic.includes("zakup moda")) {
+  if (topic.includes("zakup autorynku") || topic.includes("zakup moda")) {
     return true;
   }
 
   const normalizedName = String(channel?.name || "").toLowerCase();
-  return /-(boty|bot|autorynek|mod|mody)$/.test(normalizedName);
+  return /-(autorynek|mod|mody)$/.test(normalizedName);
 }
 
 function getPurchaseStaffRoleIdsForCategory(categoryId) {
@@ -7795,8 +7379,8 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
     rate = ANARCHIA_BOXPVP_RATE;
   } else if (server === "ANARCHIA_LIFESTEAL") {
     rate = getAnarchiaLifestealRateForWaluta(waluta, metoda);
-  } else if (server === "PYK_MC") {
-    rate = PYK_MC_RATE;
+  } else if (server === "MINESTAR_LF") {
+    rate = getMinestarLfRateForWaluta(waluta, metoda);
   } else if (server === "DONUT_SMP") {
     rate = DONUT_SMP_RATE;
   } else {
@@ -8904,9 +8488,9 @@ async function handleTicketCommand(interaction) {
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
-        label: "ᴢᴀᴋᴜᴘ ʙᴏᴛóᴡ",
+        label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
         value: "zakup_autorynku",
-        description: "Kliknij, aby kupić najlepsze boty!",
+        description: "Kliknij, aby kupić najlepszy AutoRynek!",
         emoji: { id: "1480590181944791122", name: "autorynek" },
       },
       {
@@ -9035,9 +8619,9 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
   },
   {
     value: "zakup_autorynku",
-    label: "Zakup botów",
-    description: "Otwiera formularz zakupu botów",
-    emoji: "🤖",
+    label: "Zakup autorynku",
+    description: "Otwiera formularz zakupu autorynku",
+    emoji: "🏪",
   },
   {
     value: "zakup_moda",
@@ -9150,10 +8734,6 @@ function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
   }
 
   if (
-    normalized === "zakup botów" ||
-    normalized === "zakup botow" ||
-    normalized === "boty" ||
-    normalized === "bot" ||
     normalized === "zakup autorynku" ||
     normalized === "autorynek" ||
     normalized === "auto rynek"
@@ -10074,7 +9654,7 @@ function createDefaultEmbedTestState(
     cashBody:
       "-# zakupiona kasa wysyłana jest na /gift\n" +
       "### :arrowwhite: :kasa_2:  `7,5k$ ➜ 1 ZŁ`\n\n" +
-      "### :arrowwhite: :kasa_2:  `8k$ ➜ 1 ZŁ` (powyżej 100zł)",
+      "### :arrowwhite: :kasa_2:  `8k$ ➜ 1 ZŁ` (powyżej 200zł)",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
       "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
@@ -12042,12 +11622,12 @@ const SHOP_SERVER_OPTION_DEFS = [
     emoji: { id: "1469444521308852324", name: "ANARCHIA_GG" },
   },
   {
-    label: "Pyk MC",
-    testValue: "pyk_mc",
-    calcValue: "PYK_MC",
-    description: "Tryb Entropia na PykMc",
-    channelSlug: "pyk-mc",
-    emoji: { id: "1457113144412475635", name: "PYK_MC" },
+    label: "MineStar LF",
+    testValue: "minestar_lf",
+    calcValue: "MINESTAR_LF",
+    description: "Tryb LifeSteal na MineStar",
+    channelSlug: "minestar-lf",
+    emoji: { id: "1515321503770607777", name: "minestarlf" },
   },
   {
     label: "Donut SMP",
@@ -12127,10 +11707,10 @@ const AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS = [
     emoji: "📩",
   },
   {
-    label: "Waluta Serwerowa 300k$",
-    testValue: "waluta_serwerowa_300k",
-    description: "Płatność walutą serwerową 300k$",
-    channelSlug: "waluta-serwerowa-300k",
+    label: "Waluta Serwerowa 150k$",
+    testValue: "waluta_serwerowa_150k",
+    description: "Płatność walutą serwerową 150k$",
+    channelSlug: "waluta-serwerowa-150k",
     emoji: { id: "1476700165082710178", name: "kasa_2" },
   },
 ];
@@ -12170,9 +11750,9 @@ const PANEL_CATEGORY_OPTIONS = [
     emoji: { id: "1480590181944791122", name: "autorynek" },
   },
   {
-    label: "ᴢᴀᴋᴜᴘ ʙᴏᴛóᴡ",
+    label: "ᴢᴀᴋᴜᴘ ᴀᴜᴛᴏ ʀʏɴᴋᴜ",
     value: "zakup_autorynku",
-    description: "Kliknij, aby kupić najlepsze boty!",
+    description: "Kliknij, aby kupić najlepszy AutoRynek!",
     emoji: { id: "1480590181944791122", name: "autorynek" },
   },
   {
@@ -12402,7 +11982,7 @@ function isModernPurchaseTicketChannelName(name) {
     return true;
   }
 
-  if (/(?:^|.*-)(boty|bot|autorynek|mod|mody)$/.test(normalized)) {
+  if (/(?:^|.*-)(autorynek|mod|mody)$/.test(normalized)) {
     return true;
   }
 
@@ -12555,52 +12135,31 @@ function buildZaproszeniaInstructionPayload() {
   };
 }
 
-let isEnsuringInvitePanel = false;
-
 async function ensureInvitePanel(channel) {
-  if (!channel || channel.id !== "1449159417445482566") return;
-  if (isEnsuringInvitePanel) return;
-  isEnsuringInvitePanel = true;
+  if (!channel) return;
   try {
-    const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-    if (!messages) {
-      isEnsuringInvitePanel = false;
-      return;
-    }
-
-    const panelMessages = [];
-
-    messages.forEach(msg => {
-      const isPanel = msg.author.id === client.user.id && 
+    const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    let hasPanel = false;
+    if (messages) {
+      hasPanel = messages.some(msg => 
+        msg.author.id === client.user.id && 
         msg.components && 
         msg.components.some(row => 
           row.components && row.components.some(btn => btn.customId === "btn_sprawdz_zaproszenia" || (btn.data && btn.data.custom_id === "btn_sprawdz_zaproszenia"))
-        );
-      if (isPanel) {
-        panelMessages.push(msg);
-      }
-    });
-
-    let activePanel = null;
-    if (panelMessages.length > 0) {
-      activePanel = panelMessages[0]; // Trzymamy najnowszy panel
-      for (let i = 1; i < panelMessages.length; i++) {
-        await panelMessages[i].delete().catch(() => null);
-      }
+        )
+      );
     }
 
-    if (!activePanel) {
-      const payload = buildZaproszeniaInstructionPayload();
-      const sent = await channel.send(payload);
-      lastInviteInstruction.set(channel.id, sent.id);
-      scheduleSavePersistentState();
-    } else {
-      lastInviteInstruction.set(channel.id, activePanel.id);
+    if (hasPanel) {
+      return; // Panel już istnieje, nie usuwamy ani nie wysyłamy nowego
     }
+
+    const payload = buildZaproszeniaInstructionPayload();
+    const sent = await channel.send(payload);
+    lastInviteInstruction.set(channel.id, sent.id);
+    scheduleSavePersistentState();
   } catch (e) {
     console.warn("Błąd w ensureInvitePanel:", e);
-  } finally {
-    isEnsuringInvitePanel = false;
   }
 }
 
@@ -12721,37 +12280,6 @@ async function handleOwnerInviteCountingCommand(interaction) {
     content: enabled
       ? "> `✅` × Od teraz zaproszenia właściciela są liczone jak u zwykłego użytkownika."
       : "> `✅` × Wyłączyłem liczenie zaproszeń właścicielowi.",
-    flags: [MessageFlags.Ephemeral],
-  });
-}
-
-async function handleAutoVerifyCommand(interaction) {
-  const guild = interaction.guild;
-  if (!guild) {
-    await interaction.reply({
-      content: "> `❌` × Ta komenda działa tylko na serwerze.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  if (interaction.user.id !== guild.ownerId) {
-    await interaction.reply({
-      content: "> `❌` × Tej komendy może użyć tylko właściciel serwera.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const status = interaction.options.getString("status", true);
-  const enabled = status === "wlacz";
-  autoVerifySettings.set(guild.id, enabled);
-  scheduleSavePersistentState(true);
-
-  await interaction.reply({
-    content: enabled
-      ? "> `✅` × Automatyczna weryfikacja została **włączona**. Nowi użytkownicy będą automatycznie otrzymywać rolę klient."
-      : "> `✅` × Automatyczna weryfikacja została **wyłączona**.",
     flags: [MessageFlags.Ephemeral],
   });
 }
@@ -12897,7 +12425,9 @@ async function handleTicketZakonczCommand(interaction) {
     interaction.options.getString("ile");
   const serwer = (interaction.options.getString("serwer") || "").trim();
 
-  const ticketOwnerId = await resolveTicketOwnerId(channel);
+  // Pobierz właściciela ticketu
+  const ticketData = ticketOwners.get(channel.id);
+  const ticketOwnerId = ticketData?.userId;
 
   if (!ticketOwnerId) {
     await interaction.reply({
@@ -13174,7 +12704,9 @@ async function handleZamknijZPowodemCommand(interaction) {
   const powodCustom = (interaction.options.getString("powod_custom") || "").trim();
   const powod = powodCustom || powodPreset;
 
-  const ticketOwnerId = await resolveTicketOwnerId(channel);
+  // Pobierz właściciela ticketu
+  const ticketData = ticketOwners.get(channel.id);
+  const ticketOwnerId = ticketData?.userId;
 
   if (!ticketOwnerId) {
     await interaction.reply({
@@ -13379,20 +12911,7 @@ async function handleAdminZaproszeniaCommand(interaction) {
       return;
     }
 
-    const members = new Map();
-    if (allUserIds.size > 0) {
-      try {
-        const userIdsArr = Array.from(allUserIds);
-        for (let i = 0; i < userIdsArr.length; i += 100) {
-          const chunk = userIdsArr.slice(i, i + 100);
-          const fetchedChunk = await guild.members.fetch({ user: chunk }).catch(() => new Map());
-          fetchedChunk.forEach(m => members.set(m.id, m));
-        }
-      } catch (fetchErr) {
-        console.error("[zaproszenia] Error fetching specific members:", fetchErr);
-      }
-    }
-
+    const members = await guild.members.fetch();
     const normFn = (s = "") => (s).toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const CLIENT_ROLE_ID =
       verificationRoles.get(guild.id) ||
@@ -13415,60 +12934,41 @@ async function handleAdminZaproszeniaCommand(interaction) {
       }
     }
 
-    // Inicjalizacja map i pobranie statystyk z pamięci bota
-    if (!inviteCounts.has(guild.id)) inviteCounts.set(guild.id, new Map());
-    if (!inviteLeaves.has(guild.id)) inviteLeaves.set(guild.id, new Map());
-    if (!inviteFakeAccounts.has(guild.id)) inviteFakeAccounts.set(guild.id, new Map());
-    if (!inviteBonusInvites.has(guild.id)) inviteBonusInvites.set(guild.id, new Map());
+    let report = `**Szczegółowe logi zaproszeń dla <@${targetId}>**\n\n`;
 
-    const gMap = inviteCounts.get(guild.id);
-    const lMap = inviteLeaves.get(guild.id);
-    const fakeMap = inviteFakeAccounts.get(guild.id);
-    const bonusMap = inviteBonusInvites.get(guild.id);
+    if (allUserIds.size === 0 && totalUses > 0) {
+      report += `> \`ℹ️\` × **Brak logów szczegółowych z dawnych miesięcy.** Bot zaczął zbierać szczegóły (kto dokładnie wszedł) niedawno.\n\n`;
+      report += `> \`🔢\` × **Z historii starych linków Discorda wynika, że zaprosił łącznie: ${totalUses} osób**.\n`;
+    } else {
+      report += `> \`✅\` **Zweryfikowani (Klient) [${verified.length}]:**\n`;
+      if (verified.length > 0) {
+        report += verified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (verified.length > 40 ? "..." : "");
+      } else {
+        report += "Brak";
+      }
+      report += "\n\n";
 
-    const validInvites = gMap.get(targetId) || 0;
-    const leftCount = lMap.get(targetId) || 0;
-    const fakeCount = fakeMap.get(targetId) || 0;
-    const bonusCount = bonusMap.get(targetId) || 0;
-    const displayedInvites = validInvites + bonusCount;
+      report += `> \`⏳\` **Niezweryfikowani (na serwerze) [${unverified.length}]:**\n`;
+      if (unverified.length > 0) {
+        report += unverified.slice(0, 40).map(u => `<@${u}>`).join(", ") + (unverified.length > 40 ? "..." : "");
+      } else {
+        report += "Brak";
+      }
+      report += "\n\n";
+
+      report += `> \`❌\` **Wyszli z serwera [${left.length}]:**\n`;
+      if (left.length > 0) {
+        report += left.slice(0, 40).map(u => `<@${u}>`).join(", ") + (left.length > 40 ? "..." : "");
+      } else {
+        report += "Brak";
+      }
+
+      report += `\n\n> \`🔢\` **Suma starych zaproszeń (z linków Discorda):** ${totalUses} użyć.`;
+    }
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("📩 New Shop × SZCZEGÓŁOWE ZAPROSZENIA")
-      .setDescription(
-        `###  Podsumowanie dla <@${targetId}>\n` +
-        `> \`⭐\` **Łączne zaproszenia:** \`${displayedInvites}\` \n` +
-        `> ├ \`✅\` Prawdziwe: \`${validInvites}\`\n` +
-        `> ├ \`🎁\` Dodatkowe: \`${bonusCount}\`\n` +
-        `> ├ \`🚶\` Opuścili serwer: \`${leftCount}\`\n` +
-        `> └ \`⚠️\` Konta < 2 mies. (fake): \`${fakeCount}\`\n` +
-        `> \`🔢\` **Suma starych użyć linków:** \`${totalUses}\` użyć\n\n` +
-        `###  Logi szczegółowe dołączeń\n` +
-        `*Wykaz użytkowników przypisanych w bazie bota:*`
-      )
-      .addFields(
-        {
-          name: `\`✅\` Zweryfikowani (Klient) [${verified.length}]`,
-          value: verified.length > 0 
-            ? verified.slice(0, 30).map(u => `<@${u}>`).join(", ") + (verified.length > 30 ? "..." : "")
-            : "*Brak*",
-          inline: false
-        },
-        {
-          name: `\`⏳\` Niezweryfikowani [${unverified.length}]`,
-          value: unverified.length > 0 
-            ? unverified.slice(0, 30).map(u => `<@${u}>`).join(", ") + (unverified.length > 30 ? "..." : "")
-            : "*Brak*",
-          inline: false
-        },
-        {
-          name: `\`❌\` Wyszli z serwera [${left.length}]`,
-          value: left.length > 0 
-            ? left.slice(0, 30).map(u => `<@${u}>`).join(", ") + (left.length > 30 ? "..." : "")
-            : "*Brak*",
-          inline: false
-        }
-      );
+      .setDescription(report.substring(0, 4096));
 
     await interaction.editReply({ embeds: [embed] });
   } catch (err) {
@@ -13857,7 +13357,7 @@ async function showAutoRynekZakupModal(interaction) {
 
   const modal = new ModalBuilder()
     .setCustomId("modal_autorynek_zakup")
-    .setTitle("Zakup Botów")
+    .setTitle("Zakup AutoRynku")
     .addLabelComponents(
       new LabelBuilder()
         .setLabel("Forma płatności")
@@ -16180,28 +15680,20 @@ async function handleModalSubmit(interaction) {
           ? PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID
           : categories["zakup-20-50"];
       ticketType = "zakup-autorynku";
-      ticketTypeLabel = "ZAKUP BOTÓW";
+      ticketTypeLabel = "ZAKUP AUTORYNKU";
       forceOwnerOnlyVisibility = true;
       preferredChannelName = buildSpecialPurchaseTicketChannelName(
         interaction.member,
         user,
-        "boty",
+        "autorynek",
       );
-      
-      let priceLabel = "30zł";
-      if (paymentMethodRaw === "waluta_serwerowa_300k") {
-        priceLabel = "300k$";
-      } else if (paymentMethodRaw === "zaproszenia") {
-        priceLabel = "Zaproszenia";
-      }
-
-      ticketTopic = `Zakup botów (${priceLabel})`;
+      ticketTopic = "Zakup AutoRynku (20zł)";
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
       const paymentMethodLabel = getAutorynekPaymentLabel(paymentMethodRaw);
 
       paymentMethod = paymentMethodRaw;
       formInfo =
-        `> <a:arrowwhite:1491476759290449984> × **Cena:** \`${priceLabel}\`\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Cena:** \`20zł\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethodLabel}\``;
       break;
     }
@@ -16338,9 +15830,11 @@ async function handleModalSubmit(interaction) {
       const expiryTs = codeData.expiresAt
         ? Math.floor(codeData.expiresAt / 1000)
         : null;
-      const expiryLine = "";
+      const expiryLine = expiryTs
+        ? `\n> <a:arrowwhite:1491476759290449984> × **Kod wygasa za:** <t:${expiryTs}:R>`
+        : "";
 
-      const formInfo = `> <a:arrowwhite:1491476759290449984> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1491476759290449984> × **Nagroda:** \`${codeData.rewardText || codeData.reward || INVITE_REWARD_TEXT || "70k$"}\``;
+      const formInfo = `> <a:arrowwhite:1491476759290449984> × **Kod:** \`${enteredCode}\`\n> <a:arrowwhite:1491476759290449984> × **Nagroda:** \`${codeData.rewardText || codeData.reward || INVITE_REWARD_TEXT || "70k$"}\`${expiryLine}`;
 
       try {
         let parentToUse = categoryId;
@@ -16438,13 +15932,6 @@ async function handleModalSubmit(interaction) {
           paymentMethod: interaction.fields.getTextInputValue("payment_method") || null, // Best effort capture
           openedAt: Date.now(),
         });
-        if (isRewardTicketLabel(ticketTypeLabel)) {
-          rewardTicketClaims.set(channel.id, {
-            guildId: interaction.guild.id,
-            userId: user.id,
-            createdAt: Date.now(),
-          });
-        }
         scheduleSavePersistentState();
 
         await logTicketCreation(interaction.guild, channel, {
@@ -16570,97 +16057,61 @@ async function handleModalSubmit(interaction) {
       });
     }
 
-    if (ticketType === "sprzedaz") {
-      // Sprzedawcy nie mogą widzieć ticketów ze sprzedażą kasy (BASE_SELLER_ROLE_ID = "1350786945944391733")
-      createOptions.permissionOverwrites.push({
-        id: BASE_SELLER_ROLE_ID,
-        deny: [PermissionsBitField.Flags.ViewChannel],
-      });
-    }
-
     // Dodaj rangi limitów w zależności od kategorii
     if (parentToUse && !forceOwnerOnlyVisibility) {
       const categoryId = parentToUse;
 
-      const autoClaimCfg = autoPrzejmijSettings.get(interaction.guildId);
-      const hasAutoClaim = autoClaimCfg && autoClaimCfg.enabled && autoClaimCfg.ownerId;
-      const isPurchaseTicket = ticketType && (ticketType.startsWith("zakup-") || ticketType === "zakup" || ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTORYNKU");
-
-      if (hasAutoClaim && isPurchaseTicket) {
-        // Jeśli jest włączone autoprzejmowanie dla ticketów zakupowych, od razu nadaj uprawnienie
-        // tylko osobie przejmującej i ukryj przed wszystkimi innymi rangami limitów.
+      // Zakup 0-20 - wszystkie rangi widzą
+      if (categoryId === "1449526840942268526") {
         createOptions.permissionOverwrites.push(
-          { id: "1449448705563557918", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 20
-          { id: "1449448702925209651", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 50
-          { id: "1449448686156255333", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 100
-          { id: "1449448860517798061", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 200
-          {
-            id: autoClaimCfg.ownerId,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ReadMessageHistory,
-            ]
-          }
+          { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
+          { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
+          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
         );
-      } else {
-        // Zakup 0-20 - wszystkie rangi widzą
-        if (categoryId === "1449526840942268526") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
-            { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Zakup 20-50 - limit 20 nie widzi
-        else if (categoryId === "1449526958508474409") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Zakup 50-100 - limit 20 i 50 nie widzą
-        else if (categoryId === "1449451716129984595") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Zakup 100-200 - tylko limit 200 widzi
-        else if (categoryId === "1449452354201190485") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Sprzedaż - wszystkie rangi widzą
-        else if (categoryId === "1449455848043708426") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
-            { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Inne - tylko właściciel serwera widzi (oprócz właściciela ticketu)
-        else if (categoryId === "1449527585271976131") {
-          createOptions.permissionOverwrites.push(
-            { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // właściciel serwera
-          );
-        }
+      }
+      // Zakup 20-50 - limit 20 nie widzi
+      else if (categoryId === "1449526958508474409") {
+        createOptions.permissionOverwrites.push(
+          { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
+          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+        );
+      }
+      // Zakup 50-100 - limit 20 i 50 nie widzą
+      else if (categoryId === "1449451716129984595") {
+        createOptions.permissionOverwrites.push(
+          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+        );
+      }
+      // Zakup 100-200 - tylko limit 200 widzi
+      else if (categoryId === "1449452354201190485") {
+        createOptions.permissionOverwrites.push(
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+        );
+      }
+      // Sprzedaż - wszystkie rangi widzą
+      else if (categoryId === "1449455848043708426") {
+        createOptions.permissionOverwrites.push(
+          { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
+          { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
+          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+        );
+      }
+      // Inne - tylko właściciel serwera widzi (oprócz właściciela ticketu)
+      else if (categoryId === "1449527585271976131") {
+        createOptions.permissionOverwrites.push(
+          { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // właściciel serwera
+        );
       }
     }
     if (ticketTopic) createOptions.topic = ticketTopic;
     if (parentToUse) createOptions.parent = parentToUse;
 
     const channel = await interaction.guild.channels.create(createOptions);
-
-    const isPurchaseTicket = ticketType && (ticketType.startsWith("zakup-") || ticketType === "zakup" || ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTORYNKU");
-    const autoClaimCfg = autoPrzejmijSettings.get(interaction.guildId);
-    const hasAutoClaim = autoClaimCfg && autoClaimCfg.enabled && autoClaimCfg.ownerId;
-
-    if (forceOwnerOnlyVisibility || ticketType === "sprzedaz" || (hasAutoClaim && isPurchaseTicket)) {
+    if (forceOwnerOnlyVisibility) {
       await channel.permissionOverwrites
         .set(createOptions.permissionOverwrites)
         .catch(() => null);
@@ -16809,8 +16260,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (
     message.guild &&
-    message.channel?.id === "1449159417445482566" &&
-    message.author.id !== client.user.id
+    message.channel?.id === "1449159417445482566"
   ) {
     await ensureInvitePanel(message.channel).catch(() => null);
   }
@@ -18523,7 +17973,7 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   }
   sprawdzZaproszeniaCooldowns.set(interaction.user.id, nowTs);
 
-  // Uruchamiamy cichy (ephemeral) deferReply dla natychmiastowego potwierdzenia interakcji
+  // Teraz dopiero defer - tymczasowo ephemeral dla potwierdzenia
   await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
   // ===== SPRAWDZ-ZAPROSZENIA – PEŁNY SCRIPT =====
@@ -18589,43 +18039,30 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     );
 
   try {
+    // Kanał docelowy
     const targetChannel = preferChannel ? preferChannel : interaction.channel;
 
-    // Wysyłamy statystyki jako kompletnie NIEZALEŻNĄ, publiczną wiadomość (brak jakiejkolwiek linii odpowiedzi "Oryginalna wiadomość została usunięta"!)
-    await targetChannel.send({
+    // Publikacja embeda
+    await targetChannel.send({ embeds: [embed] });
+
+    // Odświeżanie instrukcji - tylko jeśli panelu nie ma
+    try {
+      const zapCh = targetChannel;
+      if (zapCh && zapCh.id) {
+        await ensureInvitePanel(zapCh);
+      }
+    } catch (e) {
+      console.warn("Nie udało się odświeżyć instrukcji zaproszeń:", e);
+    }
+
+    await interaction.editReply({
       content:
         pendingInviteRewardDelivery.deliveredCount > 0
-          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały załadowane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
+          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
           : pendingInviteRewardDelivery.blocked
             ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
-            : null,
-      embeds: [embed]
+            : "> \`✅\` × Informacje o twoich **zaproszeniach** zostały wysłane."
     });
-
-    // Delete the old panel if we have its ID stored to prevent duplication
-    const lastPanelId = lastInviteInstruction.get(targetChannel.id);
-    if (lastPanelId) {
-      const lastMsg = await targetChannel.messages.fetch(lastPanelId).catch(() => null);
-      if (lastMsg) {
-        await lastMsg.delete().catch(() => null);
-      }
-    }
-
-    // Also delete the message in interaction if it exists
-    if (interaction.message) {
-      await interaction.message.delete().catch(() => null);
-    }
-
-    // Wysyłamy nowy panel zaproszeń, aby wskoczył na sam dół kanału
-    if (targetChannel && targetChannel.id) {
-      const payload = buildZaproszeniaInstructionPayload();
-      const sent = await targetChannel.send(payload);
-      lastInviteInstruction.set(targetChannel.id, sent.id);
-      scheduleSavePersistentState();
-    }
-
-    // Usuwamy nasz cichy, tymczasowy ephemeral, aby nie zostawiać żadnych śladów na ekranie klikającego
-    await interaction.deleteReply().catch(() => null);
 
   } catch (err) {
     console.error("Błąd przy publikacji sprawdz-zaproszenia:", err);
@@ -20019,15 +19456,8 @@ function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
   if (ticketChannel.parentId && String(ticketChannel.parentId) === String(PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID)) {
     const normalizedName = String(ticketChannel.name || "").toLowerCase();
     const normalizedTopic = String(ticketChannel.topic || "").toLowerCase();
-    if (
-      normalizedName.endsWith("-boty") ||
-      normalizedName.endsWith("-bot") ||
-      normalizedTopic.includes("zakup botów") ||
-      normalizedTopic.includes("zakup bota") ||
-      normalizedName.endsWith("-autorynek") ||
-      normalizedTopic.includes("zakup autorynku")
-    ) {
-      return "ZAKUP BOTÓW";
+    if (normalizedName.endsWith("-autorynek") || normalizedTopic.includes("zakup autorynku")) {
+      return "ZAKUP AUTORYNKU";
     }
     if (
       normalizedName.endsWith("-mod") ||
