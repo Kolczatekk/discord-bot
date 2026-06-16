@@ -12690,9 +12690,6 @@ async function showZakupModalV2(interaction) {
     .setTitle("Zakup itemów")
     .addLabelComponents(
       new LabelBuilder()
-        .setLabel("Co chcesz kupić?")
-        .setTextInputComponent(itemInput),
-      new LabelBuilder()
         .setLabel("Na jakim serwerze?")
         .setStringSelectMenuComponent(serverSelect),
       new LabelBuilder()
@@ -16049,13 +16046,7 @@ async function handleModalSubmit(interaction) {
         return;
       }
 
-      if (!itemToBuy) {
-        await interaction.reply({
-          content: "> `❌` × Podaj, co chcesz kupić przed wysłaniem formularza.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
+      // Pytanie "Co chcesz kupić?" zostało usunięte na prośbę użytkownika
 
       if (kwotaNum <= 20) {
         categoryId = categories["zakup-0-20"];
@@ -16085,7 +16076,6 @@ async function handleModalSubmit(interaction) {
 
       paymentMethod = selectedPayment;
       formInfo =
-        `> <a:arrowwhite:1491476759290449984> × **Co chcesz kupić:** \`${itemToBuy}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Serwer:** \`${serverLabel}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Kwota:** \`${kwotaNum}zł\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentLabel}\``;
