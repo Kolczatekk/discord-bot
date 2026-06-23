@@ -2483,46 +2483,81 @@ async function handleWezwijCommand(interaction) {
     return;
   }
 
-  const ownerId = await resolveTicketOwnerId(channel);
-
-  if (!ownerId) {
-    await interaction.reply({
-      content: "> `❌` × Nie mogę znaleźć właściciela tego ticketu.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
+  const targetUser = interaction.options.getUser("uzytkownik");
   const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
-  // użyj formatu animowanego (a:...) jeśli emoji jest GIFem
   const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
 
-  try {
-    const user = await client.users.fetch(ownerId);
+  if (targetUser) {
+    try {
+      // Nadaj uprawnienia do kanału dla wzywanej osoby
+      await channel.permissionOverwrites.edit(targetUser.id, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      });
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-        "🚨 New Shop × JESTES WZYWANY\n" +
-        "```\n" +
-        `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
-        `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
-        `**KANAŁ:** ${channelLink}`
-      );
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "🚨 New Shop × JESTES WZYWANY\n" +
+          "```\n" +
+          `${arrowEmoji} **jesteś wzywany** na kanał ticketu!\n\n` +
+          `**KANAŁ:** ${channelLink}`
+        );
 
-    await user.send({ embeds: [embed] });
+      await targetUser.send({ embeds: [embed] });
 
-    await interaction.reply({
-      content: `> ` + "`✅`" + ` × Wysłano wezwanie do właściciela ticketu.`,
-      flags: [MessageFlags.Ephemeral],
-    });
-  } catch (err) {
-    console.error("[wezwij] Błąd DM:", err);
-    await interaction.reply({
-      content: "> `❌` × Nie udało się wysłać wiadomości do właściciela (ma wyłączone DM lub nie znaleziono użytkownika).",
-      flags: [MessageFlags.Ephemeral],
-    });
+      await interaction.reply({
+        content: `> \`✅\` × Dodano użytkownika <@${targetUser.id}> do kanału i wysłano wezwanie na PV.`,
+        flags: [MessageFlags.Ephemeral],
+      });
+    } catch (err) {
+      console.error("[wezwij] Błąd przy wzywaniu wybranej osoby:", err);
+      await interaction.reply({
+        content: `> \`❌\` × Nie udało się wezwać użytkownika <@${targetUser.id}> (ma wyłączone DM lub wystąpił błąd uprawnień).`,
+        flags: [MessageFlags.Ephemeral],
+      });
+    }
+  } else {
+    // Klasyczne wezwanie właściciela ticketu
+    const ownerId = await resolveTicketOwnerId(channel);
+
+    if (!ownerId) {
+      await interaction.reply({
+        content: "> `❌` × Nie mogę znaleźć właściciela tego ticketu.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    try {
+      const user = await client.users.fetch(ownerId);
+
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "🚨 New Shop × JESTES WZYWANY\n" +
+          "```\n" +
+          `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
+          `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
+          `**KANAŁ:** ${channelLink}`
+        );
+
+      await user.send({ embeds: [embed] });
+
+      await interaction.reply({
+        content: `> ` + "`✅`" + ` × Wysłano wezwanie do właściciela ticketu.`,
+        flags: [MessageFlags.Ephemeral],
+      });
+    } catch (err) {
+      console.error("[wezwij] Błąd DM:", err);
+      await interaction.reply({
+        content: "> `❌` × Nie udało się wysłać wiadomości do właściciela (ma wyłączone DM lub nie znaleziono użytkownika).",
+        flags: [MessageFlags.Ephemeral],
+      });
+    }
   }
 }
 
@@ -3848,6 +3883,12 @@ const commands = [
     .setName("wezwij")
     .setDescription("Wezwij osobe (sprzedawca)")
     .setDefaultMemberPermissions(null)
+    .addUserOption((option) =>
+      option
+        .setName("uzytkownik")
+        .setDescription("Użytkownik, którego chcesz wezwać (opcjonalnie)")
+        .setRequired(false)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("statusbota")
@@ -14009,6 +14050,19 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       });
     }
 
+    const helperRoleId = "1519069239254974475";
+    if (ticketData && ticketData.ticketTypeLabel === "PYTANIE") {
+      permissionOverwrites.push({
+        id: helperRoleId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+      });
+    } else {
+      permissionOverwrites.push({
+        id: helperRoleId,
+        deny: [PermissionFlagsBits.ViewChannel]
+      });
+    }
+
     await ch.permissionOverwrites.set(permissionOverwrites);
 
     // Usuń limity kategorii dla kanału
@@ -14207,7 +14261,8 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
           { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
           { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
+          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
         ]);
       }
       // Zakup 20-50 - limit 20 nie widzi
@@ -14216,7 +14271,8 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
           { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
           { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
+          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
         ]);
       }
       // Zakup 50-100 - limit 20 i 50 nie widzą
@@ -14224,14 +14280,16 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
         await ch.permissionOverwrites.set([
           { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
           { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
+          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
         ]);
       }
       // Zakup 100-200 - tylko limit 200 widzi
       else if (categoryId === "1449452354201190485") {
         await ch.permissionOverwrites.set([
           { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
+          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
         ]);
       }
       // Sprzedaż - wszystkie rangi widzą
@@ -14241,7 +14299,8 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
           { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
           { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
+          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
         ]);
       }
       // Inne - wszystkie rangi widzą
@@ -14251,7 +14310,8 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
           { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
           { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
           { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
+          { id: "1519069239254974475", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
         ]);
       }
     }
@@ -14526,6 +14586,10 @@ async function openRewardClaimTicket(interaction) {
           PermissionsBitField.Flags.SendMessages,
           PermissionsBitField.Flags.ReadMessageHistory,
         ],
+      },
+      {
+        id: "1519069239254974475",
+        deny: [PermissionsBitField.Flags.ViewChannel],
       },
     ],
   };
@@ -16372,6 +16436,10 @@ async function handleModalSubmit(interaction) {
                 PermissionsBitField.Flags.ReadMessageHistory,
               ],
             },
+            {
+              id: "1519069239254974475",
+              deny: [PermissionsBitField.Flags.ViewChannel],
+            },
           ],
         };
         if (parentToUse) createOptions.parent = parentToUse;
@@ -16557,6 +16625,23 @@ async function handleModalSubmit(interaction) {
       ],
     };
 
+    const helperRoleId = "1519069239254974475";
+    if (ticketType === "inne") {
+      createOptions.permissionOverwrites.push({
+        id: helperRoleId,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      });
+    } else {
+      createOptions.permissionOverwrites.push({
+        id: helperRoleId,
+        deny: [PermissionsBitField.Flags.ViewChannel],
+      });
+    }
+
     if (
       forceOwnerOnlyVisibility &&
       interaction.guild.ownerId &&
@@ -16662,7 +16747,7 @@ async function handleModalSubmit(interaction) {
     const autoClaimCfg = autoPrzejmijSettings.get(interaction.guildId);
     const hasAutoClaim = autoClaimCfg && autoClaimCfg.enabled && autoClaimCfg.ownerId;
 
-    if (forceOwnerOnlyVisibility || ticketType === "sprzedaz" || (hasAutoClaim && isPurchaseTicket)) {
+    if (forceOwnerOnlyVisibility || ticketType === "sprzedaz" || ticketType === "inne" || (hasAutoClaim && isPurchaseTicket)) {
       await channel.permissionOverwrites
         .set(createOptions.permissionOverwrites)
         .catch(() => null);
@@ -16681,6 +16766,20 @@ async function handleModalSubmit(interaction) {
       )
       .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 })) // avatar user po prawej
       .setTimestamp();
+
+    const embedsToSend = [embed];
+    if (ticketType === "inne") {
+      const warningEmbed = new EmbedBuilder()
+        .setColor(COLOR_RED)
+        .setDescription(
+          "```\n" +
+          "ℹ️ INFORMACJA O BEZPIECZEŃSTWIE\n" +
+          "```\n" +
+          "> `❌` × **Pamiętaj, aby nikomu nie wysyłać pieniędzy ani swoich danych osobowych!**\n" +
+          "> `ℹ️` × To jest ticket **pomocy/pytania**, a nie ticket zakupu."
+        );
+      embedsToSend.push(warningEmbed);
+    }
 
     // Build buttons: Close (disabled for non-admin in interaction), Settings, Code (if zakup), Claim + Unclaim (disabled)
     const closeButton = new ButtonBuilder()
@@ -16722,7 +16821,7 @@ async function handleModalSubmit(interaction) {
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: [embed],
+      embeds: embedsToSend,
       components: [buttonRow],
     });
 
