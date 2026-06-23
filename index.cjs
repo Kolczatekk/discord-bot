@@ -12624,10 +12624,12 @@ async function ensureInvitePanel(channel) {
     const panelMessages = [];
 
     messages.forEach(msg => {
+      const componentsStr = JSON.stringify(msg.components || {});
       const isPanel = msg.author.id === client.user.id && 
-        msg.components && 
-        msg.components.some(row => 
-          row.components && row.components.some(btn => btn.customId === "btn_sprawdz_zaproszenia" || (btn.data && btn.data.custom_id === "btn_sprawdz_zaproszenia"))
+        (
+          componentsStr.includes("btn_sprawdz_zaproszenia") ||
+          componentsStr.includes("zaproszenia") ||
+          (msg.content && msg.content.includes("zaproszenia"))
         );
       if (isPanel) {
         panelMessages.push(msg);
