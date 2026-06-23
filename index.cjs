@@ -4388,9 +4388,9 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
-const ANARCHIA_LIFESTEAL_RATE = 7500;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 8000;
-const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 100;
+const ANARCHIA_LIFESTEAL_RATE = 8200;
+const ANARCHIA_LIFESTEAL_BULK_RATE = 8500;
+const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 50;
 const ANARCHIA_BOXPVP_RATE = 600;
 const MINESTAR_LF_RATE = 300;
 const MINESTAR_LF_BULK_RATE = 400;
@@ -10126,11 +10126,11 @@ function createDefaultEmbedTestState(
     cashSectionTitle: "WALUTA SERWEROWA:",
     cashBody:
       "-# zakupiona kasa wysyłana jest na /gift\n" +
-      "### :arrowwhite: :kasa_2:  `7,5k$ ➜ 1 ZŁ`\n\n" +
-      "### :arrowwhite: :kasa_2:  `8k$ ➜ 1 ZŁ` (powyżej 100zł)",
+      "### :arrowwhite: :kasa_2:  `8,2k$ ➜ 1 ZŁ`\n\n" +
+      "### :arrowwhite: :kasa_2:  `8,5k$ ➜ 1 ZŁ` (powyżej 50zł)",
     itemsSectionTitle: "ITEMY:",
     itemsBody:
-      "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 133zł",
+      "-# Każdy item przeliczany jest z cennika u góry np. Item o wartości 1MLN = 122zł",
     extraSectionTitle: "",
     extraSectionBody: "",
     extraSectionTwoTitle: "",
