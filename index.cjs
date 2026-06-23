@@ -2502,7 +2502,7 @@ async function handleWezwijCommand(interaction) {
           "```\n" +
           "🚨 New Shop × JESTES WZYWANY\n" +
           "```\n" +
-          `${arrowEmoji} **jesteś wzywany** na kanał ticketu!\n\n` +
+          `${arrowEmoji} **jesteś wzywany** na kanał\n\n` +
           `**KANAŁ:** ${channelLink}`
         );
 
@@ -16767,20 +16767,6 @@ async function handleModalSubmit(interaction) {
       .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 })) // avatar user po prawej
       .setTimestamp();
 
-    const embedsToSend = [embed];
-    if (ticketType === "inne") {
-      const warningEmbed = new EmbedBuilder()
-        .setColor(COLOR_RED)
-        .setDescription(
-          "```\n" +
-          "ℹ️ INFORMACJA O BEZPIECZEŃSTWIE\n" +
-          "```\n" +
-          "> `❌` × **Pamiętaj, aby nikomu nie wysyłać pieniędzy ani swoich danych osobowych!**\n" +
-          "> `ℹ️` × To jest ticket **pomocy/pytania**, a nie ticket zakupu."
-        );
-      embedsToSend.push(warningEmbed);
-    }
-
     // Build buttons: Close (disabled for non-admin in interaction), Settings, Code (if zakup), Claim + Unclaim (disabled)
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
@@ -16821,9 +16807,19 @@ async function handleModalSubmit(interaction) {
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: embedsToSend,
+      embeds: [embed],
       components: [buttonRow],
     });
+
+    if (ticketType === "inne") {
+      const warningEmbed = new EmbedBuilder()
+        .setColor(COLOR_RED)
+        .setDescription(
+          "> `❌` × **Pamiętaj, aby nikomu nie wysyłać pieniędzy ani swoich danych osobowych!**\n" +
+          "> `ℹ️` × To jest ticket **pomocy/pytania**, a nie ticket zakupu."
+        );
+      await channel.send({ embeds: [warningEmbed] }).catch(() => null);
+    }
 
     ticketOwners.set(channel.id, {
       claimedBy: null,
