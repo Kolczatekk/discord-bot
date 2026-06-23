@@ -16813,10 +16813,9 @@ async function handleModalSubmit(interaction) {
 
     if (ticketType === "inne") {
       const warningEmbed = new EmbedBuilder()
-        .setColor(COLOR_RED)
+        .setColor(COLOR_BLUE)
         .setDescription(
-          "> `❌` × **Pamiętaj, aby nikomu nie wysyłać pieniędzy ani swoich danych osobowych!**\n" +
-          "> `ℹ️` × To jest ticket **pomocy/pytania**, a nie ticket zakupu."
+          "> `ℹ️` × **Pamiętaj, aby tutaj nikomu nie wysyłać pieniędzy, jest to ticket pomocy a nie zakupu!**"
         );
       await channel.send({ embeds: [warningEmbed] }).catch(() => null);
     }
