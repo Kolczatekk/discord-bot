@@ -16875,6 +16875,22 @@ async function handleModalSubmit(interaction) {
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
 
+  // Obsługa wiadomości prywatnych (PV)
+  if (!message.guild) {
+    await message.reply({
+      content: "Cześć! Jestem tylko botem. Jeżeli masz jakie kolwiek pytanie stwórz ticket na serwerze NewShop w kategori pomoc."
+    }).catch(() => null);
+    return;
+  }
+
+  // Obsługa oznaczenia (mention) bota na serwerze
+  if (message.mentions.users.has(client.user.id)) {
+    await message.reply({
+      content: "Cześć! Jestem tylko botem. Nie oznaczaj mnie, bo będę zły!"
+    }).catch(() => null);
+    return;
+  }
+
   // --- NOWA LOGIKA: PING SPRZEDAWCY PO 5 MIN OD 1 WIADOMOŚCI KLIENTA ---
   const ticketData = ticketOwners.get(message.channel.id);
   if (ticketData && ticketData.userId === message.author.id && !ticketData.claimedBy && !ticketData.firstMessageReceived) {
