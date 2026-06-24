@@ -2473,9 +2473,8 @@ async function handleWezwijCommand(interaction) {
     return;
   }
 
-  // Sprawdź uprawnienia: tylko sprzedawca
-  const SELLER_ROLE_ID = "1350786945944391733";
-  if (!interaction.member?.roles?.cache?.has(SELLER_ROLE_ID)) {
+  // Sprawdź uprawnienia: admin/sprzedawca/helper
+  if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
       content: "> `❌` × Brak uprawnień do użycia tej komendy.",
       flags: [MessageFlags.Ephemeral],
@@ -4295,16 +4294,17 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
   return null;
 }
 
-// Helper: sprawdź czy użytkownik jest admin lub sprzedawca
+// Helper: sprawdź czy użytkownik jest admin, sprzedawca lub helper
 function isAdminOrSeller(member) {
   if (!member) return false;
   const SELLER_ROLE_ID = "1350786945944391733";
+  const HELPER_ROLE_ID = "1519069239254974475";
 
-  // Sprawdź czy ma rolę sprzedawcy
+  // Sprawdź czy ma rolę sprzedawcy lub helpera
   if (
     member.roles &&
     member.roles.cache &&
-    member.roles.cache.has(SELLER_ROLE_ID)
+    (member.roles.cache.has(SELLER_ROLE_ID) || member.roles.cache.has(HELPER_ROLE_ID))
   ) {
     return true;
   }
@@ -6870,9 +6870,11 @@ async function handleSlashCommand(interaction) {
       // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
       const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
       const SELLER_ROLE_ID = "1350786945944391733";
+      const HELPER_ROLE_ID = "1519069239254974475";
       const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+      const isHelper = interaction.member?.roles?.cache?.has(HELPER_ROLE_ID);
       const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
-      if (!isAdmin && !isSeller && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
+      if (!isAdmin && !isSeller && !isHelper && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
         await interaction.reply({
           content: "> `❌` × Nie masz uprawnień do tej komendy.",
           flags: [MessageFlags.Ephemeral],
