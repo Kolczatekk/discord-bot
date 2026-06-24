@@ -16885,21 +16885,30 @@ client.on(Events.MessageCreate, async (message) => {
   // Obsługa wiadomości prywatnych (PV)
   if (!message.guild) {
     await message.reply({
-      content: "Cześć! Jestem tylko botem. Jeżeli masz jakie kolwiek pytanie stwórz ticket na serwerze NewShop w kategori pomoc."
+      content: "Cześć! Jestem tylko botem. Jeżeli masz jakie kolwiek pytanie stwórz ticket na serwerze NewShop w kategori pomoc.\nhttps://discord.com/channels/1350446732365926491/1449453853731983484"
     }).catch(() => null);
     return;
   }
 
-  // Obsługa oznaczenia (mention) bota na serwerze z cooldownem
+  // Obsługa oznaczenia (mention) bota na serwerze z cooldownem i stanami ostrzeżeń
   if (message.mentions.users.has(client.user.id)) {
     const now = Date.now();
-    const lastMention = mentionCooldowns.get(message.author.id);
-    if (lastMention && now - lastMention < 120000) {
+    const userCooldown = mentionCooldowns.get(message.author.id) || { lastTime: 0, state: "idle" };
+
+    if (userCooldown.state === "warned" && now - userCooldown.lastTime < 120000) {
+      userCooldown.state = "cooldown";
+      userCooldown.lastTime = now;
+      mentionCooldowns.set(message.author.id, userCooldown);
       await message.reply({
         content: "Czy możesz przestać mnie oznaczać!?"
       }).catch(() => null);
+    } else if (userCooldown.state === "cooldown" && now - userCooldown.lastTime < 120000) {
+      // Ignoruj (cooldown aktywny)
     } else {
-      mentionCooldowns.set(message.author.id, now);
+      // Stan idle lub cooldown minął
+      userCooldown.state = "warned";
+      userCooldown.lastTime = now;
+      mentionCooldowns.set(message.author.id, userCooldown);
       await message.reply({
         content: "Cześć! Jestem tylko botem. Nie oznaczaj mnie, bo będę zły!"
       }).catch(() => null);
