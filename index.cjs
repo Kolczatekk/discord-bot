@@ -1,6 +1,7 @@
 const {
   Client,
   GatewayIntentBits,
+  Partials,
   Events,
   EmbedBuilder,
   SlashCommandBuilder,
@@ -65,6 +66,10 @@ const client = new Client({
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildPresences,
+  ],
+  partials: [
+    Partials.Channel,
+    Partials.Message,
   ]
 });
 
@@ -16871,6 +16876,8 @@ async function handleModalSubmit(interaction) {
   }
 }
 
+const mentionCooldowns = new Map();
+
 // message create handler: enforce channel restrictions and keep existing legitcheck behavior
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
@@ -16883,11 +16890,20 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  // Obsługa oznaczenia (mention) bota na serwerze
+  // Obsługa oznaczenia (mention) bota na serwerze z cooldownem
   if (message.mentions.users.has(client.user.id)) {
-    await message.reply({
-      content: "Cześć! Jestem tylko botem. Nie oznaczaj mnie, bo będę zły!"
-    }).catch(() => null);
+    const now = Date.now();
+    const lastMention = mentionCooldowns.get(message.author.id);
+    if (lastMention && now - lastMention < 120000) {
+      await message.reply({
+        content: "Czy możesz przestać mnie oznaczać!?"
+      }).catch(() => null);
+    } else {
+      mentionCooldowns.set(message.author.id, now);
+      await message.reply({
+        content: "Cześć! Jestem tylko botem. Nie oznaczaj mnie, bo będę zły!"
+      }).catch(() => null);
+    }
     return;
   }
 
