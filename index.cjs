@@ -16892,6 +16892,9 @@ client.on(Events.MessageCreate, async (message) => {
 
   // Obsługa oznaczenia (mention) bota na serwerze z cooldownem i stanami ostrzeżeń
   if (message.mentions.users.has(client.user.id)) {
+    // Ignoruj na kanale legit-rep
+    if (message.channelId === "1449840030947217529") return;
+
     const now = Date.now();
     const userCooldown = mentionCooldowns.get(message.author.id) || { lastTime: 0, state: "idle" };
 
