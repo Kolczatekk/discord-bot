@@ -16891,7 +16891,8 @@ client.on(Events.MessageCreate, async (message) => {
   }
 
   // Obsługa oznaczenia (mention) bota na serwerze z cooldownem i stanami ostrzeżeń
-  if (message.mentions.users.has(client.user.id)) {
+  const botMentionRegex = new RegExp(`<@!?${client.user.id}>`);
+  if (message.mentions.users.has(client.user.id) && botMentionRegex.test(message.content)) {
     // Ignoruj na kanale legit-rep
     if (message.channelId === "1449840030947217529") return;
 
