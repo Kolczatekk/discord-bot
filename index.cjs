@@ -10721,19 +10721,11 @@ function buildEmbedTestButtonsModal(state) {
 
   const buttonOneLabelInput = new TextInputBuilder()
     .setCustomId("button_one_label")
-    .setLabel("Nazwa przycisku 1")
+    .setLabel("Nazwa przycisku 1 (Kup teraz)")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(80)
     .setPlaceholder("np. Kup teraz");
-
-  const buttonOneActionInput = new TextInputBuilder()
-    .setCustomId("button_one_action")
-    .setLabel("Akcja / Link 1")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false)
-    .setMaxLength(400)
-    .setPlaceholder("zakup / nagrania / https://...");
 
   const buttonTwoLabelInput = new TextInputBuilder()
     .setCustomId("button_two_label")
@@ -10741,7 +10733,7 @@ function buildEmbedTestButtonsModal(state) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(80)
-    .setPlaceholder("np. Płatności");
+    .setPlaceholder("np. Płatności / Kalkulator");
 
   const buttonTwoActionInput = new TextInputBuilder()
     .setCustomId("button_two_action")
@@ -10749,32 +10741,40 @@ function buildEmbedTestButtonsModal(state) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(400)
-    .setPlaceholder("zakup / nagrania / https://...");
+    .setPlaceholder("kalkulator / zakup / https://...");
 
   const buttonThreeLabelInput = new TextInputBuilder()
     .setCustomId("button_three_label")
-    .setLabel("Nazwa przycisku 3 (Kalkulator - opcjonalnie)")
+    .setLabel("Nazwa przycisku 3")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(80)
-    .setPlaceholder("np. Kalkulator");
+    .setPlaceholder("np. Kalkulator / Płatności");
+
+  const buttonThreeActionInput = new TextInputBuilder()
+    .setCustomId("button_three_action")
+    .setLabel("Akcja / Link 3")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(400)
+    .setPlaceholder("kalkulator / zakup / https://...");
 
   if (isRegulation) {
     modal.setTitle("Edytuj przyciski panelu");
   }
 
   setTextInputValueIfPresent(buttonOneLabelInput, state.buttonOneLabel);
-  setTextInputValueIfPresent(buttonOneActionInput, state.buttonOneUrl || state.buttonOneAction);
   setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
   setTextInputValueIfPresent(buttonTwoActionInput, state.buttonTwoUrl || state.buttonTwoAction);
   setTextInputValueIfPresent(buttonThreeLabelInput, state.buttonThreeLabel);
+  setTextInputValueIfPresent(buttonThreeActionInput, state.buttonThreeUrl || state.buttonThreeAction);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(buttonOneLabelInput),
-    new ActionRowBuilder().addComponents(buttonOneActionInput),
     new ActionRowBuilder().addComponents(buttonTwoLabelInput),
     new ActionRowBuilder().addComponents(buttonTwoActionInput),
     new ActionRowBuilder().addComponents(buttonThreeLabelInput),
+    new ActionRowBuilder().addComponents(buttonThreeActionInput),
   );
 
   return modal;
@@ -15409,8 +15409,11 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    const buttonOneActionInput = interaction.fields.getTextInputValue("button_one_action").trim();
     const buttonTwoActionInput = interaction.fields.getTextInputValue("button_two_action").trim();
+    let buttonThreeActionInput = "";
+    try {
+      buttonThreeActionInput = interaction.fields.getTextInputValue("button_three_action").trim();
+    } catch (_) {}
 
     const buttonOneLabel = interaction.fields.getTextInputValue("button_one_label").trim();
     const buttonTwoLabel = interaction.fields.getTextInputValue("button_two_label").trim();
@@ -15421,15 +15424,9 @@ async function handleModalSubmit(interaction) {
       state.buttonOneAction = "";
       state.buttonOneUrl = null;
     } else {
-      const parsedAction1 = parseEmbedTestPrimaryButtonActionInput(buttonOneActionInput, state.buttonOneAction);
       state.buttonOneLabel = buttonOneLabel;
-      state.buttonOneAction = parsedAction1.value;
-      state.buttonOneUrl = parsedAction1.url || null;
-
-      if (state.buttonOneAction === "link" && !state.buttonOneUrl) {
-        await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 1 (np. https://...).", flags: [MessageFlags.Ephemeral] });
-        return;
-      }
+      state.buttonOneAction = state.buttonOneAction || "zakup";
+      state.buttonOneUrl = null;
     }
 
     // Przycisk 2 — jeśli brak nazwy, usuń przycisk
@@ -15460,16 +15457,21 @@ async function handleModalSubmit(interaction) {
       state.buttonThreeAction = "";
       state.buttonThreeUrl = null;
     } else {
+      const parsedAction3 = parseEmbedTestPrimaryButtonActionInput(buttonThreeActionInput, state.buttonThreeAction);
       state.buttonThreeLabel = buttonThreeLabel;
-      if (state.buttonOneAction === "kalkulator" || state.buttonTwoAction === "kalkulator") {
-        state.buttonThreeAction = "link";
+      state.buttonThreeAction = parsedAction3.value;
+      state.buttonThreeUrl = parsedAction3.url || null;
+
+      if (state.buttonThreeAction === "link" && !state.buttonThreeUrl) {
         const guild = interaction.guild || client.guilds.cache.get(state.guildId);
         const paymentsChannel = guild ? findEmbedTestPaymentsChannel(guild) : null;
         const defaultPaymentsUrl = guild ? getDiscordMessageUrl(guild.id, paymentsChannel?.id || state.channelId) : "";
-        state.buttonThreeUrl = state.buttonThreeUrl || defaultPaymentsUrl;
-      } else {
-        state.buttonThreeAction = "kalkulator";
-        state.buttonThreeUrl = null;
+        state.buttonThreeUrl = defaultPaymentsUrl;
+        
+        if (!state.buttonThreeUrl) {
+          await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 3 (np. https://...).", flags: [MessageFlags.Ephemeral] });
+          return;
+        }
       }
     }
 
