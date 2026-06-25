@@ -7855,7 +7855,7 @@ function sanitizeOptionsEmojis(options) {
   });
 }
 
-function buildKalkulatorModal(typ, isAnarchiaLf = false) {
+function buildKalkulatorModal(typ, detectedServer = null) {
   const isOtrzymam = typ === "otrzymam";
   const modal = new ModalBuilder()
     .setCustomId(isOtrzymam ? "modal_ile_otrzymam" : "modal_ile_musze_dac")
@@ -7877,7 +7877,7 @@ function buildKalkulatorModal(typ, isAnarchiaLf = false) {
       sanitizeOptionsEmojis(
         KALKULATOR_SERVER_OPTIONS.map((opt) => ({
           ...opt,
-          default: isAnarchiaLf && opt.value === "ANARCHIA_LIFESTEAL",
+          default: detectedServer && opt.value === detectedServer.calcValue,
         }))
       )
     );
