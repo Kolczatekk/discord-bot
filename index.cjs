@@ -2185,27 +2185,34 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     ? replaceNamedGuildEmojis(replaceEmbedAliasTokens(rawDescription), guildId)
     : replaceEmbedAliasTokens(rawDescription);
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_YELLOW)
-    .setBrandFooter()
-    .setDescription(description);
+  const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("free_kasa_roll")
-      .setLabel("Losuj nagrodę")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("🎰"),
-    new ButtonBuilder()
-      .setCustomId("free_kasa_claim")
-      .setLabel("Odbierz nagrodę")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("🎁"),
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(description)
   );
 
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const btnRoll = new ButtonBuilder()
+    .setCustomId("free_kasa_roll")
+    .setLabel("︲Losuj nagrodę")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji("🎰");
+
+  const btnClaim = new ButtonBuilder()
+    .setCustomId("free_kasa_claim")
+    .setLabel("︲Odbierz nagrodę")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji("🎁");
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(btnRoll, btnClaim)
+  );
+
+  appendBrandFooterToContainer(container, guildId);
+
   return {
-    embeds: [embed],
-    components: [row],
+    components: [container],
   };
 }
 
