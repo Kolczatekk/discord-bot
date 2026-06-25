@@ -7918,7 +7918,7 @@ function buildKalkulatorModal(typ, detectedServer = null) {
 
   const valueInput = new TextInputBuilder()
     .setCustomId(isOtrzymam ? `kwota_${timestamp}` : `waluta_${timestamp}`)
-    .setPlaceholder(isOtrzymam ? "Przykład: 50" : "Przykład: 125k")
+    .setPlaceholder(isOtrzymam ? "Przykład: 50zł" : "Przykład: 125k")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
