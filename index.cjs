@@ -7857,18 +7857,19 @@ function sanitizeOptionsEmojis(options) {
 
 function buildKalkulatorModal(typ, detectedServer = null) {
   const isOtrzymam = typ === "otrzymam";
+  const timestamp = Date.now();
   const modal = new ModalBuilder()
-    .setCustomId(isOtrzymam ? "modal_ile_otrzymam" : "modal_ile_musze_dac")
+    .setCustomId(isOtrzymam ? `modal_ile_otrzymam_${timestamp}` : `modal_ile_musze_dac_${timestamp}`)
     .setTitle("Kalkulator");
 
   const valueInput = new TextInputBuilder()
-    .setCustomId(isOtrzymam ? "kwota" : "waluta")
+    .setCustomId(isOtrzymam ? `kwota_${timestamp}` : `waluta_${timestamp}`)
     .setPlaceholder(isOtrzymam ? "np. 50" : "np. 125k")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
 
   const serverSelect = new StringSelectMenuBuilder()
-    .setCustomId("kalkulator_server")
+    .setCustomId(`kalkulator_server_${timestamp}`)
     .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
@@ -7883,7 +7884,7 @@ function buildKalkulatorModal(typ, detectedServer = null) {
     );
 
   const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("kalkulator_payment")
+    .setCustomId(`kalkulator_payment_${timestamp}`)
     .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
@@ -12875,15 +12876,16 @@ async function showTestPanelZakupModal(interaction) {
 }
 
 async function showZakupModalV2(interaction, detectedServer = null) {
+  const timestamp = Date.now();
   const itemInput = new TextInputBuilder()
-    .setCustomId("co_kupic")
+    .setCustomId(`co_kupic_${timestamp}`)
     .setStyle(TextInputStyle.Short)
     .setPlaceholder("Przykład: Kasa")
     .setRequired(true)
     .setMaxLength(120);
 
   const serverSelect = new StringSelectMenuBuilder()
-    .setCustomId("zakup_server")
+    .setCustomId(`zakup_server_${timestamp}`)
     .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
@@ -12898,7 +12900,7 @@ async function showZakupModalV2(interaction, detectedServer = null) {
     );
 
   const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("zakup_payment")
+    .setCustomId(`zakup_payment_${timestamp}`)
     .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
@@ -12906,13 +12908,13 @@ async function showZakupModalV2(interaction, detectedServer = null) {
     .addOptions(sanitizeOptionsEmojis(TEST_PANEL_PAYMENT_OPTIONS));
 
   const amountInput = new TextInputBuilder()
-    .setCustomId("kwota")
+    .setCustomId(`kwota_${timestamp}`)
     .setStyle(TextInputStyle.Short)
     .setPlaceholder("Przykład: 20zł")
     .setRequired(true);
 
   const modal = new ModalBuilder()
-    .setCustomId("modal_zakup")
+    .setCustomId(`modal_zakup_${timestamp}`)
     .setTitle("Zakup itemów")
     .addLabelComponents(
       new LabelBuilder()
@@ -14042,15 +14044,16 @@ async function showZakupModal(interaction, detectedServer = null) {
 }
 
 async function showModyZakupModal(interaction) {
+  const timestamp = Date.now();
   const modNameInput = new TextInputBuilder()
-    .setCustomId("mod_name")
+    .setCustomId(`mod_name_${timestamp}`)
     .setPlaceholder("Przykład: Auto_Dripstone")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMaxLength(64);
 
   const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("mod_payment_method")
+    .setCustomId(`mod_payment_method_${timestamp}`)
     .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
@@ -14058,14 +14061,14 @@ async function showModyZakupModal(interaction) {
     .addOptions(sanitizeOptionsEmojis(SIMPLE_PAYMENT_OPTIONS));
 
   const modsCountInput = new TextInputBuilder()
-    .setCustomId("mods_count")
+    .setCustomId(`mods_count_${timestamp}`)
     .setPlaceholder("Podaj liczbę od 1 do 4")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMaxLength(1);
 
   const modal = new ModalBuilder()
-    .setCustomId("modal_mody_zakup")
+    .setCustomId(`modal_mody_zakup_${timestamp}`)
     .setTitle("Zakup moda")
     .addLabelComponents(
       new LabelBuilder()
@@ -14083,8 +14086,9 @@ async function showModyZakupModal(interaction) {
 }
 
 async function showAutoRynekZakupModal(interaction) {
+  const timestamp = Date.now();
   const paymentSelect = new StringSelectMenuBuilder()
-    .setCustomId("autorynek_payment_method")
+    .setCustomId(`autorynek_payment_method_${timestamp}`)
     .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setRequired(true)
     .setMinValues(1)
@@ -14092,7 +14096,7 @@ async function showAutoRynekZakupModal(interaction) {
     .addOptions(sanitizeOptionsEmojis(AUTORYNEK_PAYMENT_OPTIONS));
 
   const modal = new ModalBuilder()
-    .setCustomId("modal_autorynek_zakup")
+    .setCustomId(`modal_autorynek_zakup_${timestamp}`)
     .setTitle("Zakup Botów")
     .addLabelComponents(
       new LabelBuilder()
@@ -14605,15 +14609,16 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
 }
 
 async function showSprzedazModal(interaction) {
+  const timestamp = Date.now();
   const modal = new ModalBuilder()
-    .setCustomId("modal_sprzedaz")
+    .setCustomId(`modal_sprzedaz_${timestamp}`)
     .setTitle("Sprzedaż")
     .addLabelComponents(
       new LabelBuilder()
         .setLabel("Co chcesz sprzedać?")
         .setTextInputComponent(
           new TextInputBuilder()
-            .setCustomId("co_sprzedac")
+            .setCustomId(`co_sprzedac_${timestamp}`)
             .setPlaceholder("Przykład: 100k$")
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
@@ -14622,7 +14627,7 @@ async function showSprzedazModal(interaction) {
         .setLabel("Na jakim serwerze?")
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
-            .setCustomId("sprzedaz_server")
+            .setCustomId(`sprzedaz_server_${timestamp}`)
             .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
             .setRequired(true)
             .setMinValues(1)
@@ -14633,7 +14638,7 @@ async function showSprzedazModal(interaction) {
         .setLabel("Forma wypłaty")
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
-            .setCustomId("sprzedaz_payout")
+            .setCustomId(`sprzedaz_payout_${timestamp}`)
             .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
             .setRequired(true)
             .setMinValues(1)
@@ -14892,12 +14897,13 @@ async function commitRewardTicketClaim(channelId) {
 }
 
 async function showOdbiorModal(interaction) {
+  const timestamp = Date.now();
   const modal = new ModalBuilder()
-    .setCustomId("modal_odbior")
+    .setCustomId(`modal_odbior_${timestamp}`)
     .setTitle("Odbierz nagrodę");
 
   const codeInput = new TextInputBuilder()
-    .setCustomId("reward_code")
+    .setCustomId(`reward_code_${timestamp}`)
     .setLabel("Kod nagrody")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
@@ -14909,12 +14915,13 @@ async function showOdbiorModal(interaction) {
 }
 
 async function showInneModal(interaction) {
+  const timestamp = Date.now();
   const modal = new ModalBuilder()
-    .setCustomId("modal_inne")
+    .setCustomId(`modal_inne_${timestamp}`)
     .setTitle("Pomoc");
 
   const sprawaInput = new TextInputBuilder()
-    .setCustomId("sprawa")
+    .setCustomId(`sprawa_${timestamp}`)
     .setLabel("W jakiej sprawie robisz ticketa?")
     .setStyle(TextInputStyle.Paragraph)
     .setMaxLength(256)
@@ -14925,11 +14932,34 @@ async function showInneModal(interaction) {
   await interaction.showModal(modal);
 }
 
+function getBaseCustomId(customId) {
+  if (!customId) return "";
+  const prefixes = [
+    "modal_wystaw_opinie",
+    "modal_ile_otrzymam",
+    "modal_ile_musze_dac",
+    "modal_testpanel_purchase",
+    "modal_zakup",
+    "modal_mody_zakup",
+    "modal_autorynek_zakup",
+    "modal_sprzedaz",
+    "modal_odbior",
+    "modal_inne"
+  ];
+  for (const prefix of prefixes) {
+    if (customId.startsWith(prefix)) {
+      return prefix;
+    }
+  }
+  return customId;
+}
+
 async function handleModalSubmit(interaction) {
   const guildId = interaction.guildId;
   if (!guildId || !interaction.guild) return;
 
-  const cid = interaction.customId || "";
+  const rawCid = interaction.customId || "";
+  const cid = getBaseCustomId(rawCid);
 
   if (cid === "modal_wystaw_opinie") {
     const czas = getOpinionRatingValue(interaction, "czas_oczekiwania");
@@ -15638,9 +15668,9 @@ async function handleModalSubmit(interaction) {
     return;
   }
   // KALKULATOR: ile otrzymam?
-  if (interaction.customId === "modal_ile_otrzymam") {
+  if (cid === "modal_ile_otrzymam") {
     try {
-      const kwotaStr = interaction.fields.getTextInputValue("kwota");
+      const kwotaStr = getModalTextInputValueSafe(interaction, "kwota") || "";
       const kwota = parseFloat(kwotaStr.replace(",", "."));
       const selectedServer =
         getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
@@ -15719,9 +15749,9 @@ async function handleModalSubmit(interaction) {
   }
 
   // KALKULATOR: ile muszę dać?
-  if (interaction.customId === "modal_ile_musze_dac") {
+  if (cid === "modal_ile_musze_dac") {
     try {
-      const walutaStr = interaction.fields.getTextInputValue("waluta");
+      const walutaStr = getModalTextInputValueSafe(interaction, "waluta") || "";
       const waluta = parseShortNumber(walutaStr);
       const selectedServer =
         getModalStringSelectValueSafe(interaction, "kalkulator_server") || "";
@@ -16265,7 +16295,7 @@ async function handleModalSubmit(interaction) {
   let preferredChannelName = null;
   let paymentMethod = null;
 
-  switch (interaction.customId) {
+  switch (cid) {
     case "modal_testpanel_purchase":
     case "modal_zakup": {
       const itemToBuy =
@@ -16542,7 +16572,7 @@ async function handleModalSubmit(interaction) {
     }
     case "modal_odbior": {
       const enteredCodeRaw =
-        interaction.fields.getTextInputValue("reward_code") || "";
+        getModalTextInputValueSafe(interaction, "reward_code") || "";
       const { code: enteredCode, codeData } =
         await getActiveCodeData(enteredCodeRaw);
 
@@ -16756,7 +16786,7 @@ async function handleModalSubmit(interaction) {
       break;
     }
     case "modal_inne": {
-      const sprawa = interaction.fields.getTextInputValue("sprawa");
+      const sprawa = getModalTextInputValueSafe(interaction, "sprawa") || "";
 
       categoryId = categories["inne"];
       ticketType = "inne";
