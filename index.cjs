@@ -1358,6 +1358,16 @@ function buildPersistentStateData() {
     autoVerifySettings: Object.fromEntries(autoVerifySettings),
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
+    calculatorRates: {
+      anarchiaLifestealRate: ANARCHIA_LIFESTEAL_RATE,
+      anarchiaLifestealBulkRate: ANARCHIA_LIFESTEAL_BULK_RATE,
+      anarchiaLifestealBulkThresholdPln: ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN,
+      anarchiaBoxpvpRate: ANARCHIA_BOXPVP_RATE,
+      minestarLfRate: MINESTAR_LF_RATE,
+      minestarLfBulkRate: MINESTAR_LF_BULK_RATE,
+      minestarLfBulkThresholdPln: MINESTAR_LF_BULK_THRESHOLD_PLN,
+      donutSmpRate: DONUT_SMP_RATE,
+    },
   };
 
   return data;
@@ -3203,6 +3213,19 @@ async function loadPersistentState() {
         }
       }
 
+      if (botStateData.calculatorRates && typeof botStateData.calculatorRates === "object") {
+        const rates = botStateData.calculatorRates;
+        if (typeof rates.anarchiaLifestealRate === "number") ANARCHIA_LIFESTEAL_RATE = rates.anarchiaLifestealRate;
+        if (typeof rates.anarchiaLifestealBulkRate === "number") ANARCHIA_LIFESTEAL_BULK_RATE = rates.anarchiaLifestealBulkRate;
+        if (typeof rates.anarchiaLifestealBulkThresholdPln === "number") ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = rates.anarchiaLifestealBulkThresholdPln;
+        if (typeof rates.anarchiaBoxpvpRate === "number") ANARCHIA_BOXPVP_RATE = rates.anarchiaBoxpvpRate;
+        if (typeof rates.minestarLfRate === "number") MINESTAR_LF_RATE = rates.minestarLfRate;
+        if (typeof rates.minestarLfBulkRate === "number") MINESTAR_LF_BULK_RATE = rates.minestarLfBulkRate;
+        if (typeof rates.minestarLfBulkThresholdPln === "number") MINESTAR_LF_BULK_THRESHOLD_PLN = rates.minestarLfBulkThresholdPln;
+        if (typeof rates.donutSmpRate === "number") DONUT_SMP_RATE = rates.donutSmpRate;
+        console.log("[state] Wczytano calculatorRates");
+      }
+
       try {
         let fakeGuilds = 0;
         let fakeEntries = 0;
@@ -3380,6 +3403,34 @@ const DEFAULT_NAMES = {
 };
 
 const commands = [
+  new SlashCommandBuilder()
+    .setName("cennik")
+    .setDescription("Pokazuje lub zmienia cennik kalkulatora (tylko administracja)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((option) =>
+      option
+        .setName("serwer")
+        .setDescription("Wybierz serwer/stawkę do zmiany")
+        .setRequired(false)
+        .addChoices(
+          { name: "Anarchia LF - Normalna", value: "anarchia_lf_normal" },
+          { name: "Anarchia LF - Hurtowa (>50zł)", value: "anarchia_lf_bulk" },
+          { name: "Anarchia LF - Próg (zł)", value: "anarchia_lf_threshold" },
+          { name: "Anarchia BoxPvP", value: "anarchia_boxpvp" },
+          { name: "MineStar LF - Normalna", value: "minestar_lf_normal" },
+          { name: "MineStar LF - Hurtowa (>=50zł)", value: "minestar_lf_bulk" },
+          { name: "MineStar LF - Próg (zł)", value: "minestar_lf_threshold" },
+          { name: "Donut SMP", value: "donut_smp" }
+        )
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("stawka")
+        .setDescription("Nowa wartość stawki (ilość waluty za 1zł)")
+        .setRequired(false)
+        .setMinValue(1)
+    )
+    .toJSON(),
   new SlashCommandBuilder()
     .setName("zaproszenia")
     .setDescription("Sprawdź szczegółowe logi zaproszeń (Tylko dla właściciela)")
@@ -4393,14 +4444,14 @@ function calculateFeePln(basePln, methodRaw) {
   return { fee, feeLabel, percent };
 }
 
-const ANARCHIA_LIFESTEAL_RATE = 8200;
-const ANARCHIA_LIFESTEAL_BULK_RATE = 8500;
-const ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 50;
-const ANARCHIA_BOXPVP_RATE = 600;
-const MINESTAR_LF_RATE = 300;
-const MINESTAR_LF_BULK_RATE = 400;
-const MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
-const DONUT_SMP_RATE = 5_500_000;
+let ANARCHIA_LIFESTEAL_RATE = 8200;
+let ANARCHIA_LIFESTEAL_BULK_RATE = 8500;
+let ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = 50;
+let ANARCHIA_BOXPVP_RATE = 600;
+let MINESTAR_LF_RATE = 300;
+let MINESTAR_LF_BULK_RATE = 400;
+let MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
+let DONUT_SMP_RATE = 5_500_000;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -6958,6 +7009,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "zaproszenia":
       await handleAdminZaproszeniaCommand(interaction);
+      break;
+    case "cennik":
+      await handleCennikCommand(interaction);
       break;
     case "panelkalkulator":
       await handlePanelKalkulatorCommand(interaction);
@@ -13546,6 +13600,157 @@ async function handleLegitRepUstawCommand(interaction) {
   } catch (error) {
     console.error("Błąd podczas ustawiania legit-rep (outer catch):", error);
     const payload = { content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.", flags: [MessageFlags.Ephemeral] };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+    else await interaction.reply(payload);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Helper: format a raw rate number into display string (e.g. 8500 → "8,5k")
+function formatRateShort(rate) {
+  if (rate >= 1_000_000) {
+    const v = rate / 1_000_000;
+    return v.toFixed(1).replace(".", ",").replace(",0", "") + "M";
+  } else if (rate >= 1_000) {
+    const v = rate / 1_000;
+    return v.toFixed(1).replace(".", ",").replace(",0", "") + "k";
+  }
+  return rate.toString();
+}
+
+// Helper: replace every occurrence of oldRate (number & formatted) in cashBody
+function replaceCashBodyRate(cashBody, oldRate, newRate) {
+  let result = cashBody;
+  // Replace formatted short string  (e.g. "8,5k" or "8,2k")
+  const oldShort = formatRateShort(oldRate);
+  const newShort = formatRateShort(newRate);
+  // Escape special regex chars in the short string
+  const escapedShort = oldShort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  result = result.replace(new RegExp(escapedShort, "g"), newShort);
+  // Also replace raw number (e.g. 8500) surrounded by non-digit chars
+  const escapedNum = String(oldRate).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  result = result.replace(new RegExp(`(?<![0-9])${escapedNum}(?![0-9])`, "g"), String(newRate));
+  return result;
+}
+
+// ----------------- /cennik handler -----------------
+async function handleCennikCommand(interaction) {
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: true });
+    }
+
+    // Auth: admin, seller, or helper
+    const SELLER_ROLE_ID = "1350786945944391733";
+    const HELPER_ROLE_ID = "1519069239254974475";
+    const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+    const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+    const isHelper = interaction.member?.roles?.cache?.has(HELPER_ROLE_ID);
+    if (!isAdmin && !isSeller && !isHelper) {
+      await interaction.editReply({ content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] });
+      return;
+    }
+
+    const serwer = interaction.options.getString("serwer");
+    const stawka = interaction.options.getInteger("stawka");
+
+    // ── VIEW mode ───────────────────────────────────────
+    if (!serwer || stawka === null || stawka === undefined) {
+      const lines = [
+        `> \`💰\` × **Aktualny cennik kalkulatora:**`,
+        `> `,
+        `> **Anarchia LF:**`,
+        `>  • Normalna: \`${formatRateShort(ANARCHIA_LIFESTEAL_RATE)}$ → 1 zł\``,
+        `>  • Hurtowa (>${ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN}zł): \`${formatRateShort(ANARCHIA_LIFESTEAL_BULK_RATE)}$ → 1 zł\``,
+        `>  • Próg: \`${ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN} zł\``,
+        `> `,
+        `> **Anarchia BoxPvP:**`,
+        `>  • \`${formatRateShort(ANARCHIA_BOXPVP_RATE)}$ → 1 zł\``,
+        `> `,
+        `> **MineStar LF:**`,
+        `>  • Normalna: \`${formatRateShort(MINESTAR_LF_RATE)}$ → 1 zł\``,
+        `>  • Hurtowa (≥${MINESTAR_LF_BULK_THRESHOLD_PLN}zł): \`${formatRateShort(MINESTAR_LF_BULK_RATE)}$ → 1 zł\``,
+        `>  • Próg: \`${MINESTAR_LF_BULK_THRESHOLD_PLN} zł\``,
+        `> `,
+        `> **Donut SMP:**`,
+        `>  • \`${formatRateShort(DONUT_SMP_RATE)}$ → 1 zł\``,
+        `> `,
+        `> *Użyj \`/cennik serwer:... stawka:...\` aby zmienić stawkę.*`,
+      ];
+      await interaction.editReply({ content: lines.join("\n") });
+      return;
+    }
+
+    // ── SET mode ────────────────────────────────────────
+    // Map choice → variable name and label
+    const RATE_MAP = {
+      anarchia_lf_normal:    { get: () => ANARCHIA_LIFESTEAL_RATE,              set: (v) => { ANARCHIA_LIFESTEAL_RATE = v; },              label: "Anarchia LF - Normalna" },
+      anarchia_lf_bulk:      { get: () => ANARCHIA_LIFESTEAL_BULK_RATE,          set: (v) => { ANARCHIA_LIFESTEAL_BULK_RATE = v; },          label: "Anarchia LF - Hurtowa" },
+      anarchia_lf_threshold: { get: () => ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN, set: (v) => { ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN = v; }, label: "Anarchia LF - Próg (zł)" },
+      anarchia_boxpvp:       { get: () => ANARCHIA_BOXPVP_RATE,                  set: (v) => { ANARCHIA_BOXPVP_RATE = v; },                  label: "Anarchia BoxPvP" },
+      minestar_lf_normal:    { get: () => MINESTAR_LF_RATE,                      set: (v) => { MINESTAR_LF_RATE = v; },                      label: "MineStar LF - Normalna" },
+      minestar_lf_bulk:      { get: () => MINESTAR_LF_BULK_RATE,                 set: (v) => { MINESTAR_LF_BULK_RATE = v; },                 label: "MineStar LF - Hurtowa" },
+      minestar_lf_threshold: { get: () => MINESTAR_LF_BULK_THRESHOLD_PLN,        set: (v) => { MINESTAR_LF_BULK_THRESHOLD_PLN = v; },        label: "MineStar LF - Próg (zł)" },
+      donut_smp:             { get: () => DONUT_SMP_RATE,                        set: (v) => { DONUT_SMP_RATE = v; },                        label: "Donut SMP" },
+    };
+
+    const entry = RATE_MAP[serwer];
+    if (!entry) {
+      await interaction.editReply({ content: "> `❌` × Nieznany serwer.", flags: [MessageFlags.Ephemeral] });
+      return;
+    }
+
+    const oldRate = entry.get();
+    const newRate = stawka;
+    entry.set(newRate);
+
+    // Persist immediately
+    scheduleSavePersistentState(true);
+
+    // ── Refresh all active cennik embeds ─────────────────
+    let updatedPanels = 0;
+    for (const [messageId, panelState] of regulationPanels.entries()) {
+      try {
+        if (!panelState.cashBody) continue;
+        const updatedCashBody = replaceCashBodyRate(panelState.cashBody, oldRate, newRate);
+        if (updatedCashBody === panelState.cashBody) continue; // nothing changed
+
+        panelState.cashBody = updatedCashBody;
+        // Also sync the clone stored in the map
+        regulationPanels.set(messageId, { ...panelState, cashBody: updatedCashBody });
+
+        // Edit the Discord message
+        const guild = client.guilds.cache.get(panelState.guildId);
+        if (!guild) continue;
+        const channel = await guild.channels.fetch(panelState.channelId).catch(() => null);
+        if (!channel || !channel.isTextBased()) continue;
+        const message = await channel.messages.fetch(messageId).catch(() => null);
+        if (!message) continue;
+        await message.edit(buildEmbedTestMessagePayload(panelState)).catch((err) => {
+          console.error("[cennik] Błąd edycji wiadomości:", err);
+        });
+        updatedPanels++;
+      } catch (err) {
+        console.error("[cennik] Błąd przy odświeżaniu panelu:", err);
+      }
+    }
+
+    scheduleSavePersistentState(true);
+
+    const reply = [
+      `> \`✅\` × **Cennik zaktualizowany!**`,
+      `> Serwer: \`${entry.label}\``,
+      `> Stara stawka: \`${formatRateShort(oldRate)}\``,
+      `> Nowa stawka: \`${formatRateShort(newRate)}\``,
+      updatedPanels > 0 ? `> Zaktualizowano **${updatedPanels}** panel(i) na Discord.` : `> Brak aktywnych paneli do zaktualizowania.`,
+    ].join("\n");
+
+    await interaction.editReply({ content: reply });
+    console.log(`[/cennik] ${interaction.user.tag} zmienił ${entry.label}: ${oldRate} → ${newRate}`);
+
+  } catch (err) {
+    console.error("[/cennik] Błąd:", err);
+    const payload = { content: "> `❌` × Wystąpił błąd podczas zmiany cennika.", flags: [MessageFlags.Ephemeral] };
     if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
     else await interaction.reply(payload);
   }
