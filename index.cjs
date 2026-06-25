@@ -6277,7 +6277,7 @@ async function handleButtonInteraction(interaction) {
   }
 
   const embedTestBuyOpenMatch = customId.match(
-    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin|nagrania))?$/,
+    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin|nagrania|kalkulator))?$/,
   );
   if (embedTestBuyOpenMatch) {
     const action = embedTestBuyOpenMatch[1] || "zakup";
@@ -6312,6 +6312,9 @@ async function handleButtonInteraction(interaction) {
         break;
       case "nagrania":
         await handleModyVideosAction(interaction);
+        break;
+      case "kalkulator":
+        await interaction.showModal(buildKalkulatorModal("otrzymam"));
         break;
       default:
         await showZakupModal(interaction);
@@ -10150,6 +10153,10 @@ function createDefaultEmbedTestState(
     buttonTwoEmoji: "💳",
     buttonTwoAction: "link",
     buttonTwoUrl: paymentsUrl,
+    buttonThreeLabel: "",
+    buttonThreeEmoji: "",
+    buttonThreeAction: "kalkulator",
+    buttonThreeUrl: null,
     mediaUrls: mediaFile
       ? [`attachment://${mediaFile.name}`]
       : normalizedMediaAttachment
@@ -10175,6 +10182,10 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
   );
   const buttonTwoEmoji = parseButtonEmojiInput(
     state.buttonTwoEmoji,
+    state.guildId,
+  );
+  const buttonThreeEmoji = parseButtonEmojiInput(
+    state.buttonThreeEmoji,
     state.guildId,
   );
   const cashSectionParts = buildEmbedTestSectionParts(
@@ -10236,6 +10247,9 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
 
   const btn2 = createBtn(state.buttonTwoLabel, buttonTwoEmoji, state.buttonTwoAction, state.buttonTwoUrl);
   if (btn2) buttons.push(btn2);
+
+  const btn3 = createBtn(state.buttonThreeLabel, buttonThreeEmoji, state.buttonThreeAction, state.buttonThreeUrl);
+  if (btn3) buttons.push(btn3);
 
   const container = new ContainerBuilder().setAccentColor(
     state.accentColor || COLOR_BLUE,
@@ -10690,6 +10704,14 @@ function buildEmbedTestButtonsModal(state) {
     .setMaxLength(400)
     .setPlaceholder("zakup / nagrania / https://...");
 
+  const buttonThreeLabelInput = new TextInputBuilder()
+    .setCustomId("button_three_label")
+    .setLabel("Nazwa przycisku 3 (Kalkulator - opcjonalnie)")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("np. Kalkulator");
+
   if (isRegulation) {
     modal.setTitle("Edytuj przyciski panelu");
   }
@@ -10698,12 +10720,14 @@ function buildEmbedTestButtonsModal(state) {
   setTextInputValueIfPresent(buttonOneActionInput, state.buttonOneUrl || state.buttonOneAction);
   setTextInputValueIfPresent(buttonTwoLabelInput, state.buttonTwoLabel);
   setTextInputValueIfPresent(buttonTwoActionInput, state.buttonTwoUrl || state.buttonTwoAction);
+  setTextInputValueIfPresent(buttonThreeLabelInput, state.buttonThreeLabel);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(buttonOneLabelInput),
     new ActionRowBuilder().addComponents(buttonOneActionInput),
     new ActionRowBuilder().addComponents(buttonTwoLabelInput),
     new ActionRowBuilder().addComponents(buttonTwoActionInput),
+    new ActionRowBuilder().addComponents(buttonThreeLabelInput),
   );
 
   return modal;
@@ -10730,12 +10754,22 @@ function buildEmbedTestEmojisModal(state) {
     .setMaxLength(80)
     .setPlaceholder("np. 💳 lub <:donutsmp:123456789>");
 
+  const buttonThreeEmojiInput = new TextInputBuilder()
+    .setCustomId("button_three_emoji")
+    .setLabel("Emoji przycisku 3")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("np. 🧮 lub 🔢");
+
   setTextInputValueIfPresent(buttonOneEmojiInput, state.buttonOneEmoji || "");
   setTextInputValueIfPresent(buttonTwoEmojiInput, state.buttonTwoEmoji || "");
+  setTextInputValueIfPresent(buttonThreeEmojiInput, state.buttonThreeEmoji || "");
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(buttonOneEmojiInput),
     new ActionRowBuilder().addComponents(buttonTwoEmojiInput),
+    new ActionRowBuilder().addComponents(buttonThreeEmojiInput),
   );
 
   return modal;
@@ -11345,6 +11379,20 @@ function reconstructEmbedTestStateFromMessage(message, ownerId) {
       const match = String(b.customId).match(/^embedtest_buy_open(?:_(.+))?$/);
       state.buttonTwoAction = match?.[1] || "zakup";
       state.buttonTwoUrl = null;
+    }
+  }
+
+  if (embedTestButtons[2]) {
+    const b = embedTestButtons[2];
+    state.buttonThreeLabel = b.label || state.buttonThreeLabel;
+    state.buttonThreeEmoji = formatEmbedTestButtonEmojiValue(b.emoji);
+    if (b.url) {
+      state.buttonThreeAction = "link";
+      state.buttonThreeUrl = b.url;
+    } else {
+      const match = String(b.customId).match(/^embedtest_buy_open(?:_(.+))?$/);
+      state.buttonThreeAction = match?.[1] || "zakup";
+      state.buttonThreeUrl = null;
     }
   }
 
@@ -15108,6 +15156,11 @@ async function handleModalSubmit(interaction) {
     state.buttonTwoEmoji = interaction.fields
       .getTextInputValue("button_two_emoji")
       .trim();
+    try {
+      state.buttonThreeEmoji = interaction.fields
+        .getTextInputValue("button_three_emoji")
+        .trim();
+    } catch (_) {}
     embedTestStates.set(messageId, state);
 
     const updated = await updateEmbedTestMessage(state);
@@ -15336,6 +15389,22 @@ async function handleModalSubmit(interaction) {
         await interaction.reply({ content: "> `❌` × Podaj poprawny URL dla przycisku 2 (np. https://...).", flags: [MessageFlags.Ephemeral] });
         return;
       }
+    }
+
+    let buttonThreeLabel = "";
+    try {
+      buttonThreeLabel = interaction.fields.getTextInputValue("button_three_label").trim();
+    } catch (_) {}
+
+    // Przycisk 3 — jeśli brak nazwy, usuń przycisk
+    if (!buttonThreeLabel) {
+      state.buttonThreeLabel = "";
+      state.buttonThreeAction = "";
+      state.buttonThreeUrl = null;
+    } else {
+      state.buttonThreeLabel = buttonThreeLabel;
+      state.buttonThreeAction = "kalkulator";
+      state.buttonThreeUrl = null;
     }
 
     embedTestStates.set(messageId, state);
