@@ -17267,7 +17267,7 @@ async function handleModalSubmit(interaction) {
       const warningEmbed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
         .setDescription(
-          "> `ℹ️` × **Pamiętaj, aby tutaj nikomu nie wysyłać pieniędzy, jest to ticket pomocy a nie zakupu!**"
+          "> `ℹ️` × **Pamiętaj, aby nie wysyłać tutaj pieniędzy! To ticket pomocy, a nie zakupowy.**"
         );
       await channel.send({ embeds: [warningEmbed] }).catch(() => null);
     }
