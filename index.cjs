@@ -5916,12 +5916,29 @@ async function handleKalkulatorSubmit(interaction, typ) {
   }
 }
 
+function detectServerFromContext(interaction) {
+  const channelName = interaction.channel?.name?.toLowerCase() || "";
+  const msgContent = interaction.message?.content?.toUpperCase() || "";
+
+  if (channelName.includes("anarchia-lf") || channelName.includes("anarchialf") || msgContent.includes("ANARCHIA LF")) {
+    return { testValue: "anarchia_lf", calcValue: "ANARCHIA_LIFESTEAL" };
+  }
+  if (channelName.includes("anarchia-box") || channelName.includes("boxpvp") || msgContent.includes("BOXPVP")) {
+    return { testValue: "anarchia_boxpvp", calcValue: "ANARCHIA_BOXPVP" };
+  }
+  if (channelName.includes("minestar") || msgContent.includes("MINESTAR")) {
+    return { testValue: "minestar_lf", calcValue: "MINESTAR_LF" };
+  }
+  if (channelName.includes("donut") || msgContent.includes("DONUT")) {
+    return { testValue: "donut_smp", calcValue: "DONUT_SMP" };
+  }
+  return null;
+}
+
 async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
-  const isAnarchiaLfContext =
-    (interaction.channel?.name && (interaction.channel.name.toLowerCase().includes("anarchia-lf") || interaction.channel.name.toLowerCase().includes("anarchialf"))) ||
-    (interaction.message?.content && interaction.message.content.toUpperCase().includes("ANARCHIA LF"));
+  const detectedServer = detectServerFromContext(interaction);
 
   if (customId === "btn_sprawdz_zaproszenia") {
     await handleSprawdzZaproszeniaCommand(interaction);
@@ -6287,7 +6304,7 @@ async function handleButtonInteraction(interaction) {
 
     switch (action) {
       case "zakup":
-        await showZakupModal(interaction, isAnarchiaLfContext);
+        await showZakupModal(interaction, detectedServer);
         break;
       case "zakup_autorynku":
         await showAutoRynekZakupModal(interaction);
@@ -6317,10 +6334,10 @@ async function handleButtonInteraction(interaction) {
         await handleModyVideosAction(interaction);
         break;
       case "kalkulator":
-        await interaction.showModal(buildKalkulatorModal("otrzymam", isAnarchiaLfContext));
+        await interaction.showModal(buildKalkulatorModal("otrzymam", detectedServer));
         break;
       default:
-        await showZakupModal(interaction, isAnarchiaLfContext);
+        await showZakupModal(interaction, detectedServer);
         break;
     }
     return;
@@ -6536,13 +6553,13 @@ async function handleButtonInteraction(interaction) {
 
   // KALKULATOR: ile otrzymam?
   if (customId === "kalkulator_ile_otrzymam") {
-    await interaction.showModal(buildKalkulatorModal("otrzymam", isAnarchiaLfContext));
+    await interaction.showModal(buildKalkulatorModal("otrzymam", detectedServer));
     return;
   }
 
   // KALKULATOR: ile muszę dać?
   if (customId === "kalkulator_ile_musze_dac") {
-    await interaction.showModal(buildKalkulatorModal("muszedac", isAnarchiaLfContext));
+    await interaction.showModal(buildKalkulatorModal("muszedac", detectedServer));
     return;
   }
 
@@ -7784,6 +7801,23 @@ async function handlePanelKalkulatorCommand(interaction) {
   });
 }
 
+function sanitizeOptionsEmojis(options) {
+  if (!options) return [];
+  return options.map((opt) => {
+    let emoji = opt.emoji;
+    if (emoji && emoji.id) {
+      const hasEmoji = client.emojis.cache.has(emoji.id);
+      if (!hasEmoji) {
+        emoji = undefined;
+      }
+    }
+    return {
+      ...opt,
+      emoji,
+    };
+  });
+}
+
 function buildKalkulatorModal(typ, isAnarchiaLf = false) {
   const isOtrzymam = typ === "otrzymam";
   const modal = new ModalBuilder()
@@ -7803,10 +7837,12 @@ function buildKalkulatorModal(typ, isAnarchiaLf = false) {
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
-      KALKULATOR_SERVER_OPTIONS.map((opt) => ({
-        ...opt,
-        default: isAnarchiaLf && opt.value === "ANARCHIA_LIFESTEAL",
-      })),
+      sanitizeOptionsEmojis(
+        KALKULATOR_SERVER_OPTIONS.map((opt) => ({
+          ...opt,
+          default: isAnarchiaLf && opt.value === "ANARCHIA_LIFESTEAL",
+        }))
+      )
     );
 
   const paymentSelect = new StringSelectMenuBuilder()
@@ -7815,18 +7851,18 @@ function buildKalkulatorModal(typ, isAnarchiaLf = false) {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(KALKULATOR_PAYMENT_OPTIONS);
+    .addOptions(sanitizeOptionsEmojis(KALKULATOR_PAYMENT_OPTIONS));
 
   modal.addLabelComponents(
     new LabelBuilder()
-      .setLabel(isOtrzymam ? "Kwota (PLN)" : "Ilość waluty")
-      .setTextInputComponent(valueInput),
-    new LabelBuilder()
-      .setLabel("Wybierz serwer")
+      .setLabel("Na jakim serwerze?")
       .setStringSelectMenuComponent(serverSelect),
     new LabelBuilder()
-      .setLabel("Wybierz metodę płatności")
+      .setLabel("Forma płatności")
       .setStringSelectMenuComponent(paymentSelect),
+    new LabelBuilder()
+      .setLabel(isOtrzymam ? "Kwota (PLN)" : "Ilość waluty")
+      .setTextInputComponent(valueInput),
   );
 
   return modal;
@@ -12797,13 +12833,11 @@ async function sendTicketPanel(interaction) {
 }
 
 async function showTestPanelZakupModal(interaction) {
-  const isAnarchiaLfContext =
-    (interaction.channel?.name && (interaction.channel.name.toLowerCase().includes("anarchia-lf") || interaction.channel.name.toLowerCase().includes("anarchialf"))) ||
-    (interaction.message?.content && interaction.message.content.toUpperCase().includes("ANARCHIA LF"));
-  await showZakupModalV2(interaction, isAnarchiaLfContext);
+  const detectedServer = detectServerFromContext(interaction);
+  await showZakupModalV2(interaction, detectedServer);
 }
 
-async function showZakupModalV2(interaction, isAnarchiaLf = false) {
+async function showZakupModalV2(interaction, detectedServer = null) {
   const itemInput = new TextInputBuilder()
     .setCustomId("co_kupic")
     .setStyle(TextInputStyle.Short)
@@ -12818,10 +12852,12 @@ async function showZakupModalV2(interaction, isAnarchiaLf = false) {
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
-      TEST_PANEL_SERVER_OPTIONS.map((opt) => ({
-        ...opt,
-        default: isAnarchiaLf && opt.value === "anarchia_lf",
-      })),
+      sanitizeOptionsEmojis(
+        TEST_PANEL_SERVER_OPTIONS.map((opt) => ({
+          ...opt,
+          default: detectedServer && opt.value === detectedServer.testValue,
+        }))
+      )
     );
 
   const paymentSelect = new StringSelectMenuBuilder()
@@ -12830,7 +12866,7 @@ async function showZakupModalV2(interaction, isAnarchiaLf = false) {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(TEST_PANEL_PAYMENT_OPTIONS);
+    .addOptions(sanitizeOptionsEmojis(TEST_PANEL_PAYMENT_OPTIONS));
 
   const amountInput = new TextInputBuilder()
     .setCustomId("kwota")
@@ -13830,10 +13866,8 @@ async function handleSelectMenu(interaction) {
   if (interaction.customId === "kalkulator_typ") {
     const selectedType = interaction.values[0];
     try {
-      const isAnarchiaLfContext =
-        (interaction.channel?.name && (interaction.channel.name.toLowerCase().includes("anarchia-lf") || interaction.channel.name.toLowerCase().includes("anarchialf"))) ||
-        (interaction.message?.content && interaction.message.content.toUpperCase().includes("ANARCHIA LF"));
-      await interaction.showModal(buildKalkulatorModal(selectedType, isAnarchiaLfContext));
+      const detectedServer = detectServerFromContext(interaction);
+      await interaction.showModal(buildKalkulatorModal(selectedType, detectedServer));
     } catch (error) {
       console.error("kalkulator_typ showModal error:", error);
       if (!interaction.replied && !interaction.deferred) {
@@ -13966,8 +14000,8 @@ async function handleSelectMenu(interaction) {
   }
 }
 
-async function showZakupModal(interaction, isAnarchiaLf = false) {
-  await showZakupModalV2(interaction, isAnarchiaLf);
+async function showZakupModal(interaction, detectedServer = null) {
+  await showZakupModalV2(interaction, detectedServer);
 }
 
 async function showModyZakupModal(interaction) {
@@ -13984,7 +14018,7 @@ async function showModyZakupModal(interaction) {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(SIMPLE_PAYMENT_OPTIONS);
+    .addOptions(sanitizeOptionsEmojis(SIMPLE_PAYMENT_OPTIONS));
 
   const modsCountInput = new TextInputBuilder()
     .setCustomId("mods_count")
@@ -14018,7 +14052,7 @@ async function showAutoRynekZakupModal(interaction) {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(AUTORYNEK_PAYMENT_OPTIONS);
+    .addOptions(sanitizeOptionsEmojis(AUTORYNEK_PAYMENT_OPTIONS));
 
   const modal = new ModalBuilder()
     .setCustomId("modal_autorynek_zakup")
