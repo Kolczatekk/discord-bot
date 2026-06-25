@@ -12787,7 +12787,7 @@ function buildOpinionModal() {
 function buildOpinionButton() {
   return new ButtonBuilder()
     .setCustomId("btn_wystaw_opinie")
-    .setLabel("Wystaw opinię")
+    .setLabel("︲Wystaw opinię")
     .setEmoji(OPINION_BTN_STAR)
     .setStyle(ButtonStyle.Secondary);
 }
@@ -12826,7 +12826,7 @@ function buildZaproszeniaInstructionPayload() {
 
   const btn = new ButtonBuilder()
     .setCustomId("btn_sprawdz_zaproszenia")
-    .setLabel("Sprawdź zaproszenia")
+    .setLabel("︲Sprawdź zaproszenia")
     .setEmoji("📩")
     .setStyle(ButtonStyle.Secondary);
 
