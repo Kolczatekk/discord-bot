@@ -5917,21 +5917,48 @@ async function handleKalkulatorSubmit(interaction, typ) {
 }
 
 function detectServerFromContext(interaction) {
-  const channelName = interaction.channel?.name?.toLowerCase() || "";
-  const msgContent = interaction.message?.content?.toUpperCase() || "";
+  let textToSearch = "";
 
-  if (channelName.includes("anarchia-lf") || channelName.includes("anarchialf") || msgContent.includes("ANARCHIA LF")) {
-    return { testValue: "anarchia_lf", calcValue: "ANARCHIA_LIFESTEAL" };
+  // 1. Channel name
+  if (interaction.channel?.name) {
+    textToSearch += " " + interaction.channel.name;
   }
-  if (channelName.includes("anarchia-box") || channelName.includes("boxpvp") || msgContent.includes("BOXPVP")) {
-    return { testValue: "anarchia_boxpvp", calcValue: "ANARCHIA_BOXPVP" };
+
+  // 2. Message content
+  if (interaction.message?.content) {
+    textToSearch += " " + interaction.message.content;
   }
-  if (channelName.includes("minestar") || msgContent.includes("MINESTAR")) {
+
+  // 3. Message embeds (title, description, fields)
+  if (interaction.message?.embeds) {
+    for (const embed of interaction.message.embeds) {
+      if (embed.title) textToSearch += " " + embed.title;
+      if (embed.description) textToSearch += " " + embed.description;
+      if (embed.author?.name) textToSearch += " " + embed.author.name;
+      if (Array.isArray(embed.fields)) {
+        for (const field of embed.fields) {
+          if (field.name) textToSearch += " " + field.name;
+          if (field.value) textToSearch += " " + field.value;
+        }
+      }
+    }
+  }
+
+  const normalized = textToSearch.toLowerCase();
+
+  if (normalized.includes("minestar")) {
     return { testValue: "minestar_lf", calcValue: "MINESTAR_LF" };
   }
-  if (channelName.includes("donut") || msgContent.includes("DONUT")) {
+  if (normalized.includes("donut")) {
     return { testValue: "donut_smp", calcValue: "DONUT_SMP" };
   }
+  if (normalized.includes("boxpvp") || normalized.includes("anarchia-box")) {
+    return { testValue: "anarchia_boxpvp", calcValue: "ANARCHIA_BOXPVP" };
+  }
+  if (normalized.includes("anarchia-lf") || normalized.includes("anarchialf") || normalized.includes("anarchia lf")) {
+    return { testValue: "anarchia_lf", calcValue: "ANARCHIA_LIFESTEAL" };
+  }
+
   return null;
 }
 
