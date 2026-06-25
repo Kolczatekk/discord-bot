@@ -5916,12 +5916,22 @@ async function handleKalkulatorSubmit(interaction, typ) {
   }
 }
 
-function detectServerFromContext(interaction) {
+async function detectServerFromContext(interaction) {
   let textToSearch = "";
 
-  // 1. Channel name
-  if (interaction.channel?.name) {
-    textToSearch += " " + interaction.channel.name;
+  // 1. Channel name (try cache, then fetch if missing)
+  let channel = interaction.channel;
+  if (!channel || !channel.name) {
+    if (interaction.guild) {
+      channel = interaction.guild.channels.cache.get(interaction.channelId);
+      if (!channel) {
+        channel = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
+      }
+    }
+  }
+
+  if (channel && channel.name) {
+    textToSearch += " " + channel.name;
   }
 
   // 2. Message content
@@ -5965,7 +5975,7 @@ function detectServerFromContext(interaction) {
 async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
-  const detectedServer = detectServerFromContext(interaction);
+  const detectedServer = await detectServerFromContext(interaction);
 
   if (customId === "btn_sprawdz_zaproszenia") {
     await handleSprawdzZaproszeniaCommand(interaction);
@@ -12860,7 +12870,7 @@ async function sendTicketPanel(interaction) {
 }
 
 async function showTestPanelZakupModal(interaction) {
-  const detectedServer = detectServerFromContext(interaction);
+  const detectedServer = await detectServerFromContext(interaction);
   await showZakupModalV2(interaction, detectedServer);
 }
 
@@ -13893,7 +13903,7 @@ async function handleSelectMenu(interaction) {
   if (interaction.customId === "kalkulator_typ") {
     const selectedType = interaction.values[0];
     try {
-      const detectedServer = detectServerFromContext(interaction);
+      const detectedServer = await detectServerFromContext(interaction);
       await interaction.showModal(buildKalkulatorModal(selectedType, detectedServer));
     } catch (error) {
       console.error("kalkulator_typ showModal error:", error);
