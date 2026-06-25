@@ -5919,6 +5919,9 @@ async function handleKalkulatorSubmit(interaction, typ) {
 async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
+  const isAnarchiaLfContext =
+    (interaction.channel?.name && (interaction.channel.name.toLowerCase().includes("anarchia-lf") || interaction.channel.name.toLowerCase().includes("anarchialf"))) ||
+    (interaction.message?.content && interaction.message.content.toUpperCase().includes("ANARCHIA LF"));
 
   if (customId === "btn_sprawdz_zaproszenia") {
     await handleSprawdzZaproszeniaCommand(interaction);
@@ -6284,7 +6287,7 @@ async function handleButtonInteraction(interaction) {
 
     switch (action) {
       case "zakup":
-        await showZakupModal(interaction);
+        await showZakupModal(interaction, isAnarchiaLfContext);
         break;
       case "zakup_autorynku":
         await showAutoRynekZakupModal(interaction);
@@ -6314,10 +6317,10 @@ async function handleButtonInteraction(interaction) {
         await handleModyVideosAction(interaction);
         break;
       case "kalkulator":
-        await interaction.showModal(buildKalkulatorModal("otrzymam"));
+        await interaction.showModal(buildKalkulatorModal("otrzymam", isAnarchiaLfContext));
         break;
       default:
-        await showZakupModal(interaction);
+        await showZakupModal(interaction, isAnarchiaLfContext);
         break;
     }
     return;
@@ -6533,13 +6536,13 @@ async function handleButtonInteraction(interaction) {
 
   // KALKULATOR: ile otrzymam?
   if (customId === "kalkulator_ile_otrzymam") {
-    await interaction.showModal(buildKalkulatorModal("otrzymam"));
+    await interaction.showModal(buildKalkulatorModal("otrzymam", isAnarchiaLfContext));
     return;
   }
 
   // KALKULATOR: ile muszę dać?
   if (customId === "kalkulator_ile_musze_dac") {
-    await interaction.showModal(buildKalkulatorModal("muszedac"));
+    await interaction.showModal(buildKalkulatorModal("muszedac", isAnarchiaLfContext));
     return;
   }
 
@@ -7781,7 +7784,7 @@ async function handlePanelKalkulatorCommand(interaction) {
   });
 }
 
-function buildKalkulatorModal(typ) {
+function buildKalkulatorModal(typ, isAnarchiaLf = false) {
   const isOtrzymam = typ === "otrzymam";
   const modal = new ModalBuilder()
     .setCustomId(isOtrzymam ? "modal_ile_otrzymam" : "modal_ile_musze_dac")
@@ -7799,7 +7802,12 @@ function buildKalkulatorModal(typ) {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(KALKULATOR_SERVER_OPTIONS);
+    .addOptions(
+      KALKULATOR_SERVER_OPTIONS.map((opt) => ({
+        ...opt,
+        default: isAnarchiaLf && opt.value === "ANARCHIA_LIFESTEAL",
+      })),
+    );
 
   const paymentSelect = new StringSelectMenuBuilder()
     .setCustomId("kalkulator_payment")
@@ -7822,6 +7830,31 @@ function buildKalkulatorModal(typ) {
   );
 
   return modal;
+}
+
+function getKalkulatorRateDescription(rate, serverRaw) {
+  const server = (serverRaw || "").toString().trim().toUpperCase();
+  let rateStr = "";
+  if (rate === 8500) rateStr = "8,5k";
+  else if (rate === 8200) rateStr = "8,2k";
+  else if (rate === 5500000) rateStr = "5,5M";
+  else if (rate >= 1000000) {
+    const val = rate / 1000000;
+    rateStr = val.toFixed(1).replace(".", ",").replace(",0", "") + "M";
+  } else if (rate >= 1000) {
+    const val = rate / 1000;
+    rateStr = val.toFixed(1).replace(".", ",").replace(",0", "") + "k";
+  } else {
+    rateStr = rate.toString();
+  }
+
+  let desc = `Obliczone z cennika **${rateStr}** za **1zł**`;
+  if (server === "ANARCHIA_LIFESTEAL" && rate === 8500) {
+    desc += " (zakup powyżej **50**zł)";
+  } else if (server === "MINESTAR_LF" && rate === 400) {
+    desc += " (zakup powyżej **50**zł)";
+  }
+  return desc;
 }
 
 function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
@@ -7848,7 +7881,7 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
     const walutaShort = formatShortWaluta(calculatedWaluta);
 
     return {
-      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta} $)**`,
+      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta} $)**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
     };
   }
 
@@ -7882,7 +7915,7 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
   const walutaShort = formatShortWaluta(walutaInt);
 
   return {
-    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**`,
+    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
   };
 }
 
@@ -9150,6 +9183,12 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
     description: "Otwiera link w przeglądarce",
     emoji: "🔗",
   },
+  {
+    value: "kalkulator",
+    label: "Kalkulator",
+    description: "Otwiera kalkulator waluty",
+    emoji: "🧮",
+  },
 ];
 
 const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
@@ -9269,6 +9308,14 @@ function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
     normalized === "rules"
   ) {
     return getEmbedTestPrimaryButtonActionDef("regulamin");
+  }
+
+  if (
+    normalized === "kalkulator" ||
+    normalized === "calc" ||
+    normalized === "oblicz"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("kalkulator");
   }
 
   return null;
@@ -12750,10 +12797,13 @@ async function sendTicketPanel(interaction) {
 }
 
 async function showTestPanelZakupModal(interaction) {
-  await showZakupModalV2(interaction);
+  const isAnarchiaLfContext =
+    (interaction.channel?.name && (interaction.channel.name.toLowerCase().includes("anarchia-lf") || interaction.channel.name.toLowerCase().includes("anarchialf"))) ||
+    (interaction.message?.content && interaction.message.content.toUpperCase().includes("ANARCHIA LF"));
+  await showZakupModalV2(interaction, isAnarchiaLfContext);
 }
 
-async function showZakupModalV2(interaction) {
+async function showZakupModalV2(interaction, isAnarchiaLf = false) {
   const itemInput = new TextInputBuilder()
     .setCustomId("co_kupic")
     .setStyle(TextInputStyle.Short)
@@ -12767,7 +12817,12 @@ async function showZakupModalV2(interaction) {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(TEST_PANEL_SERVER_OPTIONS);
+    .addOptions(
+      TEST_PANEL_SERVER_OPTIONS.map((opt) => ({
+        ...opt,
+        default: isAnarchiaLf && opt.value === "anarchia_lf",
+      })),
+    );
 
   const paymentSelect = new StringSelectMenuBuilder()
     .setCustomId("zakup_payment")
@@ -13775,7 +13830,10 @@ async function handleSelectMenu(interaction) {
   if (interaction.customId === "kalkulator_typ") {
     const selectedType = interaction.values[0];
     try {
-      await interaction.showModal(buildKalkulatorModal(selectedType));
+      const isAnarchiaLfContext =
+        (interaction.channel?.name && (interaction.channel.name.toLowerCase().includes("anarchia-lf") || interaction.channel.name.toLowerCase().includes("anarchialf"))) ||
+        (interaction.message?.content && interaction.message.content.toUpperCase().includes("ANARCHIA LF"));
+      await interaction.showModal(buildKalkulatorModal(selectedType, isAnarchiaLfContext));
     } catch (error) {
       console.error("kalkulator_typ showModal error:", error);
       if (!interaction.replied && !interaction.deferred) {
@@ -13908,8 +13966,8 @@ async function handleSelectMenu(interaction) {
   }
 }
 
-async function showZakupModal(interaction) {
-  await showZakupModalV2(interaction);
+async function showZakupModal(interaction, isAnarchiaLf = false) {
+  await showZakupModalV2(interaction, isAnarchiaLf);
 }
 
 async function showModyZakupModal(interaction) {
@@ -15403,8 +15461,16 @@ async function handleModalSubmit(interaction) {
       state.buttonThreeUrl = null;
     } else {
       state.buttonThreeLabel = buttonThreeLabel;
-      state.buttonThreeAction = "kalkulator";
-      state.buttonThreeUrl = null;
+      if (state.buttonOneAction === "kalkulator" || state.buttonTwoAction === "kalkulator") {
+        state.buttonThreeAction = "link";
+        const guild = interaction.guild || client.guilds.cache.get(state.guildId);
+        const paymentsChannel = guild ? findEmbedTestPaymentsChannel(guild) : null;
+        const defaultPaymentsUrl = guild ? getDiscordMessageUrl(guild.id, paymentsChannel?.id || state.channelId) : "";
+        state.buttonThreeUrl = state.buttonThreeUrl || defaultPaymentsUrl;
+      } else {
+        state.buttonThreeAction = "kalkulator";
+        state.buttonThreeUrl = null;
+      }
     }
 
     embedTestStates.set(messageId, state);
