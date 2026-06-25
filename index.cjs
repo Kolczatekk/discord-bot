@@ -3414,7 +3414,7 @@ const commands = [
         .setRequired(false)
         .addChoices(
           { name: "Anarchia LF - Normalna", value: "anarchia_lf_normal" },
-          { name: "Anarchia LF - Hurtowa (>50zł)", value: "anarchia_lf_bulk" },
+          { name: "Anarchia LF - Hurtowa (>=50zł)", value: "anarchia_lf_bulk" },
           { name: "Anarchia LF - Próg (zł)", value: "anarchia_lf_threshold" },
           { name: "Anarchia BoxPvP", value: "anarchia_boxpvp" },
           { name: "MineStar LF - Normalna", value: "minestar_lf_normal" },
@@ -4454,7 +4454,7 @@ let MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
 let DONUT_SMP_RATE = 5_500_000;
 
 function getAnarchiaLifestealRateForPln(pln) {
-  return Number(pln) > ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
+  return Number(pln) >= ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
     ? ANARCHIA_LIFESTEAL_BULK_RATE
     : ANARCHIA_LIFESTEAL_RATE;
 }
@@ -13665,7 +13665,7 @@ async function handleCennikCommand(interaction) {
         `> `,
         `> **Anarchia LF:**`,
         `>  • Normalna: \`${formatRateShort(ANARCHIA_LIFESTEAL_RATE)}$ → 1 zł\``,
-        `>  • Hurtowa (>${ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN}zł): \`${formatRateShort(ANARCHIA_LIFESTEAL_BULK_RATE)}$ → 1 zł\``,
+        `>  • Hurtowa (≥${ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN}zł): \`${formatRateShort(ANARCHIA_LIFESTEAL_BULK_RATE)}$ → 1 zł\``,
         `>  • Próg: \`${ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN} zł\``,
         `> `,
         `> **Anarchia BoxPvP:**`,
