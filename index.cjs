@@ -12699,6 +12699,8 @@ function isModernPurchaseTicketChannelName(name) {
 
 function getModalTextInputValueSafe(interaction, customId) {
   try {
+    const field = interaction.fields.fields.find(f => f.customId.startsWith(customId));
+    if (field) return field.value;
     return interaction.fields.getTextInputValue(customId);
   } catch {
     return null;
@@ -12707,6 +12709,8 @@ function getModalTextInputValueSafe(interaction, customId) {
 
 function getModalStringSelectValueSafe(interaction, customId) {
   try {
+    const field = interaction.fields.fields.find(f => f.customId.startsWith(customId));
+    if (field && field.values) return field.values[0] || null;
     return interaction.fields.getStringSelectValues(customId)?.[0] || null;
   } catch {
     return null;
