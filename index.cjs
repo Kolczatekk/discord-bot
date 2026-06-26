@@ -12942,12 +12942,6 @@ async function showTestPanelZakupModal(interaction) {
 
 async function showZakupModalV2(interaction, detectedServer = null) {
   const timestamp = Date.now();
-  const itemInput = new TextInputBuilder()
-    .setCustomId(`co_kupic_${timestamp}`)
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder("Przykład: Kasa")
-    .setRequired(true)
-    .setMaxLength(120);
 
   const serverSelect = new StringSelectMenuBuilder()
     .setCustomId(`zakup_server_${timestamp}`)
@@ -12982,9 +12976,6 @@ async function showZakupModalV2(interaction, detectedServer = null) {
     .setCustomId(`modal_zakup_${timestamp}`)
     .setTitle("Zakup itemów")
     .addLabelComponents(
-      new LabelBuilder()
-        .setLabel("Co chcesz kupić?")
-        .setTextInputComponent(itemInput),
       new LabelBuilder()
         .setLabel("Na jakim serwerze?")
         .setStringSelectMenuComponent(serverSelect),
