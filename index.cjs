@@ -2213,6 +2213,7 @@ function buildFreeKasaInstructionPayload(guildId = null) {
 
   return {
     components: [container],
+    flags: MessageFlags.IsComponentsV2,
   };
 }
 
