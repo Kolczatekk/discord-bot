@@ -17216,6 +17216,7 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
         `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
