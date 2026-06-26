@@ -17264,7 +17264,7 @@ async function handleModalSubmit(interaction) {
 
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
-      content: `@everyone <@${user.id}>`,
+      content: `@everyone`,
       embeds: [embed],
       components: [buttonRow],
     });
