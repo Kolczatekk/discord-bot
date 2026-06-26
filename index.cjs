@@ -12959,7 +12959,7 @@ async function showZakupModalV2(interaction, detectedServer = null) {
       sanitizeOptionsEmojis(
         TEST_PANEL_SERVER_OPTIONS.map((opt) => ({
           ...opt,
-          default: detectedServer && opt.value === detectedServer.testValue,
+          default: !!(detectedServer && opt.value === detectedServer.testValue),
         }))
       )
     );
@@ -12982,6 +12982,9 @@ async function showZakupModalV2(interaction, detectedServer = null) {
     .setCustomId(`modal_zakup_${timestamp}`)
     .setTitle("Zakup itemów")
     .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Co chcesz kupić?")
+        .setTextInputComponent(itemInput),
       new LabelBuilder()
         .setLabel("Na jakim serwerze?")
         .setStringSelectMenuComponent(serverSelect),
