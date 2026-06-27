@@ -5983,9 +5983,10 @@ async function detectServerFromContext(interaction) {
   if (!channel || !channel.name) {
     if (interaction.guild) {
       channel = interaction.guild.channels.cache.get(interaction.channelId);
-      if (!channel) {
-        channel = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
-      }
+      // Removed fetch to prevent 3-second modal timeout
+      // if (!channel) {
+      //   channel = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
+      // }
     }
   }
 
