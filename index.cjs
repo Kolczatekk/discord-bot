@@ -7941,7 +7941,7 @@ function buildKalkulatorModal(typ, detectedServer = null) {
       sanitizeOptionsEmojis(
         KALKULATOR_SERVER_OPTIONS.map((opt) => ({
           ...opt,
-          default: detectedServer && opt.value === detectedServer.calcValue,
+          default: !!(detectedServer && opt.value === detectedServer.calcValue),
         }))
       )
     );
