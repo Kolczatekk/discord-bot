@@ -13966,18 +13966,18 @@ async function handleSprawdzBonusyButton(interaction) {
       }
     }
 
-    let line1 = `<a:arrowwhite:1491476759290449984> × Aktualnie **nie posiadasz** żadnej rangi.`;
+    let line1 = `<a:arrowwhite:1491476759290449984> × Aktualnie __nie posiadasz__ żadnej __rangi__. `;
     if (ownedRoles.length > 0) {
-      line1 = `<a:arrowwhite:1491476759290449984> × Posiadasz rangę ${ownedRoles.join(", ")}.`;
+      line1 = `<a:arrowwhite:1491476759290449984> × Posiadasz __rangę__ ${ownedRoles.join(", ")}.`;
     }
 
-    const line2 = `<a:arrowwhite:1491476759290449984> × Łącznie wydałeś **${spent.toFixed(0)} PLN** na naszym sklepie.`;
+    const line2 = `<a:arrowwhite:1491476759290449984> × Łącznie __wydałeś__ **${spent.toFixed(0)} PLN** na naszym sklepie.`;
 
     let line3 = "";
     if (nextTier) {
-      line3 = `<a:arrowwhite:1491476759290449984> × Do **następnej rangi** (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
+      line3 = `<a:arrowwhite:1491476759290449984> × Do __następnej rangi__ (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
     } else {
-      line3 = `<a:arrowwhite:1491476759290449984> × Osiągnąłeś już **najwyższą rangę** bonusową!`;
+      line3 = `<a:arrowwhite:1491476759290449984> × Osiągnąłeś już __najwyższą rangę__ bonusową!`;
     }
 
     const descContent = [
