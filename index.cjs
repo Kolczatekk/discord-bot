@@ -4599,14 +4599,23 @@ async function inferTicketOwnerFromChannel(channel) {
   const overwrites = channel.permissionOverwrites?.cache;
   if (!overwrites?.size) return null;
 
+  const SELLER_ROLE_ID = "1350786945944391733";
+  const HELPER_ROLE_ID = "1519069239254974475";
+
   const candidates = [];
   for (const [, ow] of overwrites) {
     if (ow.type !== OverwriteType.Member) continue;
     if (!ow.allow.has(PermissionsBitField.Flags.ViewChannel)) continue;
     if (ow.id === guild.id) continue;
     if (ow.id === client.user?.id) continue;
+    
     const member = await guild.members.fetch(ow.id).catch(() => null);
     if (!member || member.user.bot) continue;
+    
+    // Skip sellers, helpers, and owner to prevent identifying them as ticket owner
+    if (member.roles.cache.has(SELLER_ROLE_ID) || member.roles.cache.has(HELPER_ROLE_ID)) continue;
+    if (ow.id === guild.ownerId) continue;
+
     candidates.push(ow.id);
   }
 
@@ -4626,6 +4635,7 @@ async function resolveTicketOwnerId(channel, options = {}) {
   const ticketData = ticketOwners.get(channel.id);
   let ownerId =
     ticketData?.userId ||
+    ticketData?.user_id ||
     ticketData?.ownerId ||
     rewardTicketClaims.get(channel.id)?.userId ||
     null;
@@ -4636,10 +4646,11 @@ async function resolveTicketOwnerId(channel, options = {}) {
 
   if (ownerId && persist) {
     const existing = ticketOwners.get(channel.id) || {};
-    if (!existing.userId) {
+    if (!existing.userId || !existing.user_id) {
       ticketOwners.set(channel.id, {
         ...existing,
         userId: ownerId,
+        user_id: ownerId,
         claimedBy: existing.claimedBy ?? null,
         ticketMessageId: existing.ticketMessageId ?? null,
         locked: !!existing.locked,
