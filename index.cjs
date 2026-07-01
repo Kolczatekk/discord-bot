@@ -13648,9 +13648,7 @@ async function closeTicketAnonymously(channel, guild, executorId) {
       "✅ New Shop × LEGIT CHECK\n" +
       "```\n" +
       "- `📝` **× Jak napisać:**\n" +
-      `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]\`\n\n` +
-      "- `📋` **× Przykład:**\n" +
-      `> **+rep <@1305200545979437129> ZAKUP 50 PLN ANARCHIA LIFESTEAL**\n\n` +
+      `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] [SERWER]\`\n\n` +
       `*Aktualna liczba legitcheck: **${legitRepCount}***`
     )
     .setImage(imageUrl);
@@ -18240,9 +18238,7 @@ client.on(Events.MessageCreate, async (message) => {
           "✅ New Shop × LEGIT CHECK\n" +
           "```\n" +
           "- `📝` **× Jak napisać:**\n" +
-          `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]\`\n\n` +
-          "- `📋` **× Przykład:**\n" +
-          `> **+rep <@1305200545979437129> ZAKUP 50 PLN ANARCHIA LIFESTEAL**\n\n` +
+          `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] [SERWER]\`\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
         .setImage(imageUrl);
