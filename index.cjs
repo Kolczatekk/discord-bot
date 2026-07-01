@@ -3475,8 +3475,8 @@ const commands = [
     )
     .addStringOption((option) =>
       option
-        .setName("co")
-        .setDescription("Co zostało kupione / sprzedane / odebrane")
+        .setName("cena")
+        .setDescription("Kwota w PLN (np. 50)")
         .setRequired(true)
     )
     .addStringOption((option) =>
@@ -3491,6 +3491,20 @@ const commands = [
           { name: "Donut SMP", value: "Donut SMP" }
         )
     )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("wydane")
+    .setDescription("Sprawdź ile wydałeś w naszym sklepie")
+    .addUserOption((option) =>
+      option
+        .setName("gracz")
+        .setDescription("Wybierz gracza, którego wydaną kwotę chcesz sprawdzić (opcjonalnie)")
+        .setRequired(false)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("topwydane")
+    .setDescription("Sprawdź listę 10 graczy, którzy wydali najwięcej w sklepie")
     .toJSON(),
   new SlashCommandBuilder()
     .setName("anonim")
@@ -6037,6 +6051,30 @@ async function handleButtonInteraction(interaction) {
   const botName = client.user?.username || "NEWSHOP";
   const detectedServer = await detectServerFromContext(interaction);
 
+  if (customId === "ticket_anon_close") {
+    const ticketData = pendingTicketClose.get(interaction.channelId);
+    if (!ticketData || !ticketData.awaitingRep) {
+      await interaction.reply({
+        content: "> `❌` Brak oczekującego legit-repa w tym kanale! Najpierw sprzedawca musi użyć komendy **/ticket-zakoncz**.",
+        flags: [MessageFlags.Ephemeral]
+      });
+      return;
+    }
+
+    await interaction.deferUpdate();
+
+    try {
+      await closeTicketAnonymously(interaction.channel, interaction.guild, interaction.user.id);
+    } catch (err) {
+      console.error("Błąd przy zamykaniu ticketu przez przycisk anonimowo:", err);
+      await interaction.followUp({
+        content: `> \`❌\` Wystąpił błąd: ${err.message}`,
+        flags: [MessageFlags.Ephemeral]
+      }).catch(() => null);
+    }
+    return;
+  }
+
   if (customId === "btn_sprawdz_zaproszenia") {
     await handleSprawdzZaproszeniaCommand(interaction);
     return;
@@ -7040,6 +7078,12 @@ async function handleSlashCommand(interaction) {
       break;
     case "anonim":
       await handleAnonimCommand(interaction);
+      break;
+    case "wydane":
+      await handleWydaneCommand(interaction);
+      break;
+    case "topwydane":
+      await handleTopWydaneCommand(interaction);
       break;
     case "zamknij-z-powodem":
       await handleZamknijZPowodemCommand(interaction);
@@ -13190,9 +13234,11 @@ async function handleTicketZakonczCommand(interaction) {
 
   // Pobierz parametry
   const typ = interaction.options.getString("typ");
-  const co =
-    interaction.options.getString("co") ||
-    interaction.options.getString("ile");
+  const cenaRaw = interaction.options.getString("cena") || "";
+  let formattedCena = cenaRaw.trim();
+  if (formattedCena && !formattedCena.toUpperCase().endsWith("PLN") && /^\d+$/.test(formattedCena)) {
+    formattedCena += " PLN";
+  }
   const serwer = (interaction.options.getString("serwer") || "").trim();
 
   const ticketOwnerId = await resolveTicketOwnerId(channel);
@@ -13208,17 +13254,15 @@ async function handleTicketZakonczCommand(interaction) {
   const legitRepChannelId = "1449840030947217529";
   const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
   let thankLine = "Dziękujemy za zakup w naszym sklepie";
-  let repVerb = "sprzedał";
   const typLower = typ.toLowerCase();
   if (typLower === "sprzedaż") {
     thankLine = "Dziękujemy za sprzedaż w naszym sklepie";
-    repVerb = "kupił";
   } else if (typLower === "wręczył nagrodę") {
     thankLine = "Nagroda została nadana";
-    repVerb = "wręczył nagrodę";
   }
 
-  const repMessage = `+rep @${interaction.user.username} ${repVerb} ${co}${serwer ? ` ${serwer}` : ""}`;
+  const verb = typ.toUpperCase();
+  const repMessage = `+rep @${interaction.user.username} ${verb} ${formattedCena}${serwer ? ` ${serwer}` : ""}`;
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
@@ -13235,6 +13279,13 @@ async function handleTicketZakonczCommand(interaction) {
   const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
   const gifAttachment = new AttachmentBuilder(gifPath, { name: "standard_5.gif" });
 
+  const anonBtn = new ButtonBuilder()
+    .setCustomId("ticket_anon_close")
+    .setLabel("︲Anonimowo")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji("1521899996914647321");
+  const row = new ActionRowBuilder().addComponents(anonBtn);
+
   // Ephemeral potwierdzenie dla sprzedawcy
   await interaction.reply({
     content: "`✅` × Poprawnie użyto komendy ticket zakończ.",
@@ -13246,7 +13297,8 @@ async function handleTicketZakonczCommand(interaction) {
     content: `<@${ticketOwnerId}>`,
     allowedMentions: { users: [ticketOwnerId] },
     embeds: [embed],
-    files: [gifAttachment]
+    files: [gifAttachment],
+    components: [row]
   });
 
   await interaction.channel.send({
@@ -13286,7 +13338,7 @@ async function handleTicketZakonczCommand(interaction) {
     commandUserId: interaction.user.id, // osoba która użyła komendy
     commandUsername: interaction.user.username, // nick osoby
     typ: typ,
-    co: co,
+    co: formattedCena,
     serwer: serwer,
     awaitingRep: true,
     legitRepChannelId,
@@ -13352,96 +13404,25 @@ async function handleAnonimCommand(interaction) {
   const ticketData = pendingTicketClose.get(channel.id);
   if (!ticketData || !ticketData.awaitingRep) {
     await interaction.reply({
-      content: "> `❌` Brak oczekującego legit-repa! Najpierw użyj komendy **/ticket-zakoncz** z poprawnymi danymi.",
+      content: "> `❌` Brak oczekującego legit-repa! Najpierw użyj komendy **/ticket-zakoncz**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
-  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  await interaction.reply({
+    content: "> `⏳` Przetwarzanie anonimowego legit checka i zamykanie ticketu...",
+    flags: [MessageFlags.Ephemeral],
+  });
 
   try {
-    const repChannel = await client.channels.fetch(ticketData.legitRepChannelId).catch(() => null);
-    if (!repChannel) {
-      return interaction.editReply({ content: "> `❌` Nie można znaleźć kanału w bazie (legit reps)." });
-    }
-
-    let verb = "wystawił/a";
-    if (ticketData.typ === "zakup") verb = "sprzedał";
-    else if (ticketData.typ === "sprzedaz" || ticketData.typ === "sprzedaż") verb = "kupił";
-    else if (ticketData.typ === "wreczyl nagrode" || ticketData.typ === "wręczył nagrodę") verb = "wręczył nagrodę";
-
-    let simulatedRepText = `+rep <@${ticketData.commandUserId}> ${verb} ${ticketData.co}`;
-    if (ticketData.serwer) {
-      simulatedRepText += ` ${ticketData.serwer}`;
-    }
-    simulatedRepText += `\n-# (Wystawienie legit repa anonimowe)`;
-
-    await repChannel.send({ content: simulatedRepText });
-
-    legitRepCount++;
-    console.log(`[anonim] +rep wystawione przez bota, licznik: ${legitRepCount}`);
-
-    scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
-    scheduleSavePersistentState();
-
-    const prevId = repLastInfoMessage.get(repChannel.id);
-    if (prevId) {
-      try {
-        const prevMsg = await repChannel.messages.fetch(prevId).catch(() => null);
-        if (prevMsg && prevMsg.deletable) {
-          await prevMsg.delete().catch(() => null);
-        }
-      } catch (delErr) { }
-    }
-
-    const userID = "1305200545979437129";
-    let attachment = null;
-    let imageUrl = "https://share.creavite.co/693f180207e523c90b19fbf9.gif";
-    try {
-      const gifPath = path.join(__dirname, "attached_assets", "standard_1765794552774_1766946611654.gif");
-      attachment = new AttachmentBuilder(gifPath, { name: "legit.gif" });
-      imageUrl = "attachment://legit.gif";
-    } catch (err) {
-      attachment = null;
-    }
-
-    const infoEmbed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-        "✅ New Shop × LEGIT CHECK\n" +
-        "```\n" +
-        "- `📝` **× Jak napisać:**\n" +
-        "> `+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]`\n\n" +
-        "- `📋` **× Przykład:**\n" +
-        "> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n" +
-        `*Aktualna liczba legitcheck: **${legitRepCount}***`
-      )
-      .setImage(imageUrl);
-
-    try {
-      const sendOptions = {
-        embeds: [infoEmbed],
-        allowedMentions: { users: [userID] },
-      };
-      if (attachment) sendOptions.files = [attachment];
-      const newInfoMsg = await repChannel.send(sendOptions);
-      repLastInfoMessage.set(repChannel.id, newInfoMsg.id);
-    } catch (err) { }
-
-    const ticketMeta = ticketOwners.get(channel.id) || null;
-    await archiveTicketOnClose(channel, interaction.user.id, ticketMeta, {
-      closeMethod: "Automatyczne zamknięcie po /anonim",
-    }).catch(() => null);
-    await channel.delete('Ticket zamknięty z /anonim');
-    pendingTicketClose.delete(channel.id);
-    await commitRewardTicketClaim(channel.id).catch(() => null);
-    ticketOwners.delete(channel.id);
-
+    await closeTicketAnonymously(channel, interaction.guild, interaction.user.id);
   } catch (error) {
     console.error("Blad komendy /anonim:", error);
-    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas wystawiania anonimowego repa." }).catch(() => null);
+    await interaction.followUp({
+      content: `> \`❌\` Wystąpił błąd: ${error.message}`,
+      flags: [MessageFlags.Ephemeral]
+    }).catch(() => null);
   }
 }
 
@@ -13539,6 +13520,216 @@ async function handleZamknijZPowodemCommand(interaction) {
       content: "> `❌` × **Wystąpił** błąd podczas zamykania ticketu.",
       flags: [MessageFlags.Ephemeral],
     });
+  }
+}
+
+// Helper for closing ticket anonymously (used by /anonim and button)
+async function closeTicketAnonymously(channel, guild, executorId) {
+  const ticketData = pendingTicketClose.get(channel.id);
+  if (!ticketData || !ticketData.awaitingRep) {
+    throw new Error("Brak oczekującego legit-repa! Najpierw użyj komendy **/ticket-zakoncz**.");
+  }
+
+  const repChannel = await client.channels.fetch(ticketData.legitRepChannelId).catch(() => null);
+  if (!repChannel) {
+    throw new Error("Nie można znaleźć kanału w bazie (legit reps).");
+  }
+
+  let verb = "wystawił/a";
+  if (ticketData.typ === "zakup") verb = "ZAKUP";
+  else if (ticketData.typ === "sprzedaz" || ticketData.typ === "sprzedaż") verb = "SPRZEDAŻ";
+  else if (ticketData.typ === "wreczyl nagrode" || ticketData.typ === "wręczył nagrodę") verb = "WRĘCZYŁ NAGRODĘ";
+
+  let simulatedRepText = `+rep <@${ticketData.commandUserId}> ${verb} ${ticketData.co}`;
+  if (ticketData.serwer) {
+    simulatedRepText += ` ${ticketData.serwer}`;
+  }
+
+  // Update user spent in Supabase before deleting ticket if it was a purchase
+  if (ticketData.typ === "zakup") {
+    const amount = parsePLN(ticketData.co);
+    if (amount > 0) {
+      await db.addUserSpent(ticketData.userId, amount, guild.id).catch((err) =>
+        console.error("Error updating user spent in anonymous close:", err)
+      );
+    }
+  }
+
+  // Send via webhook as "Anonimowy LC" if possible
+  await sendAnonRep(repChannel, simulatedRepText);
+
+  legitRepCount++;
+  console.log(`[anonim] +rep wystawione przez bota, licznik: ${legitRepCount}`);
+
+  scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
+  scheduleSavePersistentState();
+
+  // Delete previous info message
+  const prevId = repLastInfoMessage.get(repChannel.id);
+  if (prevId) {
+    try {
+      const prevMsg = await repChannel.messages.fetch(prevId).catch(() => null);
+      if (prevMsg && prevMsg.deletable) {
+        await prevMsg.delete().catch(() => null);
+      }
+    } catch (delErr) { }
+  }
+
+  // Send new info message
+  const userID = "1305200545979437129";
+  let attachment = null;
+  let imageUrl = "https://share.creavite.co/693f180207e523c90b19fbf9.gif";
+  try {
+    const gifPath = path.join(__dirname, "attached_assets", "standard_1765794552774_1766946611654.gif");
+    attachment = new AttachmentBuilder(gifPath, { name: "legit.gif" });
+    imageUrl = "attachment://legit.gif";
+  } catch (err) {
+    attachment = null;
+  }
+
+  const infoEmbed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      "```\n" +
+      "✅ New Shop × LEGIT CHECK\n" +
+      "```\n" +
+      "- `📝` **× Jak napisać:**\n" +
+      `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]\`\n\n` +
+      "- `📋` **× Przykład:**\n" +
+      `> **+rep <@1305200545979437129> ZAKUP 50 PLN Anarchia LF**\n\n` +
+      `*Aktualna liczba legitcheck: **${legitRepCount}***`
+    )
+    .setImage(imageUrl);
+
+  try {
+    const sendOptions = {
+      embeds: [infoEmbed],
+      allowedMentions: { users: [userID] },
+    };
+    if (attachment) sendOptions.files = [attachment];
+    const newInfoMsg = await repChannel.send(sendOptions);
+    repLastInfoMessage.set(repChannel.id, newInfoMsg.id);
+  } catch (err) { }
+
+  const ticketMeta = ticketOwners.get(channel.id) || null;
+  await archiveTicketOnClose(channel, executorId, ticketMeta, {
+    closeMethod: "Automatyczne zamknięcie po anonimowym repie",
+  }).catch(() => null);
+  
+  await channel.delete('Ticket zamknięty po anonimowym repie');
+  pendingTicketClose.delete(channel.id);
+  await commitRewardTicketClaim(channel.id).catch(() => null);
+  ticketOwners.delete(channel.id);
+}
+
+// Helper to send anonymous rep using Webhooks
+async function sendAnonRep(channel, content) {
+  try {
+    let webhooks = await channel.fetchWebhooks().catch(() => null);
+    let webhook = webhooks ? webhooks.find(w => w.owner?.id === client.user.id) : null;
+    if (!webhook && channel.guild.members.me.permissions.has(PermissionFlagsBits.ManageWebhooks)) {
+      webhook = await channel.createWebhook({
+        name: 'Anonimowy LC',
+        avatar: client.user.displayAvatarURL(),
+        reason: 'Anonimowe Legit Repy'
+      }).catch(() => null);
+    }
+    if (webhook) {
+      await webhook.send({
+        content: content,
+        username: 'Anonimowy LC',
+        avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png'
+      });
+      return;
+    }
+  } catch (err) {
+    console.error("Failed to send anon rep via webhook:", err);
+  }
+  await channel.send({ content: content });
+}
+
+// Helper to parse PLN amount from a string
+function parsePLN(str) {
+  if (!str) return 0;
+  const match = str.replace(/\s/g, '').match(/(\d+(?:[.,]\d+)?)/);
+  if (match) {
+    return parseFloat(match[1].replace(',', '.'));
+  }
+  return 0;
+}
+
+// ----------------- /wydane handler -----------------
+async function handleWydaneCommand(interaction) {
+  const targetUser = interaction.options.getUser("gracz") || interaction.user;
+  const isSelf = targetUser.id === interaction.user.id;
+
+  if (!isSelf) {
+    const isOwner = interaction.user.id === interaction.guild.ownerId;
+    const SELLER_ROLE_ID = "1350786945944391733";
+    const hasSellerRole = interaction.member.roles.cache.has(SELLER_ROLE_ID);
+    if (!isOwner && !hasSellerRole) {
+      await interaction.reply({
+        content: "> `❌` × Brak uprawnień do sprawdzania wydanej kwoty innych graczy.",
+        flags: [MessageFlags.Ephemeral]
+      });
+      return;
+    }
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    const spent = await db.getUserSpent(targetUser.id, interaction.guildId || "default");
+    
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+        "✅ New Shop × STATYSTYKI ZAKUPÓW\n" +
+        "```\n" +
+        `<a:arrowwhite:1491476759290449984> Użytkownik: <@${targetUser.id}>\n` +
+        `<a:arrowwhite:1491476759290449984> Łączna kwota wydana w sklepie: **${spent.toFixed(2)} PLN**`
+      );
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (err) {
+    console.error("Błąd w komendzie /wydane:", err);
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas pobierania danych z bazy." });
+  }
+}
+
+// ----------------- /topwydane handler -----------------
+async function handleTopWydaneCommand(interaction) {
+  await interaction.deferReply();
+
+  try {
+    const topList = await db.getTopSpenders(10, interaction.guildId || "default");
+    
+    if (topList.length === 0) {
+      await interaction.editReply({
+        content: "> `ℹ️` × Brak danych o wydatkach graczy w tym sklepie."
+      });
+      return;
+    }
+
+    let description = "```\n" +
+      "✅ New Shop × TOP SPENDERS (NAJWIĘCEJ WYDANE)\n" +
+      "```\n";
+
+    for (let i = 0; i < topList.length; i++) {
+      const entry = topList[i];
+      const amount = Number(entry.amount) || 0;
+      description += `${i + 1}. <@${entry.user_id}> – **${amount.toFixed(2)} PLN**\n`;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(description);
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (err) {
+    console.error("Błąd w komendzie /topwydane:", err);
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas pobierania danych o top spenders." });
   }
 }
 
@@ -17749,9 +17940,9 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      // Wzórzec: +rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [ile] [serwer - opcjonalny]
+      // Wzórzec: +rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]
       const mentionPattern = /<@!?\d+>|@\S+/;
-      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(sprzedał|sprzedal|kupił|kupil|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(\S+.*)/i;
+      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(zakup|sprzedaż|sprzedaz|wręczył\s+nagrodę|wreczyl\s+nagrode|sprzedał|sprzedal|kupił|kupil)\s+(\S+.*)/i;
       const hasMention = mentionPattern.test(messageContent);
       const isValidRep = repPattern.test(messageContent);
 
@@ -17822,6 +18013,16 @@ client.on(Events.MessageCreate, async (message) => {
 
             if (mentionMatchesSeller || usernameIncluded) {
               console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
+              
+              if (ticketData.typ === "zakup") {
+                const amount = parsePLN(ticketData.co);
+                if (amount > 0) {
+                  await db.addUserSpent(ticketData.userId, amount, message.guild.id).catch((err) => 
+                    console.error("Error updating user spent on manual +rep:", err)
+                  );
+                }
+              }
+
               const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
                 try {
@@ -17908,9 +18109,9 @@ client.on(Events.MessageCreate, async (message) => {
           "✅ New Shop × LEGIT CHECK\n" +
           "```\n" +
           "- `📝` **× Jak napisać:**\n" +
-          `> \`+rep @sprzedawca [sprzedał/kupił/wręczył nagrodę] [co] [serwer]\`\n\n` +
+          `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]\`\n\n` +
           "- `📋` **× Przykład:**\n" +
-          `> **+rep <@1305200545979437129> sprzedał 400k anarchia lf**\n\n` +
+          `> **+rep <@1305200545979437129> ZAKUP 50 PLN Anarchia LF**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
         .setImage(imageUrl);

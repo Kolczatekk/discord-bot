@@ -545,6 +545,69 @@ async function getInvitedUsersByInviter(guildId, inviterId) {
   return data;
 }
 
+// User spent tracking functions
+async function addUserSpent(userId, amount, guildId = "default") {
+  // First, get the current spent amount
+  const { data, error: fetchError } = await supabase
+    .from("user_spent")
+    .select("amount")
+    .eq("user_id", userId)
+    .eq("guild_id", guildId)
+    .maybeSingle();
+
+  let currentAmount = 0;
+  if (data) {
+    currentAmount = Number(data.amount) || 0;
+  }
+
+  const newAmount = currentAmount + amount;
+
+  const { error } = await supabase
+    .from("user_spent")
+    .upsert({
+      user_id: userId,
+      guild_id: guildId,
+      amount: newAmount,
+      updated_at: new Date().toISOString()
+    });
+
+  if (error) {
+    console.error("[Supabase] Błąd zapisu user_spent:", error);
+  } else {
+    console.log(`[Supabase] Zaktualizowano user_spent dla ${userId}: +${amount} PLN (Razem: ${newAmount} PLN)`);
+  }
+}
+
+async function getUserSpent(userId, guildId = "default") {
+  const { data, error } = await supabase
+    .from("user_spent")
+    .select("amount")
+    .eq("user_id", userId)
+    .eq("guild_id", guildId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[Supabase] Błąd odczytu user_spent:", error);
+    return 0;
+  }
+  return data ? Number(data.amount) || 0 : 0;
+}
+
+async function getTopSpenders(limit = 10, guildId = "default") {
+  const { data, error } = await supabase
+    .from("user_spent")
+    .select("user_id, amount")
+    .eq("guild_id", guildId)
+    .order("amount", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[Supabase] Błąd odczytu top spenders:", error);
+    return [];
+  }
+  return data || [];
+}
+
 module.exports = {
   saveWeeklySale,
   getWeeklySales,
@@ -574,5 +637,8 @@ module.exports = {
   getContests,
   saveContestParticipant,
   getContestParticipants,
+  addUserSpent,
+  getUserSpent,
+  getTopSpenders,
   supabase
 };
