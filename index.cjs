@@ -3489,10 +3489,10 @@ const commands = [
         .setDescription("Wybierz serwer")
         .setRequired(false)
         .addChoices(
-          { name: "Anarchia LF", value: "Anarchia LF" },
-          { name: "Anarchia BoxPvP", value: "Anarchia BoxPvP" },
-          { name: "MineStar LF", value: "MineStar LF" },
-          { name: "Donut SMP", value: "Donut SMP" }
+          { name: "ANARCHIA LIFESTEAL", value: "ANARCHIA LIFESTEAL" },
+          { name: "ANARCHIA BOXPVP", value: "ANARCHIA BOXPVP" },
+          { name: "MINESTAR LIFESTEAL", value: "MINESTAR LIFESTEAL" },
+          { name: "DONUT SMP", value: "DONUT SMP" }
         )
     )
     .toJSON(),
@@ -13635,7 +13635,7 @@ async function closeTicketAnonymously(channel, guild, executorId) {
       "- `📝` **× Jak napisać:**\n" +
       `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]\`\n\n` +
       "- `📋` **× Przykład:**\n" +
-      `> **+rep <@1305200545979437129> ZAKUP 50 PLN Anarchia LF**\n\n` +
+      `> **+rep <@1305200545979437129> ZAKUP 50 PLN ANARCHIA LIFESTEAL**\n\n` +
       `*Aktualna liczba legitcheck: **${legitRepCount}***`
     )
     .setImage(imageUrl);
@@ -18234,7 +18234,7 @@ client.on(Events.MessageCreate, async (message) => {
           "- `📝` **× Jak napisać:**\n" +
           `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]\`\n\n` +
           "- `📋` **× Przykład:**\n" +
-          `> **+rep <@1305200545979437129> ZAKUP 50 PLN Anarchia LF**\n\n` +
+          `> **+rep <@1305200545979437129> ZAKUP 50 PLN ANARCHIA LIFESTEAL**\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
         .setImage(imageUrl);
