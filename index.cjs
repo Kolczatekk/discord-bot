@@ -2953,10 +2953,14 @@ async function loadPersistentState() {
       // Load ticket owners from Supabase
       try {
         const ticketOwnersData = await db.getTicketOwners();
-        for (const [channelId, ticketData] of Object.entries(ticketOwnersData)) {
-          ticketOwners.set(channelId, ticketData);
+        if (Array.isArray(ticketOwnersData)) {
+          for (const item of ticketOwnersData) {
+            if (item.channel_id) {
+              ticketOwners.set(item.channel_id, item);
+            }
+          }
         }
-        console.log(`[Supabase] Wczytano ticketOwners: ${Object.keys(ticketOwnersData).length} wpisów`);
+        console.log(`[Supabase] Wczytano ticketOwners: ${ticketOwners.size} wpisów`);
       } catch (error) {
         console.error("[Supabase] Błąd wczytywania ticketOwners:", error);
       }
@@ -3505,6 +3509,38 @@ const commands = [
   new SlashCommandBuilder()
     .setName("topwydane")
     .setDescription("Sprawdź listę 10 graczy, którzy wydali najwięcej w sklepie")
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("wydanestats")
+    .setDescription("Zarządzaj wydaną kwotą graczy (Tylko Administrator/Sprzedawca)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addSubcommand((sub) =>
+      sub
+        .setName("dodaj")
+        .setDescription("Dodaj kwotę do wydatków gracza")
+        .addUserOption((o) => o.setName("gracz").setDescription("Wybierz gracza").setRequired(true))
+        .addIntegerOption((o) => o.setName("kwota").setDescription("Kwota w PLN").setRequired(true))
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("odejmij")
+        .setDescription("Odejmij kwotę z wydatków gracza")
+        .addUserOption((o) => o.setName("gracz").setDescription("Wybierz gracza").setRequired(true))
+        .addIntegerOption((o) => o.setName("kwota").setDescription("Kwota w PLN").setRequired(true))
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("ustaw")
+        .setDescription("Ustaw kwotę wydatków gracza")
+        .addUserOption((o) => o.setName("gracz").setDescription("Wybierz gracza").setRequired(true))
+        .addIntegerOption((o) => o.setName("kwota").setDescription("Kwota w PLN").setRequired(true))
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("usun")
+        .setDescription("Zresetuj/usuń wydatki gracza do 0")
+        .addUserOption((o) => o.setName("gracz").setDescription("Wybierz gracza").setRequired(true))
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("anonim")
@@ -7029,7 +7065,7 @@ async function handleSlashCommand(interaction) {
   switch (commandName) {
     default: {
       // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia"]);
+      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia", "wydane", "topwydane"]);
       // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
       const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
       const SELLER_ROLE_ID = "1350786945944391733";
@@ -7084,6 +7120,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "topwydane":
       await handleTopWydaneCommand(interaction);
+      break;
+    case "wydanestats":
+      await handleWydaneStatsCommand(interaction);
       break;
     case "zamknij-z-powodem":
       await handleZamknijZPowodemCommand(interaction);
@@ -13730,6 +13769,90 @@ async function handleTopWydaneCommand(interaction) {
   } catch (err) {
     console.error("Błąd w komendzie /topwydane:", err);
     await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas pobierania danych o top spenders." });
+  }
+}
+
+// ----------------- /wydanestats handler -----------------
+async function handleWydaneStatsCommand(interaction) {
+  const isOwner = interaction.user.id === interaction.guild.ownerId;
+  const SELLER_ROLE_ID = "1350786945944391733";
+  const hasSellerRole = interaction.member.roles.cache.has(SELLER_ROLE_ID);
+
+  if (!isOwner && !hasSellerRole) {
+    await interaction.reply({
+      content: "> `❌` × Brak uprawnień do zarządzania wydatkami.",
+      flags: [MessageFlags.Ephemeral]
+    });
+    return;
+  }
+
+  const subcommand = interaction.options.getSubcommand();
+  const targetUser = interaction.options.getUser("gracz");
+  const amount = interaction.options.getInteger("kwota") || 0;
+  const guildId = interaction.guildId || "default";
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    if (subcommand === "dodaj") {
+      await db.addUserSpent(targetUser.id, amount, guildId);
+      const newSpent = await db.getUserSpent(targetUser.id, guildId);
+      
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "✅ New Shop × AKTUALIZACJA WYDATKÓW\n" +
+          "```\n" +
+          `<a:arrowwhite:1491476759290449984> Dodano **${amount} PLN** do wydatków użytkownika <@${targetUser.id}>.\n` +
+          `<a:arrowwhite:1491476759290449984> Aktualna kwota wydana: **${newSpent.toFixed(2)} PLN**`
+        );
+      await interaction.editReply({ embeds: [embed] });
+      
+    } else if (subcommand === "odejmij") {
+      await db.addUserSpent(targetUser.id, -amount, guildId);
+      const newSpent = await db.getUserSpent(targetUser.id, guildId);
+      
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "✅ New Shop × AKTUALIZACJA WYDATKÓW\n" +
+          "```\n" +
+          `<a:arrowwhite:1491476759290449984> Odjęto **${amount} PLN** z wydatków użytkownika <@${targetUser.id}>.\n` +
+          `<a:arrowwhite:1491476759290449984> Aktualna kwota wydana: **${newSpent.toFixed(2)} PLN**`
+        );
+      await interaction.editReply({ embeds: [embed] });
+      
+    } else if (subcommand === "ustaw") {
+      await db.setUserSpent(targetUser.id, amount, guildId);
+      
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "✅ New Shop × USTAWIENIE WYDATKÓW\n" +
+          "```\n" +
+          `<a:arrowwhite:1491476759290449984> Ustawiono kwotę wydatków użytkownika <@${targetUser.id}> na **${amount.toFixed(2)} PLN**.`
+        );
+      await interaction.editReply({ embeds: [embed] });
+      
+    } else if (subcommand === "usun") {
+      await db.deleteUserSpent(targetUser.id, guildId);
+      
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "✅ New Shop × RESET WYDATKÓW\n" +
+          "```\n" +
+          `<a:arrowwhite:1491476759290449984> Zresetowano/usunięto wydatki użytkownika <@${targetUser.id}> (0.00 PLN).`
+        );
+      await interaction.editReply({ embeds: [embed] });
+    }
+  } catch (err) {
+    console.error("Błąd w komendzie /wydanestats:", err);
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas zapisywania zmian w bazie danych." });
   }
 }
 

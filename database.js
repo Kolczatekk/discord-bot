@@ -608,6 +608,37 @@ async function getTopSpenders(limit = 10, guildId = "default") {
   return data || [];
 }
 
+async function setUserSpent(userId, amount, guildId = "default") {
+  const { error } = await supabase
+    .from("user_spent")
+    .upsert({
+      user_id: userId,
+      guild_id: guildId,
+      amount: amount,
+      updated_at: new Date().toISOString()
+    });
+
+  if (error) {
+    console.error("[Supabase] Błąd ustawiania user_spent:", error);
+    return false;
+  }
+  return true;
+}
+
+async function deleteUserSpent(userId, guildId = "default") {
+  const { error } = await supabase
+    .from("user_spent")
+    .delete()
+    .eq("user_id", userId)
+    .eq("guild_id", guildId);
+
+  if (error) {
+    console.error("[Supabase] Błąd usuwania user_spent:", error);
+    return false;
+  }
+  return true;
+}
+
 module.exports = {
   saveWeeklySale,
   getWeeklySales,
@@ -640,5 +671,7 @@ module.exports = {
   addUserSpent,
   getUserSpent,
   getTopSpenders,
+  setUserSpent,
+  deleteUserSpent,
   supabase
 };
