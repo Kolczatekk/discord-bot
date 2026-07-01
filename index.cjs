@@ -13303,6 +13303,16 @@ async function handleTicketZakonczCommand(interaction) {
     return;
   }
 
+  // Automatycznie dodaj kwotę do wydatków klienta (ticketOwnerId) w Supabase, jeśli to zakup
+  if (typ === "zakup") {
+    const amount = parsePLN(formattedCena);
+    if (amount > 0) {
+      await db.addUserSpent(ticketOwnerId, amount, interaction.guildId || "default").catch((err) =>
+        console.error("Error automatically adding user spent on ticket-zakoncz:", err)
+      );
+    }
+  }
+
   const legitRepChannelId = "1449840030947217529";
   const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
   let thankLine = "Dziękujemy za zakup w naszym sklepie";
@@ -13597,15 +13607,7 @@ async function closeTicketAnonymously(channel, guild, executorId) {
     simulatedRepText += ` ${ticketData.serwer}`;
   }
 
-  // Update user spent in Supabase before deleting ticket if it was a purchase
-  if (ticketData.typ === "zakup") {
-    const amount = parsePLN(ticketData.co);
-    if (amount > 0) {
-      await db.addUserSpent(ticketData.userId, amount, guild.id).catch((err) =>
-        console.error("Error updating user spent in anonymous close:", err)
-      );
-    }
-  }
+  // (Wydatki zostały już zaktualizowane automatycznie przy uruchomieniu komendy /ticket-zakoncz)
 
   // Send via webhook as "Anonimowy LC" if possible
   await sendAnonRep(repChannel, simulatedRepText);
@@ -18150,14 +18152,7 @@ client.on(Events.MessageCreate, async (message) => {
             if (mentionMatchesSeller || usernameIncluded) {
               console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
               
-              if (ticketData.typ === "zakup") {
-                const amount = parsePLN(ticketData.co);
-                if (amount > 0) {
-                  await db.addUserSpent(ticketData.userId, amount, message.guild.id).catch((err) => 
-                    console.error("Error updating user spent on manual +rep:", err)
-                  );
-                }
-              }
+              // (Wydatki zostały już zaktualizowane automatycznie przy uruchomieniu komendy /ticket-zakoncz)
 
               const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
