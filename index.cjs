@@ -6481,7 +6481,7 @@ async function handleButtonInteraction(interaction) {
   }
 
   const embedTestBuyOpenMatch = customId.match(
-    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin|nagrania|kalkulator))?$/,
+    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin|nagrania|kalkulator|sprawdz_bonusy))?$/,
   );
   if (embedTestBuyOpenMatch) {
     const action = embedTestBuyOpenMatch[1] || "zakup";
@@ -6519,6 +6519,9 @@ async function handleButtonInteraction(interaction) {
         break;
       case "kalkulator":
         await interaction.showModal(buildKalkulatorModal("otrzymam", detectedServer));
+        break;
+      case "sprawdz_bonusy":
+        await handleSprawdzBonusyButton(interaction);
         break;
       default:
         await showZakupModal(interaction, detectedServer);
@@ -9422,6 +9425,12 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
     description: "Otwiera kalkulator waluty",
     emoji: "🧮",
   },
+  {
+    value: "sprawdz_bonusy",
+    label: "Sprawdź bonusy",
+    description: "Pokazuje wydaną kwotę i aktualny bonus gracza",
+    emoji: "📌",
+  },
 ];
 
 const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
@@ -9549,6 +9558,15 @@ function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
     normalized === "oblicz"
   ) {
     return getEmbedTestPrimaryButtonActionDef("kalkulator");
+  }
+
+  if (
+    normalized === "sprawdz_bonusy" ||
+    normalized === "sprawdz bonusy" ||
+    normalized === "bonusy" ||
+    normalized === "bonus"
+  ) {
+    return getEmbedTestPrimaryButtonActionDef("sprawdz_bonusy");
   }
 
   return null;
@@ -13310,6 +13328,10 @@ async function handleTicketZakonczCommand(interaction) {
       await db.addUserSpent(ticketOwnerId, amount, interaction.guildId || "default").catch((err) =>
         console.error("Error automatically adding user spent on ticket-zakoncz:", err)
       );
+      // Synchronizacja ról zakupowych klienta
+      await syncUserSpentRoles(interaction.guild, ticketOwnerId).catch((err) =>
+        console.error("Error syncing roles on ticket-zakoncz:", err)
+      );
     }
   }
 
@@ -13809,6 +13831,7 @@ async function handleWydaneStatsCommand(interaction) {
   try {
     if (subcommand === "dodaj") {
       await db.addUserSpent(targetUser.id, amount, guildId);
+      await syncUserSpentRoles(interaction.guild, targetUser.id).catch(() => null);
       const newSpent = await db.getUserSpent(targetUser.id, guildId);
       
       const embed = new EmbedBuilder()
@@ -13824,6 +13847,7 @@ async function handleWydaneStatsCommand(interaction) {
       
     } else if (subcommand === "odejmij") {
       await db.addUserSpent(targetUser.id, -amount, guildId);
+      await syncUserSpentRoles(interaction.guild, targetUser.id).catch(() => null);
       const newSpent = await db.getUserSpent(targetUser.id, guildId);
       
       const embed = new EmbedBuilder()
@@ -13839,6 +13863,7 @@ async function handleWydaneStatsCommand(interaction) {
       
     } else if (subcommand === "ustaw") {
       await db.setUserSpent(targetUser.id, amount, guildId);
+      await syncUserSpentRoles(interaction.guild, targetUser.id).catch(() => null);
       
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -13852,6 +13877,7 @@ async function handleWydaneStatsCommand(interaction) {
       
     } else if (subcommand === "usun") {
       await db.deleteUserSpent(targetUser.id, guildId);
+      await syncUserSpentRoles(interaction.guild, targetUser.id).catch(() => null);
       
       const embed = new EmbedBuilder()
         .setColor(COLOR_BLUE)
@@ -13866,6 +13892,104 @@ async function handleWydaneStatsCommand(interaction) {
   } catch (err) {
     console.error("Błąd w komendzie /wydanestats:", err);
     await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas zapisywania zmian w bazie danych." });
+  }
+}
+
+// ----------------- syncUserSpentRoles & sprawdz_bonusy utility -----------------
+async function syncUserSpentRoles(guild, userId) {
+  if (!guild) return;
+  
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return;
+
+  const spent = await db.getUserSpent(userId, guild.id);
+
+  const roleTiers = [
+    { min: 200, roleId: "1521924538265243738" },
+    { min: 500, roleId: "1458145139938562058" },
+    { min: 1000, roleId: "1521924656792080384" },
+    { min: 2000, roleId: "1521924963190177924" }
+  ];
+
+  for (const tier of roleTiers) {
+    const hasRole = member.roles.cache.has(tier.roleId);
+    if (spent >= tier.min) {
+      if (!hasRole) {
+        await member.roles.add(tier.roleId).catch((err) =>
+          console.error(`[Spent Roles] Nie udało się dodać roli ${tier.roleId} dla ${userId}:`, err)
+        );
+      }
+    } else {
+      if (hasRole) {
+        await member.roles.remove(tier.roleId).catch((err) =>
+          console.error(`[Spent Roles] Nie udało się usunąć roli ${tier.roleId} dla ${userId}:`, err)
+        );
+      }
+    }
+  }
+}
+
+async function handleSprawdzBonusyButton(interaction) {
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    const guild = interaction.guild;
+    const userId = interaction.user.id;
+    
+    if (!guild) {
+      await interaction.editReply({ content: "> `❌` Ta komenda działa jedynie na serwerach." });
+      return;
+    }
+
+    const spent = await db.getUserSpent(userId, guild.id);
+
+    const roleTiers = [
+      { name: "Klient (200+)", min: 200, bonus: "0.5%", roleId: "1521924538265243738" },
+      { name: "Rzeźnik (500+)", min: 500, bonus: "1%", roleId: "1458145139938562058" },
+      { name: "Niszczyciel (1000+)", min: 1000, bonus: "2%", roleId: "1521924656792080384" },
+      { name: "Demon (2000+)", min: 2000, bonus: "4%", roleId: "1521924963190177924" }
+    ];
+
+    let currentTier = null;
+    let nextTier = null;
+
+    for (let i = 0; i < roleTiers.length; i++) {
+      if (spent >= roleTiers[i].min) {
+        currentTier = roleTiers[i];
+      } else {
+        nextTier = roleTiers[i];
+        break;
+      }
+    }
+
+    const member = await guild.members.fetch(userId).catch(() => null);
+    const ownedRoles = [];
+    for (const tier of roleTiers) {
+      if (member && member.roles.cache.has(tier.roleId)) {
+        ownedRoles.push(`<@&${tier.roleId}>`);
+      }
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+        "✅ Golem Shop × TWOJE BONUSY I STATYSTYKI\n" +
+        "```\n" +
+        `<a:arrowwhite:1491476759290449984> Użytkownik: <@${userId}>\n` +
+        `<a:arrowwhite:1491476759290449984> Łączna kwota wydana w sklepie: **${spent.toFixed(2)} PLN**\n\n` +
+        `<a:arrowwhite:1491476759290449984> Aktualna ranga bonusowa: **${currentTier ? `${currentTier.name}` : "Brak"}**\n` +
+        `<a:arrowwhite:1491476759290449984> Posiadane rangi zakupowe: ${ownedRoles.length > 0 ? ownedRoles.join(", ") : "Brak"}\n\n` +
+        (nextTier 
+          ? `<a:arrowwhite:1491476759290449984> Do kolejnej rangi (**${nextTier.name}**): brakuje Ci **${(nextTier.min - spent).toFixed(2)} PLN** (wymagane łącznie: **${nextTier.min} PLN**)`
+          : `<a:arrowwhite:1491476759290449984> Osiągnąłeś już najwyższą rangę bonusową!`
+        )
+      );
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (err) {
+    console.error("Błąd w handleSprawdzBonusyButton:", err);
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas sprawdzania Twoich bonusów." });
   }
 }
 
