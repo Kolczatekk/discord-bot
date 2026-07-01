@@ -9429,7 +9429,7 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
     value: "sprawdz_bonusy",
     label: "Sprawdź bonusy",
     description: "Pokazuje wydaną kwotę i aktualny bonus gracza",
-    emoji: "📌",
+    emoji: "💵",
   },
 ];
 
@@ -13966,33 +13966,39 @@ async function handleSprawdzBonusyButton(interaction) {
       }
     }
 
-    let line1 = `<a:arrowwhite:1491476759290449984> ︲ Aktualnie **nie posiadasz** żadnej rangi.`;
+    let line1 = `<a:arrowwhite:1491476759290449984> × Aktualnie **nie posiadasz** żadnej rangi.`;
     if (ownedRoles.length > 0) {
-      line1 = `<a:arrowwhite:1491476759290449984> ︲ Posiadasz rangę ${ownedRoles.join(", ")}.`;
+      line1 = `<a:arrowwhite:1491476759290449984> × Posiadasz rangę ${ownedRoles.join(", ")}.`;
     }
 
-    const line2 = `<a:arrowwhite:1491476759290449984> ︲ Łącznie wydałeś **${spent.toFixed(0)} PLN** na naszym sklepie.`;
+    const line2 = `<a:arrowwhite:1491476759290449984> × Łącznie wydałeś **${spent.toFixed(0)} PLN** na naszym sklepie.`;
 
     let line3 = "";
     if (nextTier) {
-      line3 = `<a:arrowwhite:1491476759290449984> ︲ Do **następnej rangi** (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
+      line3 = `<a:arrowwhite:1491476759290449984> × Do **następnej rangi** (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
     } else {
-      line3 = `<a:arrowwhite:1491476759290449984> ︲ Osiągnąłeś już **najwyższą rangę** bonusową!`;
+      line3 = `<a:arrowwhite:1491476759290449984> × Osiągnąłeś już **najwyższą rangę** bonusową!`;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-        "💵 New Shop × TWOJE BONUSY\n" +
-        "```\n" +
-        `> ${line1}\n` +
-        `> ${line2}\n` +
-        `> ${line3}\n\n` +
-        `︲ © 2026 New Shop × twoje bonusy`
-      );
+    const descContent = [
+      "```",
+      "💵 New Shop × TWOJE BONUSY",
+      "```",
+      `> ${line1}`,
+      `> ${line2}`,
+      `> ${line3}`,
+    ].join("\n");
 
-    await interaction.editReply({ embeds: [embed] });
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(descContent)
+    );
+    appendBrandFooterToContainer(container, guild.id);
+
+    await interaction.editReply({
+      components: [container],
+      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
+    });
   } catch (err) {
     console.error("Błąd w handleSprawdzBonusyButton:", err);
     await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas sprawdzania Twoich bonusów." });
