@@ -13968,10 +13968,10 @@ async function handleSprawdzBonusyButton(interaction) {
 
     let line1 = `<a:arrowwhite:1491476759290449984> × Aktualnie __nie posiadasz__ żadnej __rangi__. `;
     if (ownedRoles.length > 0) {
-      line1 = `<a:arrowwhite:1491476759290449984> × Posiadasz __rangę__ ${ownedRoles.join(", ")}.`;
+      line1 = `<a:arrowwhite:1491476759290449984> × **Posiadasz** __rangę__ ${ownedRoles.join(", ")}.`;
     }
 
-    const line2 = `<a:arrowwhite:1491476759290449984> × Łącznie __wydałeś__ **${spent.toFixed(0)} PLN** na naszym sklepie.`;
+    const line2 = `<a:arrowwhite:1491476759290449984> × Łącznie __wydałeś__ **${spent.toFixed(0)} PLN** w naszym sklepie.`;
 
     let line3 = "";
     if (nextTier) {
