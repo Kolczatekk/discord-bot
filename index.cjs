@@ -13677,7 +13677,7 @@ async function sendAnonRep(channel, content) {
       await webhook.send({
         content: content,
         username: 'Anonimowy LC',
-        avatarURL: 'https://cdn.discordapp.com/embed/avatars/0.png'
+        avatarURL: client.user.displayAvatarURL()
       });
       return;
     }
