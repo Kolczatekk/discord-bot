@@ -13670,7 +13670,7 @@ async function closeTicketAnonymously(channel, guild, executorId) {
       "✅ New Shop × LEGIT CHECK\n" +
       "```\n" +
       "- `📝` **× Jak napisać:**\n" +
-      `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] [SERWER]\`\n\n` +
+      `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]\`\n\n` +
       `*Aktualna liczba legitcheck: **${legitRepCount}***`
     )
     .setImage(imageUrl);
@@ -13911,9 +13911,17 @@ async function syncUserSpentRoles(guild, userId) {
     { min: 2000, roleId: "1521924963190177924" }
   ];
 
+  // Znajdź najwyższy pasujący próg
+  let highestMatchingTier = null;
+  for (const tier of roleTiers) {
+    if (spent >= tier.min) {
+      highestMatchingTier = tier;
+    }
+  }
+
   for (const tier of roleTiers) {
     const hasRole = member.roles.cache.has(tier.roleId);
-    if (spent >= tier.min) {
+    if (highestMatchingTier && tier.roleId === highestMatchingTier.roleId) {
       if (!hasRole) {
         await member.roles.add(tier.roleId).catch((err) =>
           console.error(`[Spent Roles] Nie udało się dodać roli ${tier.roleId} dla ${userId}:`, err)
@@ -18374,7 +18382,7 @@ client.on(Events.MessageCreate, async (message) => {
           "✅ New Shop × LEGIT CHECK\n" +
           "```\n" +
           "- `📝` **× Jak napisać:**\n" +
-          `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] [SERWER]\`\n\n` +
+          `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]\`\n\n` +
           `*Aktualna liczba legitcheck: **${legitRepCount}***`,
         )
         .setImage(imageUrl);
