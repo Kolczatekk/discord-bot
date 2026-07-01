@@ -13944,19 +13944,15 @@ async function handleSprawdzBonusyButton(interaction) {
     const spent = await db.getUserSpent(userId, guild.id);
 
     const roleTiers = [
-      { name: "Klient (200+)", min: 200, bonus: "0.5%", roleId: "1521924538265243738" },
-      { name: "Rzeźnik (500+)", min: 500, bonus: "1%", roleId: "1458145139938562058" },
-      { name: "Niszczyciel (1000+)", min: 1000, bonus: "2%", roleId: "1521924656792080384" },
-      { name: "Demon (2000+)", min: 2000, bonus: "4%", roleId: "1521924963190177924" }
+      { name: "Klient (200+)", min: 200, roleId: "1521924538265243738" },
+      { name: "Rzeźnik (500+)", min: 500, roleId: "1458145139938562058" },
+      { name: "Niszczyciel (1000+)", min: 1000, roleId: "1521924656792080384" },
+      { name: "Demon (2000+)", min: 2000, roleId: "1521924963190177924" }
     ];
 
-    let currentTier = null;
     let nextTier = null;
-
     for (let i = 0; i < roleTiers.length; i++) {
-      if (spent >= roleTiers[i].min) {
-        currentTier = roleTiers[i];
-      } else {
+      if (spent < roleTiers[i].min) {
         nextTier = roleTiers[i];
         break;
       }
@@ -13970,20 +13966,30 @@ async function handleSprawdzBonusyButton(interaction) {
       }
     }
 
+    let line1 = `<a:arrowwhite:1491476759290449984> ︲ Aktualnie **nie posiadasz** żadnej rangi.`;
+    if (ownedRoles.length > 0) {
+      line1 = `<a:arrowwhite:1491476759290449984> ︲ Posiadasz rangę ${ownedRoles.join(", ")}.`;
+    }
+
+    const line2 = `<a:arrowwhite:1491476759290449984> ︲ Łącznie wydałeś **${spent.toFixed(0)} PLN** na naszym sklepie.`;
+
+    let line3 = "";
+    if (nextTier) {
+      line3 = `<a:arrowwhite:1491476759290449984> ︲ Do **następnej rangi** (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
+    } else {
+      line3 = `<a:arrowwhite:1491476759290449984> ︲ Osiągnąłeś już **najwyższą rangę** bonusową!`;
+    }
+
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(
         "```\n" +
-        "✅ Golem Shop × TWOJE BONUSY I STATYSTYKI\n" +
+        "💵 New Shop × TWOJE BONUSY\n" +
         "```\n" +
-        `<a:arrowwhite:1491476759290449984> Użytkownik: <@${userId}>\n` +
-        `<a:arrowwhite:1491476759290449984> Łączna kwota wydana w sklepie: **${spent.toFixed(2)} PLN**\n\n` +
-        `<a:arrowwhite:1491476759290449984> Aktualna ranga bonusowa: **${currentTier ? `${currentTier.name}` : "Brak"}**\n` +
-        `<a:arrowwhite:1491476759290449984> Posiadane rangi zakupowe: ${ownedRoles.length > 0 ? ownedRoles.join(", ") : "Brak"}\n\n` +
-        (nextTier 
-          ? `<a:arrowwhite:1491476759290449984> Do kolejnej rangi (**${nextTier.name}**): brakuje Ci **${(nextTier.min - spent).toFixed(2)} PLN** (wymagane łącznie: **${nextTier.min} PLN**)`
-          : `<a:arrowwhite:1491476759290449984> Osiągnąłeś już najwyższą rangę bonusową!`
-        )
+        `> ${line1}\n` +
+        `> ${line2}\n` +
+        `> ${line3}\n\n` +
+        `︲ © 2026 New Shop × twoje bonusy`
       );
 
     await interaction.editReply({ embeds: [embed] });
