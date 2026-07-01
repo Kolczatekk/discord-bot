@@ -3499,6 +3499,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("wydane")
     .setDescription("Sprawdź ile wydałeś w naszym sklepie")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
         .setName("gracz")
@@ -3509,6 +3510,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("topwydane")
     .setDescription("Sprawdź listę 10 graczy, którzy wydali najwięcej w sklepie")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("wydanestats")
@@ -7076,7 +7078,7 @@ async function handleSlashCommand(interaction) {
   switch (commandName) {
     default: {
       // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia", "wydane", "topwydane"]);
+      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia"]);
       // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
       const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
       const SELLER_ROLE_ID = "1350786945944391733";
