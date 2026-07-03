@@ -14867,21 +14867,21 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
 
     if (ticketData.locked) {
       await replyEphemeral(
-        "❌ Ten ticket został zablokowany do przejmowania (ustawienia/zmiana nazwy).",
+        "> `❌` × Ten ticket został zablokowany do przejmowania.",
       );
       return { ok: false, reason: "locked" };
     }
 
     if (ticketData && ticketData.claimedBy) {
       await replyEphemeral(
-        `❌ Ten ticket został już przejęty przez <@${ticketData.claimedBy}>!`,
+        `> \`❌\` × Ticket został już przejęty przez <@${ticketData.claimedBy}>.`,
       );
       return { ok: false, reason: "already-claimed", claimedBy: ticketData.claimedBy };
     }
 
     const ch = await client.channels.fetch(channelId).catch(() => null);
     if (!ch) {
-      await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
+      await replyEphemeral("> `❌` × Nie mogę znaleźć tego kanału.");
       return { ok: false, reason: "channel-not-found" };
     }
 
