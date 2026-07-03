@@ -14986,7 +14986,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     }
 
     try {
-      if (ticketData.ticketTypeLabel !== "SPRZEDAŻ") {
+      if (ticketData.ticketTypeLabel === "ZAKUP") {
         await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId, ticketData);
 
         const method = String(ticketData?.paymentMethod || "").toLowerCase();
