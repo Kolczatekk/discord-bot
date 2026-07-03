@@ -202,30 +202,18 @@ const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessa
 
 // --- DYNAMICZNY GENERATOR CAPTCHY (Quiz Przejmowania) ---
 function generateClaimQuiz() {
-  const isMath = Math.random() < 0.5;
-  if (isMath) {
-    const isAdd = Math.random() < 0.5;
-    if (isAdd) {
-      const a = Math.floor(Math.random() * 9) + 1; // 1-9
-      const b = Math.floor(Math.random() * 9) + 1; // 1-9
-      return { q: `Ile to ${a} + ${b}?`, a: (a + b).toString() };
-    } else {
-      const a = Math.floor(Math.random() * 10) + 10; // 10-19
-      const b = Math.floor(Math.random() * 9) + 1; // 1-9
-      return { q: `Ile to ${a} - ${b}?`, a: (a - b).toString() };
-    }
-  } else {
-    const length = Math.random() < 0.5 ? 4 : 5;
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code = "";
-    for (let i = 0; i < length; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return { q: `Przepisz kod: ${code}`, a: code };
-  }
+  // Proste działania matematyczne
+  const ops = [
+    () => { const a = Math.floor(Math.random() * 9) + 1; const b = Math.floor(Math.random() * 9) + 1; return { q: `Ile to ${a} + ${b}?`, a: (a + b).toString() }; },
+    () => { const a = Math.floor(Math.random() * 8) + 2; const b = Math.floor(Math.random() * (a - 1)) + 1; return { q: `Ile to ${a} - ${b}?`, a: (a - b).toString() }; },
+    () => { const a = Math.floor(Math.random() * 5) + 2; const b = Math.floor(Math.random() * 5) + 2; return { q: `Ile to ${a} x ${b}?`, a: (a * b).toString() }; },
+    () => { const b = Math.floor(Math.random() * 8) + 2; const a = b * (Math.floor(Math.random() * 4) + 2); return { q: `Ile to ${a} / ${b}?`, a: (a / b).toString() }; },
+  ];
+  return ops[Math.floor(Math.random() * ops.length)]();
 }
 // ----------------------------------------------------------------
 const pendingClaimQuiz = new Map(); // modalId -> { channelId, userId, answer }
+const claimingInProgress = new Set(); // channelId currently being claimed (race-condition lock)
 const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerName, enabledAt }
 const autoVerifySettings = new Map(); // guildId -> boolean
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
@@ -14809,9 +14797,11 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     }
     return { ok: false, reason: "permission" };
   }
+  // Właściciel serwera nie musi przechodzić captchy
+  const isOwner = interaction.guild && interaction.user.id === interaction.guild.ownerId;
 
-  // quiz matematyczny przed przejęciem (przycisk + /przejmij)
-  if (!skipQuiz) {
+  // quiz matematyczny przed przejęciem (przycisk + /przejmij) - pomijamy dla właściciela
+  if (!skipQuiz && !isOwner) {
     const pick = generateClaimQuiz();
     const modalId = `claim_quiz_${channelId}_${interaction.user.id}_${Date.now()}`;
     pendingClaimQuiz.set(modalId, { channelId, userId: interaction.user.id, answer: pick.a });
@@ -14830,59 +14820,71 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     return { ok: false, reason: "quiz-required" };
   }
 
-  // szybka odpowiedź, żeby Discord nie wyświetlał błędu interakcji (po quizie)
-  if (!interaction.replied && !interaction.deferred) {
-    if (isBtn) {
-      await interaction.deferUpdate().catch(() => null);
-    } else {
-      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
-    }
-  }
-
-  const replyEphemeral = async (text) => {
-    // jeśli interakcja nie została jeszcze potwierdzona, użyj reply()
+  // Blokada wyścigu – tylko jeden sprzedawca może przejąć naraz
+  if (claimingInProgress.has(channelId)) {
+    const failMsg = "> `❌` × Ten ticket jest właśnie przejmowany przez kogoś innego. Spróbuj za chwilę.";
     if (!interaction.replied && !interaction.deferred) {
-      await interaction
-        .reply({ content: text, flags: [MessageFlags.Ephemeral] })
-        .catch(() => null);
-      return;
-    }
-    if (isBtn) {
-      await interaction.followUp({ content: text, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      await interaction.reply({ content: failMsg, flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
-      await interaction.editReply({ content: text }).catch(() => null);
+      await interaction.followUp({ content: failMsg, flags: [MessageFlags.Ephemeral] }).catch(() => null);
     }
-  };
-
-  const ticketData = ticketOwners.get(channelId) || {
-    claimedBy: null,
-    locked: false,
-    userId: null,
-    ticketMessageId: null,
-    originalCategoryId: null, // Zapisz oryginalną kategorię
-  };
-
-  if (ticketData.locked) {
-    await replyEphemeral(
-      "❌ Ten ticket został zablokowany do przejmowania (ustawienia/zmiana nazwy).",
-    );
-    return { ok: false, reason: "locked" };
+    return { ok: false, reason: "claiming-in-progress" };
   }
-
-  if (ticketData && ticketData.claimedBy) {
-    await replyEphemeral(
-      `❌ Ten ticket został już przejęty przez <@${ticketData.claimedBy}>!`,
-    );
-    return { ok: false, reason: "already-claimed", claimedBy: ticketData.claimedBy };
-  }
-
-  const ch = await client.channels.fetch(channelId).catch(() => null);
-  if (!ch) {
-    await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
-    return { ok: false, reason: "channel-not-found" };
-  }
+  claimingInProgress.add(channelId);
 
   try {
+    // szybka odpowiedź, żeby Discord nie wyświetlał błędu interakcji (po quizie)
+    if (!interaction.replied && !interaction.deferred) {
+      if (isBtn) {
+        await interaction.deferUpdate().catch(() => null);
+      } else {
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      }
+    }
+
+    const replyEphemeral = async (text) => {
+      // jeśli interakcja nie została jeszcze potwierdzona, użyj reply()
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction
+          .reply({ content: text, flags: [MessageFlags.Ephemeral] })
+          .catch(() => null);
+        return;
+      }
+      if (isBtn) {
+        await interaction.followUp({ content: text, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      } else {
+        await interaction.editReply({ content: text }).catch(() => null);
+      }
+    };
+
+    const ticketData = ticketOwners.get(channelId) || {
+      claimedBy: null,
+      locked: false,
+      userId: null,
+      ticketMessageId: null,
+      originalCategoryId: null, // Zapisz oryginalną kategorię
+    };
+
+    if (ticketData.locked) {
+      await replyEphemeral(
+        "❌ Ten ticket został zablokowany do przejmowania (ustawienia/zmiana nazwy).",
+      );
+      return { ok: false, reason: "locked" };
+    }
+
+    if (ticketData && ticketData.claimedBy) {
+      await replyEphemeral(
+        `❌ Ten ticket został już przejęty przez <@${ticketData.claimedBy}>!`,
+      );
+      return { ok: false, reason: "already-claimed", claimedBy: ticketData.claimedBy };
+    }
+
+    const ch = await client.channels.fetch(channelId).catch(() => null);
+    if (!ch) {
+      await replyEphemeral("❌ Nie mogę znaleźć tego kanału.");
+      return { ok: false, reason: "channel-not-found" };
+    }
+
     const claimerId = interaction.user.id;
 
     // Zapisz oryginalną kategorię przed przeniesieniem
@@ -14957,9 +14959,6 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       }
     }
 
-    // Właściciel ticketu już ma dostęp - nie trzeba nic zmieniać
-    // Usuń limity kategorii dla kanału
-
     ticketData.claimedBy = claimerId;
     ticketOwners.set(channelId, ticketData);
     scheduleSavePersistentState();
@@ -14987,11 +14986,9 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     }
 
     try {
-      // Payment info only for purchases, not for sales (SPRZEDAŻ)
       if (ticketData.ticketTypeLabel !== "SPRZEDAŻ") {
         await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId, ticketData);
 
-        // Dodatkowe instrukcje dla PSC - tylko po przejęciu i tylko dla zakupów
         const method = String(ticketData?.paymentMethod || "").toLowerCase();
         if (method === "psc" || method === "psc_bez_paragonu") {
           const pscEmbed = new EmbedBuilder()
@@ -15031,6 +15028,8 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     console.error("Błąd przy przejmowaniu ticketu:", err);
     await replyEphemeral("❌ Wystąpił błąd podczas przejmowania ticketu.");
     return { ok: false, reason: "error", channelId };
+  } finally {
+    claimingInProgress.delete(channelId);
   }
 }
 
