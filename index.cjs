@@ -13184,11 +13184,8 @@ function buildTicketCloseConfirmEmbed(actionLabel) {
   return new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(
-      "```\n" +
-      "🎫 New Shop × ZAMYKANIE\n" +
-      "```\n" +
       `> \`⚠️\` × ${actionLabel}\n` +
-      "> `⏳\` × Potwierdź w `30s`",
+      "> `⏳` × Potwierdź w `30s`",
     );
 }
 
