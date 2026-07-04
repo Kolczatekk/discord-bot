@@ -5,6 +5,8 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+// -------- Shared utilities --------
+
 function getCurrentWeekStartString() {
   const now = new Date();
   const dayOfWeek = now.getDay();
@@ -14,7 +16,64 @@ function getCurrentWeekStartString() {
   return weekStart.toISOString().split("T")[0];
 }
 
-// Weekly sales functions
+async function supabaseUpsert(table, data, logKey) {
+  const { error } = await supabase.from(table).upsert(data);
+  if (error) console.error(`[Supabase] Błąd zapisu ${table}:`, error);
+  else console.log(`[Supabase] Zapisano ${table}: ${logKey}`);
+}
+
+async function supabaseSelectAll(table, filters = {}, defaultReturn = []) {
+  let query = supabase.from(table).select("*");
+  for (const [col, val] of Object.entries(filters)) {
+    query = query.eq(col, val);
+  }
+  const { data, error } = await query;
+  if (error) {
+    console.error(`[Supabase] Błąd odczytu ${table}:`, error);
+    return defaultReturn;
+  }
+  return data;
+}
+
+async function supabaseDelete(table, filters, logKey) {
+  let query = supabase.from(table).delete();
+  for (const [col, val] of Object.entries(filters)) {
+    query = query.eq(col, val);
+  }
+  const { error } = await query;
+  if (error) {
+    console.error(`[Supabase] Błąd usuwania ${table}:`, error);
+    return false;
+  }
+  console.log(`[Supabase] Usunięto ${table}: ${logKey}`);
+  return true;
+}
+
+async function saveWeeklyInviteData(table, guildId, inviterId, count) {
+  const weekStartStr = getCurrentWeekStartString();
+  await supabaseUpsert(table, {
+    guild_id: guildId,
+    inviter_id: inviterId,
+    count: count,
+    week_start: weekStartStr,
+  }, `${guildId}/${inviterId} -> ${count}`);
+}
+
+async function getWeeklyInviteData(table, guildId) {
+  const weekStartStr = getCurrentWeekStartString();
+  const data = await supabaseSelectAll(table, {
+    guild_id: guildId,
+    week_start: weekStartStr,
+  }, []);
+  const result = {};
+  data.forEach(item => {
+    result[item.inviter_id] = item.count;
+  });
+  return result;
+}
+
+// -------- Weekly sales --------
+
 async function saveWeeklySale(
   userId,
   amount,
@@ -23,60 +82,41 @@ async function saveWeeklySale(
   paidAt = null,
   lastUpdate = Date.now()
 ) {
-  // Pobierz początek tygodnia (niedziela)
   const weekStart = getCurrentWeekStartString();
-  
-  const { error } = await supabase
-    .from("weekly_sales")
-    .upsert({ 
-      user_id: userId, 
-      guild_id: guildId,
-      amount,
-      paid,
-      paid_at: paidAt ? new Date(paidAt).toISOString() : null,
-      updated_at: new Date(lastUpdate).toISOString(),
-      week_start: weekStart
-    });
-  if (error) console.error("[Supabase] Błąd zapisu weekly_sales:", error);
-  else console.log(`[Supabase] Zapisano weekly_sales: ${guildId}/${userId} -> ${amount} (paid=${paid})`);
+  await supabaseUpsert("weekly_sales", {
+    user_id: userId,
+    guild_id: guildId,
+    amount,
+    paid,
+    paid_at: paidAt ? new Date(paidAt).toISOString() : null,
+    updated_at: new Date(lastUpdate).toISOString(),
+    week_start: weekStart,
+  }, `${guildId}/${userId} -> ${amount} (paid=${paid})`);
 }
 
 async function getWeeklySales(guildId = null) {
-  // Pobierz początek aktualnego tygodnia (niedziela)
   const weekStartStr = getCurrentWeekStartString();
-  
-  let query = supabase
-    .from("weekly_sales")
-    .select("*")
-    .eq("week_start", weekStartStr); // Tylko aktualny tydzień
-    
+  const filters = { week_start: weekStartStr };
   if (guildId && guildId !== "default") {
-    query = query.eq("guild_id", guildId);
+    filters.guild_id = guildId;
   }
-  
-  const { data, error } = await query;
-  if (error) {
-    console.error("[Supabase] Błąd odczytu weekly_sales:", error);
-    return [];
-  }
-  return data;
+  return supabaseSelectAll("weekly_sales", filters);
 }
 
 async function resetWeeklySales(guildId = null) {
   const weekStartStr = getCurrentWeekStartString();
-
-  let query = supabase
-    .from("weekly_sales")
-    .delete()
-    .eq("week_start", weekStartStr);
-
+  const filters = { week_start: weekStartStr };
   if (guildId && guildId !== "default") {
-    query = query.eq("guild_id", guildId);
+    filters.guild_id = guildId;
   }
 
+  let query = supabase.from("weekly_sales").delete();
+  for (const [col, val] of Object.entries(filters)) {
+    query = query.eq(col, val);
+  }
   const { error } = await query;
   if (error) {
-    console.error("[Supabase] BÅ‚Ä…d resetowania weekly_sales:", error);
+    console.error("[Supabase] Błąd resetowania weekly_sales:", error);
     return false;
   }
 
@@ -86,150 +126,143 @@ async function resetWeeklySales(guildId = null) {
   return true;
 }
 
-// Invite counts functions
-async function saveInviteCount(guildId, userId, count) {
-  const { error } = await supabase
-    .from("invite_counts")
-    .upsert({ 
-      guild_id: guildId,
-      user_id: userId,
-      count,
-      updated_at: new Date().toISOString()
-    });
-  if (error) console.error("[Supabase] Błąd zapisu invite_counts:", error);
-  else console.log(`[Supabase] Zapisano invite_counts: ${guildId}/${userId} -> ${count}`);
+// -------- Invite counts (weekly) --------
+
+async function saveInviteCount(guildId, inviterId, count) {
+  await saveWeeklyInviteData("invite_counts", guildId, inviterId, count);
 }
 
 async function getInviteCounts(guildId) {
-  const { data, error } = await supabase
-    .from("invite_counts")
-    .select("*")
-    .eq("guild_id", guildId);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invite_counts:", error);
-    return [];
-  }
-  return data;
+  return getWeeklyInviteData("invite_counts", guildId);
 }
 
-// Ticket functions
+// -------- Invite total joined (weekly) --------
+
+async function saveInviteTotalJoined(guildId, inviterId, count) {
+  await saveWeeklyInviteData("invite_total_joined", guildId, inviterId, count);
+}
+
+async function getInviteTotalJoined(guildId) {
+  return getWeeklyInviteData("invite_total_joined", guildId);
+}
+
+// -------- Invite fake accounts (weekly) --------
+
+async function saveInviteFakeAccounts(guildId, inviterId, count) {
+  await saveWeeklyInviteData("invite_fake_accounts", guildId, inviterId, count);
+}
+
+async function getInviteFakeAccounts(guildId) {
+  return getWeeklyInviteData("invite_fake_accounts", guildId);
+}
+
+// -------- Invite bonus invites --------
+
+async function saveInviteBonusInvites(guildId, userId, bonus) {
+  await supabaseUpsert("invite_bonus_invites", {
+    guild_id: guildId,
+    user_id: userId,
+    bonus: bonus,
+  }, `${guildId}/${userId} -> ${bonus}`);
+}
+
+async function getInviteBonusInvites(guildId) {
+  const data = await supabaseSelectAll("invite_bonus_invites", { guild_id: guildId });
+  const result = {};
+  data.forEach(item => {
+    result[item.user_id] = item.bonus;
+  });
+  return result;
+}
+
+// -------- Invite rewards given --------
+
+async function saveInviteRewardsGiven(guildId, userId, rewardsCount) {
+  await supabaseUpsert("invite_rewards_given", {
+    guild_id: guildId,
+    user_id: userId,
+    rewards_count: rewardsCount,
+  }, `${guildId}/${userId} -> ${rewardsCount}`);
+}
+
+async function getInviteRewardsGiven(guildId) {
+  const data = await supabaseSelectAll("invite_rewards_given", { guild_id: guildId });
+  const result = {};
+  data.forEach(item => {
+    result[item.user_id] = item.rewards_count;
+  });
+  return result;
+}
+
+// -------- Invite reward levels --------
+
+async function saveInviteRewardLevels(guildId, userId, levels) {
+  await supabaseUpsert("invite_reward_levels", {
+    guild_id: guildId,
+    user_id: userId,
+    reward_levels: levels,
+  }, `${guildId}/${userId} -> ${JSON.stringify(levels)}`);
+}
+
+async function getInviteRewardLevels(guildId) {
+  const data = await supabaseSelectAll("invite_reward_levels", { guild_id: guildId });
+  const result = {};
+  data.forEach(item => {
+    result[item.user_id] = new Set(item.reward_levels || []);
+  });
+  return result;
+}
+
+// -------- Ticket owners --------
+
 async function saveTicketOwner(channelId, ticketData) {
-  const { error } = await supabase
-    .from("ticket_owners")
-    .upsert({ 
-      channel_id: channelId,
-      ...ticketData,
-      updated_at: new Date().toISOString()
-    });
-  if (error) console.error("[Supabase] Błąd zapisu ticket_owners:", error);
-  else console.log(`[Supabase] Zapisano ticket_owners: ${channelId}`);
+  await supabaseUpsert("ticket_owners", {
+    channel_id: channelId,
+    user_id: ticketData.userId,
+    claimed_by: ticketData.claimedBy,
+    locked: ticketData.locked || false,
+    ticket_message_id: ticketData.ticketMessageId,
+    updated_at: new Date().toISOString(),
+  }, channelId);
 }
 
 async function getTicketOwners() {
-  const { data, error } = await supabase.from("ticket_owners").select("*");
-  if (error) {
-    console.error("[Supabase] Błąd odczytu ticket_owners:", error);
-    return [];
-  }
-  return data;
+  const data = await supabaseSelectAll("ticket_owners", {}, []);
+  const result = {};
+  data.forEach(item => {
+    result[item.channel_id] = {
+      claimedBy: item.claimed_by,
+      userId: item.user_id,
+      locked: item.locked,
+      ticketMessageId: item.ticket_message_id,
+    };
+  });
+  return result;
 }
 
-// Active codes functions
+async function deleteTicketOwner(channelId) {
+  await supabaseDelete("ticket_owners", { channel_id: channelId }, channelId);
+}
+
+// -------- Active codes --------
+
 async function saveActiveCode(code, codeData) {
-  const { error } = await supabase
-    .from("active_codes")
-    .upsert({ 
-      code,
-      ...codeData,
-      updated_at: new Date().toISOString()
-    });
-  if (error) console.error("[Supabase] Błąd zapisu active_codes:", error);
-  else console.log(`[Supabase] Zapisano active_codes: ${code}`);
+  await supabaseUpsert("active_codes", {
+    code,
+    user_id: codeData.oderId || codeData.user_id,
+    discount: codeData.discount || 0,
+    expires_at: new Date(codeData.expiresAt).toISOString(),
+    used: codeData.used || false,
+    reward: codeData.reward,
+    reward_amount: codeData.rewardAmount,
+    reward_text: codeData.rewardText,
+    type: codeData.type,
+    updated_at: new Date().toISOString(),
+  }, code);
 }
 
 async function getActiveCodes() {
-  const { data, error } = await supabase.from("active_codes").select("*");
-  if (error) {
-    console.error("[Supabase] Błąd odczytu active_codes:", error);
-    return [];
-  }
-  return data;
-}
-
-// Contest functions
-async function saveContest(messageId, contestData) {
-  const { error } = await supabase
-    .from("contests")
-    .upsert({ 
-      message_id: messageId,
-      ...contestData,
-      updated_at: new Date().toISOString()
-    });
-  if (error) console.error("[Supabase] Błąd zapisu contests:", error);
-  else console.log(`[Supabase] Zapisano contests: ${messageId}`);
-}
-
-async function getContests() {
-  const { data, error } = await supabase.from("contests").select("*");
-  if (error) {
-    console.error("[Supabase] Błąd odczytu contests:", error);
-    return [];
-  }
-  return data;
-}
-
-// Contest participants functions
-async function saveContestParticipant(messageId, userId) {
-  const { error } = await supabase
-    .from("contest_participants")
-    .upsert({ 
-      message_id: messageId,
-      user_id: userId,
-      joined_at: new Date().toISOString()
-    });
-  if (error) console.error("[Supabase] Błąd zapisu contest_participants:", error);
-  else console.log(`[Supabase] Zapisano contest_participants: ${messageId}/${userId}`);
-}
-
-async function getContestParticipants(messageId) {
-  const { data, error } = await supabase
-    .from("contest_participants")
-    .select("*")
-    .eq("message_id", messageId);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu contest_participants:", error);
-    return [];
-  }
-  return data;
-}
-
-// Active codes functions
-async function saveActiveCode(code, codeData) {
-  const { error } = await supabase
-    .from("active_codes")
-    .upsert({ 
-      code,
-      user_id: codeData.oderId || codeData.user_id,
-      discount: codeData.discount || 0,
-      expires_at: new Date(codeData.expiresAt).toISOString(),
-      used: codeData.used || false,
-      reward: codeData.reward,
-      reward_amount: codeData.rewardAmount,
-      reward_text: codeData.rewardText,
-      type: codeData.type,
-      updated_at: new Date().toISOString()
-    });
-  if (error) console.error("[Supabase] Błąd zapisu active_codes:", error);
-  else console.log(`[Supabase] Zapisano active_code: ${code}`);
-}
-
-async function getActiveCodes() {
-  const { data, error } = await supabase.from("active_codes").select("*");
-  if (error) {
-    console.error("[Supabase] Błąd odczytu active_codes:", error);
-    return [];
-  }
-  return data;
+  return supabaseSelectAll("active_codes");
 }
 
 async function getActiveCode(code) {
@@ -256,326 +289,66 @@ async function updateActiveCode(code, updates) {
 }
 
 async function deleteActiveCode(code) {
-  const { error } = await supabase
-    .from("active_codes")
-    .delete()
-    .eq("code", code);
-  if (error) console.error("[Supabase] Błąd usuwania active_codes:", error);
-  else console.log(`[Supabase] Usunięto active_code: ${code}`);
+  await supabaseDelete("active_codes", { code }, code);
 }
 
-// Ticket owners functions
-async function saveTicketOwner(channelId, ticketData) {
-  const { error } = await supabase
-    .from("ticket_owners")
-    .upsert({ 
-      channel_id: channelId,
-      user_id: ticketData.userId,
-      claimed_by: ticketData.claimedBy,
-      locked: ticketData.locked || false,
-      ticket_message_id: ticketData.ticketMessageId,
-      updated_at: new Date().toISOString()
-    });
-  if (error) console.error("[Supabase] Błąd zapisu ticket_owners:", error);
-  else console.log(`[Supabase] Zapisano ticket_owner: ${channelId}`);
+// -------- Contests --------
+
+async function saveContest(messageId, contestData) {
+  await supabaseUpsert("contests", {
+    message_id: messageId,
+    ...contestData,
+    updated_at: new Date().toISOString(),
+  }, messageId);
 }
 
-async function getTicketOwners() {
-  const { data, error } = await supabase.from("ticket_owners").select("*");
-  if (error) {
-    console.error("[Supabase] Błąd odczytu ticket_owners:", error);
-    return {};
-  }
-  const result = {};
-  data.forEach(item => {
-    result[item.channel_id] = {
-      claimedBy: item.claimed_by,
-      userId: item.user_id,
-      locked: item.locked,
-      ticketMessageId: item.ticket_message_id
-    };
-  });
-  return result;
+async function getContests() {
+  return supabaseSelectAll("contests");
 }
 
-async function deleteTicketOwner(channelId) {
-  const { error } = await supabase
-    .from("ticket_owners")
-    .delete()
-    .eq("channel_id", channelId);
-  if (error) console.error("[Supabase] Błąd usuwania ticket_owners:", error);
-  else console.log(`[Supabase] Usunięto ticket_owner: ${channelId}`);
+// -------- Contest participants --------
+
+async function saveContestParticipant(messageId, userId) {
+  await supabaseUpsert("contest_participants", {
+    message_id: messageId,
+    user_id: userId,
+    joined_at: new Date().toISOString(),
+  }, `${messageId}/${userId}`);
 }
 
-// Invite counts functions
-async function saveInviteCount(guildId, inviterId, count) {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const diff = now.getDate() - dayOfWeek;
-  const weekStart = new Date(now.setDate(diff));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekStartStr = weekStart.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const { error } = await supabase
-    .from("invite_counts")
-    .upsert({ 
-      guild_id: guildId,
-      inviter_id: inviterId,
-      count: count,
-      week_start: weekStartStr
-    });
-  if (error) console.error("[Supabase] Błąd zapisu invite_counts:", error);
-  else console.log(`[Supabase] Zapisano invite_counts: ${guildId}/${inviterId} -> ${count}`);
+async function getContestParticipants(messageId) {
+  return supabaseSelectAll("contest_participants", { message_id: messageId });
 }
 
-async function getInviteCounts(guildId) {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const diff = now.getDate() - dayOfWeek;
-  const weekStart = new Date(now.setDate(diff));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekStartStr = weekStart.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const { data, error } = await supabase
-    .from("invite_counts")
-    .select("*")
-    .eq("guild_id", guildId)
-    .eq("week_start", weekStartStr);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invite_counts:", error);
-    return {};
-  }
-  const result = {};
-  data.forEach(item => {
-    result[item.inviter_id] = item.count;
-  });
-  return result;
-}
+// -------- Get invited users by inviter --------
 
-// Invite total joined functions
-async function saveInviteTotalJoined(guildId, inviterId, count) {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const diff = now.getDate() - dayOfWeek;
-  const weekStart = new Date(now.setDate(diff));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekStartStr = weekStart.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const { error } = await supabase
-    .from("invite_total_joined")
-    .upsert({ 
-      guild_id: guildId,
-      inviter_id: inviterId,
-      count: count,
-      week_start: weekStartStr
-    });
-  if (error) console.error("[Supabase] Błąd zapisu invite_total_joined:", error);
-  else console.log(`[Supabase] Zapisano invite_total_joined: ${guildId}/${inviterId} -> ${count}`);
-}
-
-async function getInviteTotalJoined(guildId) {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const diff = now.getDate() - dayOfWeek;
-  const weekStart = new Date(now.setDate(diff));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekStartStr = weekStart.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const { data, error } = await supabase
-    .from("invite_total_joined")
-    .select("*")
-    .eq("guild_id", guildId)
-    .eq("week_start", weekStartStr);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invite_total_joined:", error);
-    return {};
-  }
-  const result = {};
-  data.forEach(item => {
-    result[item.inviter_id] = item.count;
-  });
-  return result;
-}
-
-// Invite fake accounts functions
-async function saveInviteFakeAccounts(guildId, inviterId, count) {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const diff = now.getDate() - dayOfWeek;
-  const weekStart = new Date(now.setDate(diff));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekStartStr = weekStart.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const { error } = await supabase
-    .from("invite_fake_accounts")
-    .upsert({ 
-      guild_id: guildId,
-      inviter_id: inviterId,
-      count: count,
-      week_start: weekStartStr
-    });
-  if (error) console.error("[Supabase] Błąd zapisu invite_fake_accounts:", error);
-  else console.log(`[Supabase] Zapisano invite_fake_accounts: ${guildId}/${inviterId} -> ${count}`);
-}
-
-async function getInviteFakeAccounts(guildId) {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const diff = now.getDate() - dayOfWeek;
-  const weekStart = new Date(now.setDate(diff));
-  weekStart.setHours(0, 0, 0, 0);
-  const weekStartStr = weekStart.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  const { data, error } = await supabase
-    .from("invite_fake_accounts")
-    .select("*")
-    .eq("guild_id", guildId)
-    .eq("week_start", weekStartStr);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invite_fake_accounts:", error);
-    return {};
-  }
-  const result = {};
-  data.forEach(item => {
-    result[item.inviter_id] = item.count;
-  });
-  return result;
-}
-
-// Invite bonus invites functions
-async function saveInviteBonusInvites(guildId, userId, bonus) {
-  const { error } = await supabase
-    .from("invite_bonus_invites")
-    .upsert({ 
-      guild_id: guildId,
-      user_id: userId,
-      bonus: bonus
-    });
-  if (error) console.error("[Supabase] Błąd zapisu invite_bonus_invites:", error);
-  else console.log(`[Supabase] Zapisano invite_bonus_invites: ${guildId}/${userId} -> ${bonus}`);
-}
-
-async function getInviteBonusInvites(guildId) {
-  const { data, error } = await supabase
-    .from("invite_bonus_invites")
-    .select("*")
-    .eq("guild_id", guildId);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invite_bonus_invites:", error);
-    return {};
-  }
-  const result = {};
-  data.forEach(item => {
-    result[item.user_id] = item.bonus;
-  });
-  return result;
-}
-
-// Invite rewards given functions
-async function saveInviteRewardsGiven(guildId, userId, rewardsCount) {
-  const { error } = await supabase
-    .from("invite_rewards_given")
-    .upsert({ 
-      guild_id: guildId,
-      user_id: userId,
-      rewards_count: rewardsCount
-    });
-  if (error) console.error("[Supabase] Błąd zapisu invite_rewards_given:", error);
-  else console.log(`[Supabase] Zapisano invite_rewards_given: ${guildId}/${userId} -> ${rewardsCount}`);
-}
-
-async function getInviteRewardsGiven(guildId) {
-  const { data, error } = await supabase
-    .from("invite_rewards_given")
-    .select("*")
-    .eq("guild_id", guildId);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invite_rewards_given:", error);
-    return {};
-  }
-  const result = {};
-  data.forEach(item => {
-    result[item.user_id] = item.rewards_count;
-  });
-  return result;
-}
-
-// Invite reward levels functions
-async function saveInviteRewardLevels(guildId, userId, levels) {
-  const { error } = await supabase
-    .from("invite_reward_levels")
-    .upsert({ 
-      guild_id: guildId,
-      user_id: userId,
-      reward_levels: levels
-    });
-  if (error) console.error("[Supabase] Błąd zapisu invite_reward_levels:", error);
-  else console.log(`[Supabase] Zapisano invite_reward_levels: ${guildId}/${userId} -> ${JSON.stringify(levels)}`);
-}
-
-async function getInviteRewardLevels(guildId) {
-  const { data, error } = await supabase
-    .from("invite_reward_levels")
-    .select("*")
-    .eq("guild_id", guildId);
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invite_reward_levels:", error);
-    return {};
-  }
-  const result = {};
-  data.forEach(item => {
-    result[item.user_id] = new Set(item.reward_levels || []);
-  });
-  return result;
-}
-
-// Get invited users by inviter
 async function getInvitedUsersByInviter(guildId, inviterId) {
-  const { data, error } = await supabase
-    .from("invites")
-    .select("*")
-    .eq("guild_id", guildId)
-    .eq("inviter_id", inviterId)
-    .eq("status", "joined"); // Tylko osoby które dołączyły
-  
-  if (error) {
-    console.error("[Supabase] Błąd odczytu invites:", error);
-    return [];
-  }
-  return data;
+  return supabaseSelectAll("invites", {
+    guild_id: guildId,
+    inviter_id: inviterId,
+    status: "joined",
+  });
 }
 
-// User spent tracking functions
+// -------- User spent tracking --------
+
 async function addUserSpent(userId, amount, guildId = "default") {
-  // First, get the current spent amount
-  const { data, error: fetchError } = await supabase
+  const { data } = await supabase
     .from("user_spent")
     .select("amount")
     .eq("user_id", userId)
     .eq("guild_id", guildId)
     .maybeSingle();
 
-  let currentAmount = 0;
-  if (data) {
-    currentAmount = Number(data.amount) || 0;
-  }
-
+  const currentAmount = data ? Number(data.amount) || 0 : 0;
   const newAmount = currentAmount + amount;
 
-  const { error } = await supabase
-    .from("user_spent")
-    .upsert({
-      user_id: userId,
-      guild_id: guildId,
-      amount: newAmount,
-      updated_at: new Date().toISOString()
-    });
-
-  if (error) {
-    console.error("[Supabase] Błąd zapisu user_spent:", error);
-  } else {
-    console.log(`[Supabase] Zaktualizowano user_spent dla ${userId}: +${amount} PLN (Razem: ${newAmount} PLN)`);
-  }
+  await supabaseUpsert("user_spent", {
+    user_id: userId,
+    guild_id: guildId,
+    amount: newAmount,
+    updated_at: new Date().toISOString(),
+  }, `${userId}: +${amount} PLN (Razem: ${newAmount} PLN)`);
 }
 
 async function getUserSpent(userId, guildId = "default") {
@@ -615,7 +388,7 @@ async function setUserSpent(userId, amount, guildId = "default") {
       user_id: userId,
       guild_id: guildId,
       amount: amount,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     });
 
   if (error) {
@@ -626,17 +399,7 @@ async function setUserSpent(userId, amount, guildId = "default") {
 }
 
 async function deleteUserSpent(userId, guildId = "default") {
-  const { error } = await supabase
-    .from("user_spent")
-    .delete()
-    .eq("user_id", userId)
-    .eq("guild_id", guildId);
-
-  if (error) {
-    console.error("[Supabase] Błąd usuwania user_spent:", error);
-    return false;
-  }
-  return true;
+  return supabaseDelete("user_spent", { user_id: userId, guild_id: guildId }, userId);
 }
 
 module.exports = {
