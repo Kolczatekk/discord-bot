@@ -1,0 +1,28 @@
+# Environment variables and secrets
+.env
+*.env
+token.env
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Local data store
+legit_store.json
+
+# IDE
+.vscode/
+.idea/

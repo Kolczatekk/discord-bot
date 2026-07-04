@@ -9,13 +9,13 @@ CREATE TABLE IF NOT EXISTS public.user_spent (
     PRIMARY KEY (user_id, guild_id)
 );
 
--- Enable Row Level Security (RLS) if required
+-- Enable Row Level Security (RLS)
 ALTER TABLE public.user_spent ENABLE ROW LEVEL SECURITY;
 
--- Allow public read access
-CREATE POLICY "Allow public read access" ON public.user_spent
-    FOR SELECT USING (true);
+-- Allow read access only for authenticated (service_role) users
+CREATE POLICY "Allow authenticated read access" ON public.user_spent
+    FOR SELECT TO authenticated USING (true);
 
--- Allow write access for everyone (or configure authenticated only)
-CREATE POLICY "Allow write access for all" ON public.user_spent
-    FOR ALL USING (true) WITH CHECK (true);
+-- Allow write access only for authenticated (service_role) users
+CREATE POLICY "Allow authenticated write access" ON public.user_spent
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);

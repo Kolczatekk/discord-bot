@@ -42,8 +42,36 @@ const db = require("./database.js");
 
 // ==== EXPRESS SERVER (RENDER COMPATIBILITY) ====
 const express = require('express');
+const helmet = require('helmet');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security headers
+app.use(helmet());
+
+// Disable X-Powered-By (also handled by helmet, but explicit for clarity)
+app.disable('x-powered-by');
+
+// Basic rate limiting for HTTP endpoints (in-memory, per-IP)
+const httpRateLimitMap = new Map();
+const HTTP_RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const HTTP_RATE_LIMIT_MAX = 60; // 60 requests per minute per IP
+
+app.use((req, res, next) => {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = httpRateLimitMap.get(ip) || { count: 0, resetAt: now + HTTP_RATE_LIMIT_WINDOW_MS };
+  if (now > entry.resetAt) {
+    entry.count = 0;
+    entry.resetAt = now + HTTP_RATE_LIMIT_WINDOW_MS;
+  }
+  entry.count++;
+  httpRateLimitMap.set(ip, entry);
+  if (entry.count > HTTP_RATE_LIMIT_MAX) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+  next();
+});
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
@@ -21798,7 +21826,6 @@ console.log("🟢 FULL MONITORING MODE aktywowany - heartbeat co 5min, alerty b�
 
 console.log("[DEBUG] Próba połączenia z Discord...");
 console.log("[DEBUG] BOT_TOKEN exists:", !!process.env.BOT_TOKEN);
-console.log("[DEBUG] BOT_TOKEN length:", process.env.BOT_TOKEN?.length || 0);
 
 // Test WebSocket połączenia
 console.log("[WS_TEST] Testuję połączenie WebSocket z Discord...");
@@ -22045,42 +22072,17 @@ app.get('/videos/:videoKey', (req, res) => {
   }
 });
 
-// Health check endpoint
+// Health check endpoint (minimal info — don't expose internal details publicly)
 app.get('/', (req, res) => {
-  const status = {
-    status: 'alive',
-    timestamp: new Date().toISOString(),
-    discord_status: client.isReady() ? 'connected' : 'disconnected',
-    uptime: client.uptime ? Math.floor(client.uptime / 1000) : 0,
-    guilds: client.isReady() ? client.guilds.cache.size : 0,
-    bot_tag: client.user ? client.user.tag : 'Not connected',
-    ready: client.isReady()
-  };
-
-  // Sprawdź czy request chce JSON czy HTML
-  if (req.headers.accept && req.headers.accept.includes('application/json')) {
-    res.json(status, null, 2);
-  } else {
-    // Formatowanie HTML dla lepszej czytelności
-    res.send(`
-      <h1>🤖 Bot Status Monitor</h1>
-      <pre>${JSON.stringify(status, null, 2)}</pre>
-      <hr>
-      <p><strong>Health Check:</strong> <a href="/health">/health</a></p>
-      <p><strong>Timestamp:</strong> ${new Date().toLocaleString()}</p>
-    `);
-  }
+  res.status(200).json({
+    status: client.isReady() ? 'alive' : 'starting',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get('/health', (req, res) => {
-  const isHealthy = client.isReady();
-  const status = {
-    status: isHealthy ? 'healthy' : 'unhealthy',
-    discord_connected: isHealthy,
-    timestamp: new Date().toISOString(),
-    uptime: client.uptime ? Math.floor(client.uptime / 1000) : 0,
-    guilds: client.isReady() ? client.guilds.cache.size : 0
-  };
-
-  res.status(200).json(status, null, 2);
+  res.status(200).json({
+    status: client.isReady() ? 'healthy' : 'unhealthy',
+    timestamp: new Date().toISOString()
+  });
 });
