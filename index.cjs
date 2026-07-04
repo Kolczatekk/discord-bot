@@ -5924,7 +5924,9 @@ async function handleModalSubmit(interaction) {
       formInfo,
       ticketChannelId: channel.id,
       ticketMessageId: sentMsg.id,
-    }).catch(() => { });
+    }).catch((err) => {
+      console.error("[ticket] Nie udało się zalogować utworzenia ticketu:", err);
+    });
 
     await interaction.reply({
       content: `> ✅ **Utworzono ticket! Przejdź do:** <#${channel.id}>.`,
@@ -12229,7 +12231,9 @@ async function handleAktualizacjaEmbedCommand(interaction) {
     try {
       const fetched = await targetChannel.messages.fetch({ limit: 50 });
       targetMessage = fetched.find(m => m.author.id === client.user.id && (m.embeds.length > 0 || m.flags.has(MessageFlags.IsComponentsV2))) || null;
-    } catch (e) { }
+    } catch (e) {
+      console.error("[embed] Nie udało się pobrać wiadomości kanału:", e);
+    }
   }
 
   if (!targetMessage) {
@@ -13668,7 +13672,9 @@ async function closeTicketAnonymously(channel, guild, executorId) {
     if (attachment) sendOptions.files = [attachment];
     const newInfoMsg = await repChannel.send(sendOptions);
     repLastInfoMessage.set(repChannel.id, newInfoMsg.id);
-  } catch (err) { }
+  } catch (err) {
+    console.error("[rep] Nie udało się wysłać wiadomości informacyjnej:", err);
+  }
 
   const ticketMeta = ticketOwners.get(channel.id) || null;
   await archiveTicketOnClose(channel, executorId, ticketMeta, {
@@ -15716,7 +15722,9 @@ async function handleModalSubmit(interaction) {
       try {
         const webhooks = await targetChannel.fetchWebhooks();
         botWebhook = webhooks.find((w) => w.owner?.id === client.user.id && w.name === "ZAKUP_ITy_OPINIE");
-      } catch (e) { }
+      } catch (e) {
+        console.error("[opinie] Nie udało się pobrać webhooków kanału:", e);
+      }
 
       if (!botWebhook) {
         botWebhook = await targetChannel.createWebhook({
@@ -17449,7 +17457,9 @@ async function handleModalSubmit(interaction) {
           formInfo,
           ticketChannelId: channel.id,
           ticketMessageId: sentMsg.id,
-        }).catch(() => { });
+        }).catch((err) => {
+          console.error("[ticket] Nie udało się zalogować utworzenia ticketu:", err);
+        });
 
         await interaction.reply({
           content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
@@ -19360,7 +19370,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
           message = `> \`✉️\` × <@${member.id}> dołączył, ale nie udało się wykryć użytego linku zaproszenia.`;
         }
         await zapChannel.send(message);
-      } catch (e) { }
+      } catch (e) {
+        console.error("[invite] Nie udało się wysłać wiadomości o dołączeniu:", e);
+      }
     }
 
     // Send welcome embed (no inviter details here)
@@ -19529,7 +19541,9 @@ client.on(Events.GuildMemberRemove, async (member) => {
           message = `> \`✉️\` × <@${member.id}> opuścił serwer. Był zaproszony przez <@${inviterId}> który ma teraz **${currentCount}** ${inviteWord}.`;
         }
         await zapCh.send(message);
-      } catch (e) { }
+      } catch (e) {
+        console.error("[invite] Nie udało się wysłać wiadomości o opuszczeniu:", e);
+      }
     }
 
     if (vanityCode) {
@@ -21616,6 +21630,19 @@ process.on("uncaughtException", async (err) => {
 
   // Daj chwilę na wysłanie alertu
   setTimeout(() => process.exit(1), 2000);
+});
+
+// 2b. Alert przy nieobsłużonym odrzuceniu promisy (unhandled rejection)
+process.on("unhandledRejection", async (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  console.error("🟠 Nieobsłużone odrzucenie promisy:", err);
+
+  errorCount++;
+  lastErrorTime = Date.now();
+
+  const description = `**Unhandled rejection detected:**\n\`${err.message}\`\n\n**Stack:**\n\`${err.stack?.substring(0, 1000) || "Brak stack trace"}...\`\n\n**Czas:** ${new Date().toLocaleString("pl-PL")}`;
+
+  await sendMonitoringEmbed("🟠 Unhandled rejection", description, 0xffaa00);
 });
 
 // 3. Alert przy zamknięciu procesu

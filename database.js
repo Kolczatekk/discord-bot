@@ -37,8 +37,12 @@ async function saveWeeklySale(
       updated_at: new Date(lastUpdate).toISOString(),
       week_start: weekStart
     });
-  if (error) console.error("[Supabase] Błąd zapisu weekly_sales:", error);
-  else console.log(`[Supabase] Zapisano weekly_sales: ${guildId}/${userId} -> ${amount} (paid=${paid})`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu weekly_sales:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano weekly_sales: ${guildId}/${userId} -> ${amount} (paid=${paid})`);
+  return true;
 }
 
 async function getWeeklySales(guildId = null) {
@@ -165,8 +169,12 @@ async function saveContest(messageId, contestData) {
       ...contestData,
       updated_at: new Date().toISOString()
     });
-  if (error) console.error("[Supabase] Błąd zapisu contests:", error);
-  else console.log(`[Supabase] Zapisano contests: ${messageId}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu contests:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano contests: ${messageId}`);
+  return true;
 }
 
 async function getContests() {
@@ -187,8 +195,12 @@ async function saveContestParticipant(messageId, userId) {
       user_id: userId,
       joined_at: new Date().toISOString()
     });
-  if (error) console.error("[Supabase] Błąd zapisu contest_participants:", error);
-  else console.log(`[Supabase] Zapisano contest_participants: ${messageId}/${userId}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu contest_participants:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano contest_participants: ${messageId}/${userId}`);
+  return true;
 }
 
 async function getContestParticipants(messageId) {
@@ -219,8 +231,12 @@ async function saveActiveCode(code, codeData) {
       type: codeData.type,
       updated_at: new Date().toISOString()
     });
-  if (error) console.error("[Supabase] Błąd zapisu active_codes:", error);
-  else console.log(`[Supabase] Zapisano active_code: ${code}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu active_codes:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano active_code: ${code}`);
+  return true;
 }
 
 async function getActiveCodes() {
@@ -251,8 +267,12 @@ async function updateActiveCode(code, updates) {
     .from("active_codes")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("code", code);
-  if (error) console.error("[Supabase] Błąd aktualizacji active_codes:", error);
-  else console.log(`[Supabase] Zaktualizowano active_code: ${code}`);
+  if (error) {
+    console.error("[Supabase] Błąd aktualizacji active_codes:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zaktualizowano active_code: ${code}`);
+  return true;
 }
 
 async function deleteActiveCode(code) {
@@ -260,8 +280,12 @@ async function deleteActiveCode(code) {
     .from("active_codes")
     .delete()
     .eq("code", code);
-  if (error) console.error("[Supabase] Błąd usuwania active_codes:", error);
-  else console.log(`[Supabase] Usunięto active_code: ${code}`);
+  if (error) {
+    console.error("[Supabase] Błąd usuwania active_codes:", error);
+    return false;
+  }
+  console.log(`[Supabase] Usunięto active_code: ${code}`);
+  return true;
 }
 
 // Ticket owners functions
@@ -276,8 +300,12 @@ async function saveTicketOwner(channelId, ticketData) {
       ticket_message_id: ticketData.ticketMessageId,
       updated_at: new Date().toISOString()
     });
-  if (error) console.error("[Supabase] Błąd zapisu ticket_owners:", error);
-  else console.log(`[Supabase] Zapisano ticket_owner: ${channelId}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu ticket_owners:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano ticket_owner: ${channelId}`);
+  return true;
 }
 
 async function getTicketOwners() {
@@ -303,8 +331,12 @@ async function deleteTicketOwner(channelId) {
     .from("ticket_owners")
     .delete()
     .eq("channel_id", channelId);
-  if (error) console.error("[Supabase] Błąd usuwania ticket_owners:", error);
-  else console.log(`[Supabase] Usunięto ticket_owner: ${channelId}`);
+  if (error) {
+    console.error("[Supabase] Błąd usuwania ticket_owners:", error);
+    return false;
+  }
+  console.log(`[Supabase] Usunięto ticket_owner: ${channelId}`);
+  return true;
 }
 
 // Invite counts functions
@@ -324,8 +356,12 @@ async function saveInviteCount(guildId, inviterId, count) {
       count: count,
       week_start: weekStartStr
     });
-  if (error) console.error("[Supabase] Błąd zapisu invite_counts:", error);
-  else console.log(`[Supabase] Zapisano invite_counts: ${guildId}/${inviterId} -> ${count}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu invite_counts:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano invite_counts: ${guildId}/${inviterId} -> ${count}`);
+  return true;
 }
 
 async function getInviteCounts(guildId) {
@@ -369,8 +405,12 @@ async function saveInviteTotalJoined(guildId, inviterId, count) {
       count: count,
       week_start: weekStartStr
     });
-  if (error) console.error("[Supabase] Błąd zapisu invite_total_joined:", error);
-  else console.log(`[Supabase] Zapisano invite_total_joined: ${guildId}/${inviterId} -> ${count}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu invite_total_joined:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano invite_total_joined: ${guildId}/${inviterId} -> ${count}`);
+  return true;
 }
 
 async function getInviteTotalJoined(guildId) {
@@ -414,8 +454,12 @@ async function saveInviteFakeAccounts(guildId, inviterId, count) {
       count: count,
       week_start: weekStartStr
     });
-  if (error) console.error("[Supabase] Błąd zapisu invite_fake_accounts:", error);
-  else console.log(`[Supabase] Zapisano invite_fake_accounts: ${guildId}/${inviterId} -> ${count}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu invite_fake_accounts:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano invite_fake_accounts: ${guildId}/${inviterId} -> ${count}`);
+  return true;
 }
 
 async function getInviteFakeAccounts(guildId) {
@@ -451,8 +495,12 @@ async function saveInviteBonusInvites(guildId, userId, bonus) {
       user_id: userId,
       bonus: bonus
     });
-  if (error) console.error("[Supabase] Błąd zapisu invite_bonus_invites:", error);
-  else console.log(`[Supabase] Zapisano invite_bonus_invites: ${guildId}/${userId} -> ${bonus}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu invite_bonus_invites:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano invite_bonus_invites: ${guildId}/${userId} -> ${bonus}`);
+  return true;
 }
 
 async function getInviteBonusInvites(guildId) {
@@ -480,8 +528,12 @@ async function saveInviteRewardsGiven(guildId, userId, rewardsCount) {
       user_id: userId,
       rewards_count: rewardsCount
     });
-  if (error) console.error("[Supabase] Błąd zapisu invite_rewards_given:", error);
-  else console.log(`[Supabase] Zapisano invite_rewards_given: ${guildId}/${userId} -> ${rewardsCount}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu invite_rewards_given:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano invite_rewards_given: ${guildId}/${userId} -> ${rewardsCount}`);
+  return true;
 }
 
 async function getInviteRewardsGiven(guildId) {
@@ -509,8 +561,12 @@ async function saveInviteRewardLevels(guildId, userId, levels) {
       user_id: userId,
       reward_levels: levels
     });
-  if (error) console.error("[Supabase] Błąd zapisu invite_reward_levels:", error);
-  else console.log(`[Supabase] Zapisano invite_reward_levels: ${guildId}/${userId} -> ${JSON.stringify(levels)}`);
+  if (error) {
+    console.error("[Supabase] Błąd zapisu invite_reward_levels:", error);
+    return false;
+  }
+  console.log(`[Supabase] Zapisano invite_reward_levels: ${guildId}/${userId} -> ${JSON.stringify(levels)}`);
+  return true;
 }
 
 async function getInviteRewardLevels(guildId) {
@@ -555,6 +611,13 @@ async function addUserSpent(userId, amount, guildId = "default") {
     .eq("guild_id", guildId)
     .maybeSingle();
 
+  if (fetchError) {
+    // Abort instead of silently treating the current total as 0, which would
+    // overwrite the user's real spend on the next upsert.
+    console.error("[Supabase] Błąd odczytu user_spent przed zapisem:", fetchError);
+    return false;
+  }
+
   let currentAmount = 0;
   if (data) {
     currentAmount = Number(data.amount) || 0;
@@ -573,9 +636,10 @@ async function addUserSpent(userId, amount, guildId = "default") {
 
   if (error) {
     console.error("[Supabase] Błąd zapisu user_spent:", error);
-  } else {
-    console.log(`[Supabase] Zaktualizowano user_spent dla ${userId}: +${amount} PLN (Razem: ${newAmount} PLN)`);
+    return false;
   }
+  console.log(`[Supabase] Zaktualizowano user_spent dla ${userId}: +${amount} PLN (Razem: ${newAmount} PLN)`);
+  return true;
 }
 
 async function getUserSpent(userId, guildId = "default") {
