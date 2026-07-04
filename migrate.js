@@ -1,11 +1,13 @@
 const { createClient } = require("@supabase/supabase-js");
 
-const OLD_URL = "https://wtrgebczyqumyyrnagus.supabase.co";
-const OLD_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmdlYmN6eXF1bXl5cm5hZ3VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwNzQxMzcsImV4cCI6MjA4MzY1MDEzN30.DfoskyY-P5llIM3lXyEhHDBfqX2VoNIw1AADPcgHm1Q";
+// Load environment variables for migration credentials
+try { require("dotenv").config(); } catch (_) {}
 
-const NEW_URL = "https://esckymvfxkpagbhhivgu.supabase.co";
-// Uzupełnij poniższy klucz swoim nowym kluczem Anon z panelu Supabase nowego projektu!
-const NEW_KEY = "PLACE_YOUR_NEW_ANON_KEY_HERE"; 
+const OLD_URL = process.env.MIGRATE_OLD_SUPABASE_URL || "";
+const OLD_KEY = process.env.MIGRATE_OLD_SUPABASE_KEY || "";
+
+const NEW_URL = process.env.MIGRATE_NEW_SUPABASE_URL || "";
+const NEW_KEY = process.env.MIGRATE_NEW_SUPABASE_KEY || "";
 
 const oldClient = createClient(OLD_URL, OLD_KEY);
 const newClient = createClient(NEW_URL, NEW_KEY);
@@ -25,8 +27,8 @@ const TABLES = [
 ];
 
 async function runMigration() {
-  if (NEW_KEY === "PLACE_YOUR_NEW_ANON_KEY_HERE" || !NEW_KEY) {
-    console.error("❌ BŁĄD: Uzupełnij zmienną NEW_KEY w pliku migrate.js kluczem Anon public ze swojego nowego projektu Supabase!");
+  if (!OLD_URL || !OLD_KEY || !NEW_URL || !NEW_KEY) {
+    console.error("❌ BŁĄD: Ustaw zmienne środowiskowe: MIGRATE_OLD_SUPABASE_URL, MIGRATE_OLD_SUPABASE_KEY, MIGRATE_NEW_SUPABASE_URL, MIGRATE_NEW_SUPABASE_KEY");
     return;
   }
 
