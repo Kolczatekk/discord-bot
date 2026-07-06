@@ -13329,9 +13329,9 @@ function buildPanelKlientaPayload() {
         emoji: { id: "1476700165082710178", name: "kasa_2" }
       },
       {
-        label: toPanelFont("Historia wymian"),
+        label: toPanelFont("Historia zakupów"),
         value: "panel_klienta_history",
-        description: "Wyświetla listę Twoich transakcji",
+        description: "Wyświetla listę Twoich zakupów",
         emoji: "📄"
       }
     );
@@ -13467,7 +13467,7 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           "```\n" +
-          "📄 New Shop × HISTORIA WYMIAN\n" +
+          "📄 New Shop × HISTORIA ZAKUPÓW\n" +
           "```\n" +
           "> `❌` × Nie posiadasz jeszcze żadnej historii zakupów."
         )
@@ -13492,14 +13492,14 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
 
     const descriptionParts = [
       "```",
-      "📄 New Shop × HISTORIA WYMIAN",
+      "📄 New Shop × HISTORIA ZAKUPÓW",
       "```"
     ];
 
     for (const p of pagePurchases) {
       const timestamp = Math.floor(new Date(p.created_at).getTime() / 1000);
       const emoji = getServerEmoji(p.server);
-      descriptionParts.push(`> <a:arrowwhite:1491476759290449984> <t:${timestamp}:d> (godz. <t:${timestamp}:t>) — **${p.price} PLN** [${p.server}]${emoji ? ` ${emoji}` : ""}`);
+      descriptionParts.push(`> <a:arrowwhite:1491476759290449984> × <t:${timestamp}:d> (godz. <t:${timestamp}:t>) — **${p.price} PLN** [${p.server}]${emoji ? ` ${emoji}` : ""}`);
     }
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
