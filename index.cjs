@@ -6161,11 +6161,16 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
+    // Lock immediately to prevent double/triple-click concurrency
+    ticketData.awaitingRep = false;
+
     await interaction.deferUpdate();
 
     try {
       await closeTicketAnonymously(interaction.channel, interaction.guild, interaction.user.id);
     } catch (err) {
+      // Re-enable if closing failed
+      ticketData.awaitingRep = true;
       console.error("Błąd przy zamykaniu ticketu przez przycisk anonimowo:", err);
       await interaction.followUp({
         content: `> \`❌\` Wystąpił błąd: ${err.message}`,
@@ -13818,6 +13823,9 @@ async function handleAnonimCommand(interaction) {
     return;
   }
 
+  // Lock immediately to prevent concurrency
+  ticketData.awaitingRep = false;
+
   await interaction.reply({
     content: "> `⏳` Przetwarzanie anonimowego legit checka i zamykanie ticketu...",
     flags: [MessageFlags.Ephemeral],
@@ -13826,6 +13834,8 @@ async function handleAnonimCommand(interaction) {
   try {
     await closeTicketAnonymously(channel, interaction.guild, interaction.user.id);
   } catch (error) {
+    // Re-enable if closing failed
+    ticketData.awaitingRep = true;
     console.error("Blad komendy /anonim:", error);
     await interaction.followUp({
       content: `> \`❌\` Wystąpił błąd: ${error.message}`,
