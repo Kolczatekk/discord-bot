@@ -3504,7 +3504,8 @@ const commands = [
           { name: "ANARCHIA LIFESTEAL", value: "ANARCHIA LIFESTEAL" },
           { name: "ANARCHIA BOXPVP", value: "ANARCHIA BOXPVP" },
           { name: "MINESTAR LIFESTEAL", value: "MINESTAR LIFESTEAL" },
-          { name: "DONUT SMP", value: "DONUT SMP" }
+          { name: "DONUT SMP", value: "DONUT SMP" },
+          { name: "RAPY BOXPVP", value: "RAPY BOXPVP" }
         )
     )
     .toJSON(),
@@ -4574,12 +4575,12 @@ function getMinestarLfRateForWaluta(waluta, methodRaw) {
 }
 
 function getRateForPlnAmount(pln, serverRaw) {
-  const server = (serverRaw || "").toString().trim().toUpperCase();
+  const server = (serverRaw || "").toString().trim().toUpperCase().replace(/\s+/g, "_");
 
-  if (server === "RAPY_BOXPVP") return RAPY_BOXPVP_RATE;
+  if (server === "RAPY_BOXPVP" || server === "RAPYBOXPVP") return RAPY_BOXPVP_RATE;
   if (server === "ANARCHIA_BOXPVP") return ANARCHIA_BOXPVP_RATE;
-  if (server === "ANARCHIA_LIFESTEAL") return getAnarchiaLifestealRateForPln(pln);
-  if (server === "MINESTAR_LF") return Number(pln) >= MINESTAR_LF_BULK_THRESHOLD_PLN ? MINESTAR_LF_BULK_RATE : MINESTAR_LF_RATE;
+  if (server === "ANARCHIA_LIFESTEAL" || server === "ANARCHIA_LF") return getAnarchiaLifestealRateForPln(pln);
+  if (server === "MINESTAR_LF" || server === "MINESTAR_LIFESTEAL") return Number(pln) >= MINESTAR_LF_BULK_THRESHOLD_PLN ? MINESTAR_LF_BULK_RATE : MINESTAR_LF_RATE;
   if (server === "DONUT_SMP") return DONUT_SMP_RATE;
 
   // fallback (stary cennik)
