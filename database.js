@@ -639,6 +639,40 @@ async function deleteUserSpent(userId, guildId = "default") {
   return true;
 }
 
+async function addUserPurchase(userId, amount, server, type, guildId = "default") {
+  const { error } = await supabase
+    .from("user_purchases")
+    .insert({
+      user_id: userId,
+      guild_id: guildId,
+      price: amount,
+      server: server,
+      type: type,
+      created_at: new Date().toISOString()
+    });
+
+  if (error) {
+    console.error("[Supabase] Błąd zapisu user_purchases:", error);
+    return false;
+  }
+  return true;
+}
+
+async function getUserPurchases(userId, guildId = "default") {
+  const { data, error } = await supabase
+    .from("user_purchases")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("guild_id", guildId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[Supabase] Błąd odczytu user_purchases:", error);
+    return [];
+  }
+  return data || [];
+}
+
 module.exports = {
   saveWeeklySale,
   getWeeklySales,
@@ -673,5 +707,7 @@ module.exports = {
   getTopSpenders,
   setUserSpent,
   deleteUserSpent,
+  addUserPurchase,
+  getUserPurchases,
   supabase
 };

@@ -1365,6 +1365,7 @@ function buildPersistentStateData() {
       minestarLfBulkRate: MINESTAR_LF_BULK_RATE,
       minestarLfBulkThresholdPln: MINESTAR_LF_BULK_THRESHOLD_PLN,
       donutSmpRate: DONUT_SMP_RATE,
+      rapyBoxpvpRate: RAPY_BOXPVP_RATE,
     },
   };
 
@@ -3233,6 +3234,7 @@ async function loadPersistentState() {
         if (typeof rates.minestarLfBulkRate === "number") MINESTAR_LF_BULK_RATE = rates.minestarLfBulkRate;
         if (typeof rates.minestarLfBulkThresholdPln === "number") MINESTAR_LF_BULK_THRESHOLD_PLN = rates.minestarLfBulkThresholdPln;
         if (typeof rates.donutSmpRate === "number") DONUT_SMP_RATE = rates.donutSmpRate;
+        if (typeof rates.rapyBoxpvpRate === "number") RAPY_BOXPVP_RATE = rates.rapyBoxpvpRate;
         console.log("[state] Wczytano calculatorRates");
       }
 
@@ -3436,7 +3438,8 @@ const commands = [
           { name: "MineStar LF - Normalna", value: "minestar_lf_normal" },
           { name: "MineStar LF - Hurtowa (>=50zł)", value: "minestar_lf_bulk" },
           { name: "MineStar LF - Próg (zł)", value: "minestar_lf_threshold" },
-          { name: "Donut SMP", value: "donut_smp" }
+          { name: "Donut SMP", value: "donut_smp" },
+          { name: "Rapy BoxPvP", value: "rapy_boxpvp" }
         )
     )
     .addIntegerOption((option) =>
@@ -3464,6 +3467,11 @@ const commands = [
   new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Wyślij TicketPanel na kanał")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("panel-klienta")
+    .setDescription("Wyślij Panel Klienta na kanał")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
@@ -4537,6 +4545,7 @@ let MINESTAR_LF_RATE = 300;
 let MINESTAR_LF_BULK_RATE = 400;
 let MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
 let DONUT_SMP_RATE = 5_500_000;
+let RAPY_BOXPVP_RATE = 10000;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) >= ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -4567,6 +4576,7 @@ function getMinestarLfRateForWaluta(waluta, methodRaw) {
 function getRateForPlnAmount(pln, serverRaw) {
   const server = (serverRaw || "").toString().trim().toUpperCase();
 
+  if (server === "RAPY_BOXPVP") return RAPY_BOXPVP_RATE;
   if (server === "ANARCHIA_BOXPVP") return ANARCHIA_BOXPVP_RATE;
   if (server === "ANARCHIA_LIFESTEAL") return getAnarchiaLifestealRateForPln(pln);
   if (server === "MINESTAR_LF") return Number(pln) >= MINESTAR_LF_BULK_THRESHOLD_PLN ? MINESTAR_LF_BULK_RATE : MINESTAR_LF_RATE;
@@ -6104,6 +6114,9 @@ async function detectServerFromContext(interaction) {
 
   const normalized = textToSearch.toLowerCase();
 
+  if (normalized.includes("rapy")) {
+    return { testValue: "rapy_boxpvp", calcValue: "RAPY_BOXPVP" };
+  }
   if (normalized.includes("minestar")) {
     return { testValue: "minestar_lf", calcValue: "MINESTAR_LF" };
   }
@@ -6124,6 +6137,18 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
   const detectedServer = await detectServerFromContext(interaction);
+
+  if (customId === "panel_klienta_spent") {
+    await handlePanelKlientaSpent(interaction);
+    return;
+  }
+
+  const clientPanelHistoryMatch = customId.match(/^panel_klienta_history_(\d+)$/);
+  if (clientPanelHistoryMatch) {
+    const pageIndex = Number(clientPanelHistoryMatch[1]);
+    await handlePanelKlientaHistory(interaction, pageIndex);
+    return;
+  }
 
   if (customId === "ticket_anon_close") {
     const ticketData = pendingTicketClose.get(interaction.channelId);
@@ -7174,6 +7199,9 @@ async function handleSlashCommand(interaction) {
     case "ticketpanel":
       await handleTicketPanelCommand(interaction);
       break;
+    case "panel-klienta":
+      await handlePanelKlientaCommand(interaction);
+      break;
     case "zamknij":
       await handleCloseTicketCommand(interaction);
       break;
@@ -8148,7 +8176,9 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
 
   const server = (tryb || "").toString().toUpperCase();
   let rate;
-  if (server === "ANARCHIA_BOXPVP") {
+  if (server === "RAPY_BOXPVP") {
+    rate = RAPY_BOXPVP_RATE;
+  } else if (server === "ANARCHIA_BOXPVP") {
     rate = ANARCHIA_BOXPVP_RATE;
   } else if (server === "ANARCHIA_LIFESTEAL") {
     rate = getAnarchiaLifestealRateForWaluta(waluta, metoda);
@@ -12488,6 +12518,14 @@ const SHOP_SERVER_OPTION_DEFS = [
     channelSlug: "donut-smp",
     emoji: { id: "1489578418432381059", name: "donutsmp" },
   },
+  {
+    label: "Rapy BoxPvP",
+    testValue: "rapy_boxpvp",
+    calcValue: "RAPY_BOXPVP",
+    description: "Tryb BoxPvP na Rapy",
+    channelSlug: "rapy-boxpvp",
+    emoji: { id: "1523793647542337577", name: "rapy" },
+  },
 ];
 
 const SHOP_PAYMENT_OPTION_DEFS = [
@@ -13217,6 +13255,241 @@ async function handleTicketPanelCommand(interaction) {
   await sendTicketPanel(interaction);
 }
 
+async function handlePanelKlientaCommand(interaction) {
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: true });
+    }
+
+    const SELLER_ROLE_ID = "1350786945944391733";
+    const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+    const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+    if (!isAdmin && !isSeller) {
+      await interaction.editReply({ content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] });
+      return;
+    }
+
+    await interaction.channel.send(buildPanelKlientaPayload());
+
+    await interaction.editReply({
+      content: "> `✅` × **Panel klienta** został wysłany na ten **kanał**.",
+      flags: [MessageFlags.Ephemeral]
+    });
+  } catch (err) {
+    console.error("Błąd w handlePanelKlientaCommand:", err);
+    const payload = { content: "> `❌` × Wystąpił błąd podczas wysyłania panelu klienta.", flags: [MessageFlags.Ephemeral] };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
+    else await interaction.reply(payload);
+  }
+}
+
+function buildPanelKlientaPayload() {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "⚡ New Shop × PANEL KLIENTA\n" +
+      "```\n" +
+      "> ⚡ × Wybierz jedną z opcji która najbardziej Cię interesuje."
+    )
+  );
+
+  const buttonSpent = new ButtonBuilder()
+    .setCustomId("panel_klienta_spent")
+    .setLabel("💰 × Sprawdź ile wydałeś")
+    .setStyle(ButtonStyle.Secondary);
+
+  const buttonHistory = new ButtonBuilder()
+    .setCustomId("panel_klienta_history_0")
+    .setLabel("📄 × Historia wymian")
+    .setStyle(ButtonStyle.Secondary);
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(buttonSpent, buttonHistory)
+  );
+
+  appendBrandFooterToContainer(container, null);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+async function handlePanelKlientaSpent(interaction) {
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    const guild = interaction.guild;
+    const userId = interaction.user.id;
+    
+    if (!guild) {
+      await interaction.editReply({ content: "> `❌` Ta komenda działa jedynie na serwerach." });
+      return;
+    }
+
+    const spent = await db.getUserSpent(userId, guild.id);
+
+    const roleTiers = [
+      { name: "Klient (200+)", min: 200, roleId: "1521924538265243738" },
+      { name: "Rzeźnik (500+)", min: 500, roleId: "1458145139938562058" },
+      { name: "Niszczyciel (1000+)", min: 1000, roleId: "1521924656792080384" },
+      { name: "Demon (2000+)", min: 2000, roleId: "1521924963190177924" }
+    ];
+
+    let nextTier = null;
+    for (let i = 0; i < roleTiers.length; i++) {
+      if (spent < roleTiers[i].min) {
+        nextTier = roleTiers[i];
+        break;
+      }
+    }
+
+    const member = await guild.members.fetch(userId).catch(() => null);
+    const ownedRoles = [];
+    for (const tier of roleTiers) {
+      if (member && member.roles.cache.has(tier.roleId)) {
+        ownedRoles.push(`<@&${tier.roleId}>`);
+      }
+    }
+
+    let line1 = `<a:arrowwhite:1491476759290449984> ×  Aktualnie __nie posiadasz__ żadnej __rangi__. `;
+    if (ownedRoles.length > 0) {
+      line1 = `<a:arrowwhite:1491476759290449984> ×  **Posiadasz** __rangę__ ${ownedRoles.join(", ")}.`;
+    }
+
+    const line2 = `<a:arrowwhite:1491476759290449984> ×  Łącznie __wydałeś__ **${spent.toFixed(0)} PLN** w naszym sklepie.`;
+
+    let line3 = "";
+    if (nextTier) {
+      line3 = `<a:arrowwhite:1491476759290449984> ×  Do __następnej rangi__ (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
+    } else {
+      line3 = `<a:arrowwhite:1491476759290449984> ×  Osiągnąłeś już __najwyższą rangę__ bonusową!`;
+    }
+
+    const descContent = [
+      "```",
+      "💵 New Shop × TWOJE STATYSTYKI",
+      "```",
+      `> ${line1}`,
+      `> ${line2}`,
+      `> ${line3}`,
+    ].join("\n");
+
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(descContent)
+    );
+    appendBrandFooterToContainer(container, guild.id);
+
+    await interaction.editReply({
+      components: [container],
+      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
+    });
+  } catch (err) {
+    console.error("Błąd w handlePanelKlientaSpent:", err);
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas sprawdzania Twoich wydatków." });
+  }
+}
+
+async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
+  const isUpdate = interaction.customId.startsWith("panel_klienta_history_");
+  if (isUpdate) {
+    await interaction.deferUpdate();
+  } else {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  }
+
+  try {
+    const guild = interaction.guild;
+    const userId = interaction.user.id;
+    
+    if (!guild) {
+      const errPayload = { content: "> `❌` Ta komenda działa jedynie na serwerach.", flags: [MessageFlags.Ephemeral] };
+      if (isUpdate) await interaction.followUp(errPayload);
+      else await interaction.editReply(errPayload);
+      return;
+    }
+
+    const purchases = await db.getUserPurchases(userId, guild.id);
+
+    if (!purchases || purchases.length === 0) {
+      const emptyPayload = {
+        content: [
+          "```",
+          "📄 New Shop × HISTORIA WYMIAN",
+          "```",
+          "> `❌` × Nie posiadasz jeszcze żadnej historii zakupów."
+        ].join("\n"),
+        components: [],
+        flags: [MessageFlags.Ephemeral]
+      };
+      await interaction.editReply(emptyPayload);
+      return;
+    }
+
+    const itemsPerPage = 5;
+    const totalPages = Math.ceil(purchases.length / itemsPerPage);
+    const safePageIndex = Math.max(0, Math.min(pageIndex, totalPages - 1));
+
+    const start = safePageIndex * itemsPerPage;
+    const end = Math.min(start + itemsPerPage, purchases.length);
+    const pagePurchases = purchases.slice(start, end);
+
+    const descriptionParts = [
+      "```",
+      "📄 New Shop × HISTORIA WYMIAN",
+      "```"
+    ];
+
+    for (const p of pagePurchases) {
+      const timestamp = Math.floor(new Date(p.created_at).getTime() / 1000);
+      descriptionParts.push(`> <a:arrowwhite:1491476759290449984> <t:${timestamp}:d> (godz. <t:${timestamp}:t>) — **${p.price} PLN** [${p.server}]`);
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(descriptionParts.join("\n"))
+      .setFooter(getBrandFooterBuilderObject());
+
+    const components = [];
+    if (totalPages > 1) {
+      components.push(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`panel_klienta_history_${safePageIndex - 1}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("<")
+            .setDisabled(safePageIndex === 0),
+          new ButtonBuilder()
+            .setCustomId(`panel_klienta_history_info`)
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel(`${safePageIndex + 1}/${totalPages}`)
+            .setDisabled(true),
+          new ButtonBuilder()
+            .setCustomId(`panel_klienta_history_${safePageIndex + 1}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel(">")
+            .setDisabled(safePageIndex === totalPages - 1)
+        )
+      );
+    }
+
+    const payload = {
+      embeds: [embed],
+      components,
+      flags: [MessageFlags.Ephemeral]
+    };
+
+    await interaction.editReply(payload);
+  } catch (err) {
+    console.error("Błąd w handlePanelKlientaHistory:", err);
+    const errPayload = { content: "> `❌` Wystąpił błąd podczas pobierania historii.", flags: [MessageFlags.Ephemeral] };
+    if (isUpdate) await interaction.followUp(errPayload);
+    else await interaction.editReply(errPayload);
+  }
+}
+
 function buildTicketCloseConfirmEmbed(actionLabel) {
   return new EmbedBuilder()
     .setColor(COLOR_BLUE)
@@ -13349,6 +13622,10 @@ async function handleTicketZakonczCommand(interaction) {
     if (amount > 0) {
       await db.addUserSpent(ticketOwnerId, amount, interaction.guildId || "default").catch((err) =>
         console.error("Error automatically adding user spent on ticket-zakoncz:", err)
+      );
+      // Zapisz transakcję do historii zakupów
+      await db.addUserPurchase(ticketOwnerId, amount, serwer || "Brak", typ, interaction.guildId || "default").catch((err) =>
+        console.error("Error saving purchase to history:", err)
       );
       // Synchronizacja ról zakupowych klienta
       await syncUserSpentRoles(interaction.guild, ticketOwnerId).catch((err) =>
@@ -14175,6 +14452,9 @@ async function handleCennikCommand(interaction) {
         `> **Donut SMP:**`,
         `>  • \`${formatRateShort(DONUT_SMP_RATE)}$ → 1 zł\``,
         `> `,
+        `> **Rapy BoxPvP:**`,
+        `>  • \`${formatRateShort(RAPY_BOXPVP_RATE)}$ → 1 zł\``,
+        `> `,
         `> *Użyj \`/cennik serwer:... stawka:...\` aby zmienić stawkę.*`,
       ];
       await interaction.editReply({ content: lines.join("\n") });
@@ -14192,6 +14472,7 @@ async function handleCennikCommand(interaction) {
       minestar_lf_bulk:      { get: () => MINESTAR_LF_BULK_RATE,                 set: (v) => { MINESTAR_LF_BULK_RATE = v; },                 label: "MineStar LF - Hurtowa" },
       minestar_lf_threshold: { get: () => MINESTAR_LF_BULK_THRESHOLD_PLN,        set: (v) => { MINESTAR_LF_BULK_THRESHOLD_PLN = v; },        label: "MineStar LF - Próg (zł)" },
       donut_smp:             { get: () => DONUT_SMP_RATE,                        set: (v) => { DONUT_SMP_RATE = v; },                        label: "Donut SMP" },
+      rapy_boxpvp:           { get: () => RAPY_BOXPVP_RATE,                      set: (v) => { RAPY_BOXPVP_RATE = v; },                      label: "Rapy BoxPvP" },
     };
 
     const entry = RATE_MAP[serwer];
