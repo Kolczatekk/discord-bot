@@ -13395,15 +13395,15 @@ async function handlePanelKlientaSpent(interaction) {
       `> ${line3}`,
     ].join("\n");
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(descContent)
-      .setBrandFooter();
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(descContent)
+    );
+    appendBrandFooterToContainer(container, guild.id);
 
     await interaction.editReply({
-      embeds: [embed],
-      components: [],
-      flags: [MessageFlags.Ephemeral],
+      components: [container],
+      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
     });
   } catch (err) {
     console.error("Błąd w handlePanelKlientaSpent:", err);
@@ -13433,20 +13433,20 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
     const purchases = await db.getUserPurchases(userId, guild.id);
 
     if (!purchases || purchases.length === 0) {
-      const embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
+      const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
           "```\n" +
           "📄 New Shop × HISTORIA WYMIAN\n" +
           "```\n" +
           "> `❌` × Nie posiadasz jeszcze żadnej historii zakupów."
         )
-        .setBrandFooter();
+      );
+      appendBrandFooterToContainer(container, guild.id);
 
       const emptyPayload = {
-        embeds: [embed],
-        components: [],
-        flags: [MessageFlags.Ephemeral]
+        components: [container],
+        flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral]
       };
       await interaction.editReply(emptyPayload);
       return;
@@ -13471,14 +13471,14 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
       descriptionParts.push(`> <a:arrowwhite:1491476759290449984> <t:${timestamp}:d> (godz. <t:${timestamp}:t>) — **${p.price} PLN** [${p.server}]`);
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(descriptionParts.join("\n"))
-      .setBrandFooter();
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(descriptionParts.join("\n"))
+    );
 
     const components = [];
     if (totalPages > 1) {
-      components.push(
+      container.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`panel_klienta_history_${safePageIndex - 1}`)
@@ -13499,10 +13499,11 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
       );
     }
 
+    appendBrandFooterToContainer(container, guild.id);
+
     const payload = {
-      embeds: [embed],
-      components,
-      flags: [MessageFlags.Ephemeral]
+      components: [container],
+      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral]
     };
 
     await interaction.editReply(payload);
