@@ -13469,7 +13469,7 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
           "```\n" +
           "📄 New Shop × HISTORIA ZAKUPÓW\n" +
           "```\n" +
-          "> `❌` × Nie posiadasz jeszcze żadnej historii zakupów."
+          "> `❌` × Nie dokonałeś jeszcze żadnego zakupu w naszym sklepie."
         )
       );
       appendBrandFooterToContainer(container, guild.id);
