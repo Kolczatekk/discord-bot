@@ -12452,6 +12452,19 @@ async function handleAktualizacjaEmbedCommand(interaction) {
   });
 }
 
+const PANEL_FONT_MAP = {
+  a: "ᴀ", b: "ʙ", c: "ᴄ", d: "ᴅ", e: "ᴇ", f: "ꜰ", g: "ɢ", h: "ʜ", i: "ɪ", j: "ᴊ", k: "ᴋ", l: "ʟ", m: "ᴍ", n: "ɴ", o: "ᴏ", p: "ᴘ", q: "ǫ", r: "ʀ", s: "ꜱ", t: "ᴛ", u: "ᴜ", v: "ᴠ", w: "ᴡ", x: "x", y: "ʏ", z: "ᴢ",
+  A: "ᴀ", B: "ʙ", C: "ᴄ", D: "ᴅ", E: "ᴇ", F: "ꜰ", G: "ɢ", H: "ʜ", I: "ɪ", J: "ᴊ", K: "ᴋ", L: "ʟ", M: "ᴍ", N: "ɴ", O: "ᴏ", P: "ᴘ", Q: "ǫ", R: "ʀ", S: "ꜱ", T: "ᴛ", U: "ᴜ", V: "ᴠ", W: "ᴡ", X: "x", Y: "ʏ", Z: "ᴢ",
+  ł: "ᴌ", Ł: "ᴌ", ś: "ś", Ś: "ś", ć: "ć", Ć: "ć", ń: "ń", Ń: "ń", ó: "ó", Ó: "ó", ź: "ź", Ź: "ź", ż: "ż", Ż: "ż", ą: "ą", Ą: "ą", ę: "ę", Ę: "ę"
+};
+
+function toPanelFont(text = "") {
+  return String(text)
+    .split("")
+    .map((char) => PANEL_FONT_MAP[char] || char)
+    .join("");
+}
+
 const TEST_PANEL_CATEGORY_OPTIONS = [
   {
     label: "Kupno itemów",
@@ -12659,18 +12672,7 @@ const PANEL_CATEGORY_OPTIONS = [
   },
 ];
 
-const PANEL_FONT_MAP = {
-  a: "ᴀ", b: "ʙ", c: "ᴄ", d: "ᴅ", e: "ᴇ", f: "ꜰ", g: "ɢ", h: "ʜ", i: "ɪ", j: "ᴊ", k: "ᴋ", l: "ʟ", m: "ᴍ", n: "ɴ", o: "ᴏ", p: "ᴘ", q: "ǫ", r: "ʀ", s: "ꜱ", t: "ᴛ", u: "ᴜ", v: "ᴠ", w: "ᴡ", x: "x", y: "ʏ", z: "ᴢ",
-  A: "ᴀ", B: "ʙ", C: "ᴄ", D: "ᴅ", E: "ᴇ", F: "ꜰ", G: "ɢ", H: "ʜ", I: "ɪ", J: "ᴊ", K: "ᴋ", L: "ʟ", M: "ᴍ", N: "ɴ", O: "ᴏ", P: "ᴘ", Q: "ǫ", R: "ʀ", S: "ꜱ", T: "ᴛ", U: "ᴜ", V: "ᴠ", W: "ᴡ", X: "x", Y: "ʏ", Z: "ᴢ",
-  ł: "ᴌ", Ł: "ᴌ", ś: "ś", Ś: "ś", ć: "ć", Ć: "ć", ń: "ń", Ń: "ń", ó: "ó", Ó: "ó", ź: "ź", Ź: "ź", ż: "ż", Ż: "ż", ą: "ą", Ą: "ą", ę: "ę", Ę: "ę"
-};
 
-function toPanelFont(text = "") {
-  return String(text)
-    .split("")
-    .map((char) => PANEL_FONT_MAP[char] || char)
-    .join("");
-}
 
 const TEST_PANEL_SERVER_OPTIONS = [
   ...SHOP_SERVER_OPTION_DEFS.map((option) => ({
