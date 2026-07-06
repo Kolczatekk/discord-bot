@@ -12607,13 +12607,13 @@ const AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS = [
 
 const KALKULATOR_MODE_OPTIONS = [
   {
-    label: "Ile otrzymam?",
+    label: toPanelFont("Ile otrzymam?"),
     value: "otrzymam",
     description: "Podasz kwotę w PLN i zobaczysz ile waluty dostaniesz",
     emoji: { id: "1476700165082710178", name: "kasa_2" },
   },
   {
-    label: "Ile muszę dać?",
+    label: toPanelFont("Ile muszę dać?"),
     value: "muszedac",
     description: "Podasz ilość waluty i zobaczysz, ile musisz za nią zapłacić",
     emoji: { id: "1476700165082710178", name: "kasa_2" },
@@ -12660,10 +12660,16 @@ const PANEL_CATEGORY_OPTIONS = [
 ];
 
 const PANEL_FONT_MAP = {
+  a: "ᴀ", b: "ʙ", c: "ᴄ", d: "ᴅ", e: "ᴇ", f: "ꜰ", g: "ɢ", h: "ʜ", i: "ɪ", j: "ᴊ", k: "ᴋ", l: "ʟ", m: "ᴍ", n: "ɴ", o: "ᴏ", p: "ᴘ", q: "ǫ", r: "ʀ", s: "ꜱ", t: "ᴛ", u: "ᴜ", v: "ᴠ", w: "ᴡ", x: "x", y: "ʏ", z: "ᴢ",
+  A: "ᴀ", B: "ʙ", C: "ᴄ", D: "ᴅ", E: "ᴇ", F: "ꜰ", G: "ɢ", H: "ʜ", I: "ɪ", J: "ᴊ", K: "ᴋ", L: "ʟ", M: "ᴍ", N: "ɴ", O: "ᴏ", P: "ᴘ", Q: "ǫ", R: "ʀ", S: "ꜱ", T: "ᴛ", U: "ᴜ", V: "ᴠ", W: "ᴡ", X: "x", Y: "ʏ", Z: "ᴢ",
+  ł: "ᴌ", Ł: "ᴌ", ś: "ś", Ś: "ś", ć: "ć", Ć: "ć", ń: "ń", Ń: "ń", ó: "ó", Ó: "ó", ź: "ź", Ź: "ź", ż: "ż", Ż: "ż", ą: "ą", Ą: "ą", ę: "ę", Ę: "ę"
 };
 
 function toPanelFont(text = "") {
-  return String(text);
+  return String(text)
+    .split("")
+    .map((char) => PANEL_FONT_MAP[char] || char)
+    .join("");
 }
 
 const TEST_PANEL_SERVER_OPTIONS = [
@@ -13289,7 +13295,7 @@ function buildPanelKlientaPayload() {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "```\n" +
-      "👤  New Shop × PANEL KLIENTA\n" +
+      "👤 New Shop × PANEL KLIENTA\n" +
       "```\n" +
       "> `⚡` × Wybierz jedną z opcji która najbardziej Cię interesuje."
     )
@@ -13297,18 +13303,18 @@ function buildPanelKlientaPayload() {
 
   const clientSelect = new StringSelectMenuBuilder()
     .setCustomId("panel_klienta_select")
-    .setPlaceholder("Wybierz interesującą Cię opcję")
+    .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
       {
-        label: "Sprawdź ile wydałeś",
+        label: toPanelFont("Sprawdź ile wydałeś"),
         value: "panel_klienta_spent",
         description: "Wyświetla sumę Twoich zakupów oraz rangę",
-        emoji: "💰"
+        emoji: { id: "1476700165082710178", name: "kasa_2" }
       },
       {
-        label: "Historia wymian",
+        label: toPanelFont("Historia wymian"),
         value: "panel_klienta_history",
         description: "Wyświetla listę Twoich transakcji",
         emoji: "📄"
@@ -13387,15 +13393,15 @@ async function handlePanelKlientaSpent(interaction) {
       `> ${line3}`,
     ].join("\n");
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(descContent)
-    );
-    appendBrandFooterToContainer(container, guild.id);
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(descContent)
+      .setBrandFooter();
 
     await interaction.editReply({
-      components: [container],
-      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
+      embeds: [embed],
+      components: [],
+      flags: [MessageFlags.Ephemeral],
     });
   } catch (err) {
     console.error("Błąd w handlePanelKlientaSpent:", err);
@@ -13425,13 +13431,18 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
     const purchases = await db.getUserPurchases(userId, guild.id);
 
     if (!purchases || purchases.length === 0) {
-      const emptyPayload = {
-        content: [
-          "```",
-          "📄 New Shop × HISTORIA WYMIAN",
-          "```",
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "📄 New Shop × HISTORIA WYMIAN\n" +
+          "```\n" +
           "> `❌` × Nie posiadasz jeszcze żadnej historii zakupów."
-        ].join("\n"),
+        )
+        .setBrandFooter();
+
+      const emptyPayload = {
+        embeds: [embed],
         components: [],
         flags: [MessageFlags.Ephemeral]
       };
@@ -13461,7 +13472,7 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(descriptionParts.join("\n"))
-      .setFooter(getBrandFooterBuilderObject());
+      .setBrandFooter();
 
     const components = [];
     if (totalPages > 1) {
