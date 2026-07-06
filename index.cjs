@@ -12633,13 +12633,13 @@ const AUTORYNEK_EXTRA_PAYMENT_OPTION_DEFS = [
 
 const KALKULATOR_MODE_OPTIONS = [
   {
-    label: toPanelFont("Ile otrzymam?"),
+    label: toPanelFont("Ile otrzymam"),
     value: "otrzymam",
     description: "Podasz kwotę w PLN i zobaczysz ile waluty dostaniesz",
     emoji: { id: "1476700165082710178", name: "kasa_2" },
   },
   {
-    label: toPanelFont("Ile muszę dać?"),
+    label: toPanelFont("Ile muszę dać"),
     value: "muszedac",
     description: "Podasz ilość waluty i zobaczysz, ile musisz za nią zapłacić",
     emoji: { id: "1476700165082710178", name: "kasa_2" },
