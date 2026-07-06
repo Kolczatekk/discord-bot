@@ -697,10 +697,20 @@ const PURCHASE_CODE_USAGE_TEXT =
   "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i kliknij przycisk **Kod rabatowy**.";
 const REWARD_CODE_USAGE_TEXT =
   "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ODBIERZ NAGRODĘ**.";
-const INVITE_REWARD_MILESTONES = [
+let INVITE_REWARD_MILESTONES = [
   { threshold: 5, amount: 90_000, label: "90k$" },
   { threshold: 10, amount: 200_000, label: "200k$" },
 ];
+let INVITE_REWARD_THRESHOLD = 5;
+let INVITE_REWARD_TEXT = "90k$";
+
+function syncInviteRewardThresholds() {
+  if (Array.isArray(INVITE_REWARD_MILESTONES) && INVITE_REWARD_MILESTONES.length > 0) {
+    INVITE_REWARD_MILESTONES.sort((a, b) => a.threshold - b.threshold);
+    INVITE_REWARD_THRESHOLD = INVITE_REWARD_MILESTONES[0].threshold;
+    INVITE_REWARD_TEXT = INVITE_REWARD_MILESTONES[0].label;
+  }
+}
 const BASE_SELLER_ROLE_ID = "1350786945944391733";
 const PURCHASE_STAFF_ROLE_IDS = [
   "1449448705563557918",
@@ -819,8 +829,7 @@ const guildInvites = new Map(); // guildId -> Map<code, uses>
 const guildVanityUses = new Map(); // guildId -> last known vanity invite uses
 const inviteCounts = new Map(); // guildId -> Map<inviterId, count>  (current cycle count)
 const inviterOfMember = new Map(); // `${guildId}:${memberId}` -> inviterId
-const INVITE_REWARD_THRESHOLD = 5;
-const INVITE_REWARD_TEXT = "90k$";
+
 
 // Nowa struktura do śledzenia nagród za konkretne progi
 // guildId -> Map<userId, Set<rewardLevel>> gdzie rewardLevel to "5", "10", "15", etc.
@@ -1346,6 +1355,7 @@ function buildPersistentStateData() {
     autoVerifySettings: Object.fromEntries(autoVerifySettings),
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
+    inviteRewardMilestones: INVITE_REWARD_MILESTONES,
     calculatorRates: {
       anarchiaLifestealRate: ANARCHIA_LIFESTEAL_RATE,
       anarchiaLifestealBulkRate: ANARCHIA_LIFESTEAL_BULK_RATE,
@@ -3226,6 +3236,12 @@ async function loadPersistentState() {
         console.log("[state] Wczytano calculatorRates");
       }
 
+      if (Array.isArray(botStateData.inviteRewardMilestones)) {
+        INVITE_REWARD_MILESTONES = botStateData.inviteRewardMilestones;
+        syncInviteRewardThresholds();
+        console.log("[state] Wczytano inviteRewardMilestones:", INVITE_REWARD_MILESTONES);
+      }
+
       try {
         let fakeGuilds = 0;
         let fakeEntries = 0;
@@ -3636,6 +3652,27 @@ const commands = [
           o
             .setName("kto")
             .setDescription("Komu usunąć blokadę nagród")
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("nagroda-kwota")
+        .setDescription("Zmień kwotę nagrody za zaproszenia (np. z 90k$ na 130k$)")
+        .addIntegerOption((o) =>
+          o
+            .setName("prog")
+            .setDescription("Próg zaproszeń (np. 5 lub 10)")
+            .setRequired(true)
+            .addChoices(
+              { name: "5 zaproszeń", value: 5 },
+              { name: "10 zaproszeń", value: 10 },
+            ),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("kwota")
+            .setDescription("Nowa kwota nagrody w $ (np. 130000)")
             .setRequired(true),
         ),
     )
@@ -19722,6 +19759,35 @@ async function handleZaprosieniaStatsCommand(interaction) {
     subcommand = interaction.options.getSubcommand(false);
   } catch {
     subcommand = null;
+  }
+
+  if (subcommand === "nagroda-kwota") {
+    const prog = interaction.options.getInteger("prog", true);
+    const kwota = interaction.options.getInteger("kwota", true);
+
+    const milestone = INVITE_REWARD_MILESTONES.find(m => m.threshold === prog);
+    if (!milestone) {
+      await interaction.reply({
+        content: `> \`❌\` × Nie znaleziono progu zaproszeń: \`${prog}\`.`,
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const oldAmount = milestone.amount;
+    milestone.amount = kwota;
+    milestone.label = `${Math.round(kwota / 1000)}k$`;
+
+    syncInviteRewardThresholds();
+    scheduleSavePersistentState(true);
+
+    await interaction.reply({
+      content: `> \`✅\` × Pomyślnie zmieniono kwotę nagrody za próg **${prog}** zaproszeń:\n` +
+               `> \`💵\` × Stara kwota: **${formatRewardCashAmount(oldAmount)}**\n` +
+               `> \`💰\` × Nowa kwota: **${formatRewardCashAmount(kwota)}** (wyświetlana jako \`${milestone.label}\`)`,
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
   }
 
   if (subcommand === "usunblokade") {
