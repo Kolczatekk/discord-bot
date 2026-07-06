@@ -13424,6 +13424,23 @@ async function handlePanelKlientaSpent(interaction) {
   }
 }
 
+function getServerEmoji(serverRaw) {
+  const server = (serverRaw || "").toString().trim().toUpperCase().replace(/\s+/g, "_");
+  if (server === "ANARCHIA_LIFESTEAL" || server === "ANARCHIA_BOXPVP" || server === "ANARCHIA" || server === "ANARCHIA_LF") {
+    return "<:ANARCHIA_GG:1469444521308852324>";
+  }
+  if (server === "MINESTAR_LF" || server === "MINESTAR_LIFESTEAL" || server === "MINESTAR") {
+    return "<:minestarlf:1515321503770607777>";
+  }
+  if (server === "DONUT_SMP" || server === "DONUT") {
+    return "<:donutsmp:1489578418432381059>";
+  }
+  if (server === "RAPY_BOXPVP" || server === "RAPY" || server === "RAPY_BOX_PVP") {
+    return "<:rapy:1523793647542337577>";
+  }
+  return "";
+}
+
 async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
   const isUpdate = interaction.customId.startsWith("panel_klienta_history_");
   if (isUpdate) {
@@ -13481,7 +13498,8 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
 
     for (const p of pagePurchases) {
       const timestamp = Math.floor(new Date(p.created_at).getTime() / 1000);
-      descriptionParts.push(`> <a:arrowwhite:1491476759290449984> <t:${timestamp}:d> (godz. <t:${timestamp}:t>) — **${p.price} PLN** [${p.server}]`);
+      const emoji = getServerEmoji(p.server);
+      descriptionParts.push(`> <a:arrowwhite:1491476759290449984> <t:${timestamp}:d> (godz. <t:${timestamp}:t>) — **${p.price} PLN** [${p.server}]${emoji ? ` ${emoji}` : ""}`);
     }
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
