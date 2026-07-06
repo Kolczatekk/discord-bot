@@ -13289,24 +13289,34 @@ function buildPanelKlientaPayload() {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "```\n" +
-      "⚡ New Shop × PANEL KLIENTA\n" +
+      "👤  New Shop × PANEL KLIENTA\n" +
       "```\n" +
-      "> ⚡ × Wybierz jedną z opcji która najbardziej Cię interesuje."
+      "> `⚡` × Wybierz jedną z opcji która najbardziej Cię interesuje."
     )
   );
 
-  const buttonSpent = new ButtonBuilder()
-    .setCustomId("panel_klienta_spent")
-    .setLabel("💰 × Sprawdź ile wydałeś")
-    .setStyle(ButtonStyle.Secondary);
-
-  const buttonHistory = new ButtonBuilder()
-    .setCustomId("panel_klienta_history_0")
-    .setLabel("📄 × Historia wymian")
-    .setStyle(ButtonStyle.Secondary);
+  const clientSelect = new StringSelectMenuBuilder()
+    .setCustomId("panel_klienta_select")
+    .setPlaceholder("Wybierz interesującą Cię opcję")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      {
+        label: "Sprawdź ile wydałeś",
+        value: "panel_klienta_spent",
+        description: "Wyświetla sumę Twoich zakupów oraz rangę",
+        emoji: "💰"
+      },
+      {
+        label: "Historia wymian",
+        value: "panel_klienta_history",
+        description: "Wyświetla listę Twoich transakcji",
+        emoji: "📄"
+      }
+    );
 
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(buttonSpent, buttonHistory)
+    new ActionRowBuilder().addComponents(clientSelect)
   );
 
   appendBrandFooterToContainer(container, null);
@@ -14902,6 +14912,15 @@ async function handleSelectMenu(interaction) {
           flags: [MessageFlags.Ephemeral],
         }).catch(() => null);
       }
+    }
+    return;
+  }
+  if (interaction.customId === "panel_klienta_select") {
+    const selectedValue = interaction.values[0];
+    if (selectedValue === "panel_klienta_spent") {
+      await handlePanelKlientaSpent(interaction);
+    } else if (selectedValue === "panel_klienta_history") {
+      await handlePanelKlientaHistory(interaction, 0);
     }
     return;
   }
