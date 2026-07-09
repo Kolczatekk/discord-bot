@@ -18880,8 +18880,7 @@ client.on(Events.MessageCreate, async (message) => {
           const embed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
             .setDescription(
-              "> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa.\n" +
-              "──────────────"
+              "> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa."
             )
             .setBrandFooter();
           await message.author.send({ embeds: [embed] });
