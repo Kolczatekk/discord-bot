@@ -3240,6 +3240,14 @@ async function loadPersistentState() {
         console.log("[state] Wczytano inviteRewardMilestones:", INVITE_REWARD_MILESTONES);
       }
 
+      // Load pendingTicketClose
+      if (botStateData.pendingTicketClose && typeof botStateData.pendingTicketClose === "object") {
+        for (const [channelId, data] of Object.entries(botStateData.pendingTicketClose)) {
+          pendingTicketClose.set(channelId, data);
+        }
+        console.log(`[state] Wczytano pendingTicketClose: ${pendingTicketClose.size} ticketów`);
+      }
+
       try {
         let fakeGuilds = 0;
         let fakeEntries = 0;
