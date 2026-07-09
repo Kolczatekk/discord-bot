@@ -3558,6 +3558,20 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("usunzakup")
+    .setDescription("Usuń konkretny zakup z historii gracza (Tylko Sprzedawca/Admin)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addUserOption((o) =>
+      o.setName("gracz").setDescription("Wybierz gracza").setRequired(true)
+    )
+    .addStringOption((o) =>
+      o
+        .setName("id_zakupu")
+        .setDescription("ID zakupu do usunięcia (znajdziesz w /panel-klienta → Historia)")
+        .setRequired(true)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("anonim")
     .setDescription("Bot wystawia legit rep i zamyka ticket anonimowo (po /ticket-zakoncz)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -7203,6 +7217,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "wydanestats":
       await handleWydaneStatsCommand(interaction);
+      break;
+    case "usunzakup":
+      await handleUsunZakupCommand(interaction);
       break;
     case "zamknij-z-powodem":
       await handleZamknijZPowodemCommand(interaction);
@@ -14175,6 +14192,71 @@ async function handleTopWydaneCommand(interaction) {
   }
 }
 
+// ----------------- /usunzakup handler -----------------
+async function handleUsunZakupCommand(interaction) {
+  const isOwner = interaction.user.id === interaction.guild.ownerId;
+  const SELLER_ROLE_ID = "1350786945944391733";
+  const hasSellerRole = interaction.member.roles.cache.has(SELLER_ROLE_ID);
+
+  if (!isOwner && !hasSellerRole) {
+    return interaction.reply({
+      content: "> `❌` × Nie masz uprawnień do użycia tej komendy.",
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const targetUser = interaction.options.getUser("gracz");
+  const purchaseId = interaction.options.getString("id_zakupu");
+  const guildId = interaction.guildId || "default";
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    const purchases = await db.getUserPurchases(targetUser.id, guildId);
+    const purchase = purchases.find((p) => String(p.id) === purchaseId);
+
+    if (!purchase) {
+      return interaction.editReply({
+        content: `> \`❌\` Nie znaleziono zakupu o ID \`${purchaseId}\` dla użytkownika <@${targetUser.id}>. Sprawdź ID w historii zakupu (\`/panel-klienta\` → Historia).`
+      });
+    }
+
+    const success = await db.deleteUserPurchase(purchaseId, guildId);
+    if (!success) {
+      return interaction.editReply({
+        content: "> `❌` Wystąpił błąd podczas usuwania zakupu z bazy danych."
+      });
+    }
+
+    const amount = Number(purchase.price) || 0;
+    if (amount > 0) {
+      const currentSpent = await db.getUserSpent(targetUser.id, guildId);
+      const newAmount = Math.max(0, currentSpent - amount);
+      await db.setUserSpent(targetUser.id, newAmount, guildId);
+      await syncUserSpentRoles(interaction.guild, targetUser.id).catch(() => null);
+    }
+
+    const timestamp = Math.floor(new Date(purchase.created_at).getTime() / 1000);
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+        "✅ New Shop × USUNIĘTO ZAKUP\n" +
+        "```\n" +
+        `> \`👤\` × **Gracz:** <@${targetUser.id}>\n` +
+        `> \`🆔\` × **ID zakupu:** \`${purchaseId}\`\n` +
+        `> \`💰\` × **Kwota:** **${purchase.price} PLN**\n` +
+        `> \`🖥️\` × **Serwer:** **${purchase.server || "Brak"}**\n` +
+        `> \`📅\` × **Data:** <t:${timestamp}:f>`
+      );
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (err) {
+    console.error("Błąd w komendzie /usunzakup:", err);
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas usuwania zakupu." });
+  }
+}
+
 // ----------------- /wydanestats handler -----------------
 async function handleWydaneStatsCommand(interaction) {
   const isOwner = interaction.user.id === interaction.guild.ownerId;
@@ -18654,6 +18736,23 @@ client.on(Events.MessageCreate, async (message) => {
         } catch (err) {
           console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
         }
+        return;
+      }
+
+      // Sprawdź czy użytkownik ma ticket oczekujący na +rep
+      const hasPendingTicket = Array.from(pendingTicketClose.entries()).some(
+        ([, data]) => data.userId === message.author.id && data.awaitingRep === true && data.guildId === message.guildId
+      );
+
+      if (!hasPendingTicket) {
+        await message.delete().catch(() => null);
+        try {
+          await message.author.send(
+            "> `❌` × Nie masz żadnych ticketów oczekujących na wystawienie legit repa.\n" +
+            "> Legit rep możesz wystawić **tylko po zakończeniu ticketa** komendą `/ticket-zakoncz` przez sprzedawcę.\n" +
+            "> Jeśli ktoś zakończył Twój ticket, wpisz `+rep @sprzedawca TYP KWOTA SERWER` na kanale legit-rep."
+          );
+        } catch {}
         return;
       }
 
