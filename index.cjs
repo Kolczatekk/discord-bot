@@ -149,10 +149,6 @@ if (!EmbedBuilder.prototype.__newShopFooterPatchApplied) {
     const data = originalEmbedBuilderToJSON.apply(this, args);
 
     if (data && typeof data === "object") {
-      // Automatycznie usuwamy timestamp z każdego embeda (według starej logiki)
-      delete data.timestamp;
-
-      // Ustawiamy stopkę NEW SHOP TYLKO jeśli została jawnie włączona
       if (!data.footer && this._useBrandFooter) {
         data.footer = getBrandFooterObject();
       }
