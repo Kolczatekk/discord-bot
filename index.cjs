@@ -14225,7 +14225,7 @@ async function handleUsunZakupCommand(interaction) {
       return interaction.editReply({ embeds: [embed] });
     }
 
-    await showUsunZakupPage(interaction, targetUser, purchases, 0);
+    await sendUsunZakupPage(interaction, targetUser, purchases, 0);
   } catch (err) {
     console.error("Błąd w komendzie /usunzakup:", err);
     await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas odczytu zakupów." });
@@ -18879,13 +18879,7 @@ client.on(Events.MessageCreate, async (message) => {
         try {
           const embed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
-            .setDescription(
-              "```\n" +
-              "❌ New Shop × LEGIT REP\n" +
-              "```\n" +
-              "> ❌ × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa.\n" +
-              "> Legit rep możesz wystawić **tylko po zakończeniu ticketa** komendą `/ticket-zakoncz` przez sprzedawcę."
-            )
+            .setDescription("> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa.")
             .setBrandFooter();
           await message.author.send({ embeds: [embed] });
         } catch {}
