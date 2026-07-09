@@ -658,6 +658,20 @@ async function addUserPurchase(userId, amount, server, type, guildId = "default"
   return true;
 }
 
+async function deleteUserPurchase(purchaseId, guildId = "default") {
+  const { error } = await supabase
+    .from("user_purchases")
+    .delete()
+    .eq("id", purchaseId)
+    .eq("guild_id", guildId);
+
+  if (error) {
+    console.error("[Supabase] Błąd usuwania user_purchases:", error);
+    return false;
+  }
+  return true;
+}
+
 async function getUserPurchases(userId, guildId = "default") {
   const { data, error } = await supabase
     .from("user_purchases")
@@ -709,5 +723,6 @@ module.exports = {
   deleteUserSpent,
   addUserPurchase,
   getUserPurchases,
+  deleteUserPurchase,
   supabase
 };
