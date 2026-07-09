@@ -18867,7 +18867,9 @@ client.on(Events.MessageCreate, async (message) => {
 
       // Sprawdź czy użytkownik ma ticket oczekujący na +rep
       const hasPendingTicket = Array.from(pendingTicketClose.entries()).some(
-        ([, data]) => data.userId === message.author.id && data.awaitingRep === true && data.guildId === message.guildId
+        ([channelId, data]) => {
+          return data.userId === message.author.id && data.awaitingRep === true;
+        }
       );
 
       if (!hasPendingTicket) {
@@ -18877,8 +18879,7 @@ client.on(Events.MessageCreate, async (message) => {
             .setColor(COLOR_BLUE)
             .setDescription(
               "> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa."
-            )
-            .setBrandFooter();
+            );
           await message.author.send({ embeds: [embed] });
         } catch {}
         return;
