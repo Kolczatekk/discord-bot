@@ -18880,10 +18880,8 @@ client.on(Events.MessageCreate, async (message) => {
           const embed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
             .setDescription(
-              "```\n" +
-              "❌ New Shop × LEGIT REP\n" +
-              "```\n" +
-              "> ❌ × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa."
+              "> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa.\n" +
+              "──────────────"
             )
             .setBrandFooter();
           await message.author.send({ embeds: [embed] });
