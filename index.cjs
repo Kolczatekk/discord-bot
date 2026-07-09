@@ -18874,9 +18874,13 @@ client.on(Events.MessageCreate, async (message) => {
       }
 
       // Sprawdź czy użytkownik ma ticket oczekujący na +rep
+      console.log(`[+rep] pendingTicketClose size: ${pendingTicketClose.size}`);
+      for (const [chId, d] of pendingTicketClose.entries()) {
+        console.log(`[+rep] ticket ${chId}: userId=${d.userId}, awaitingRep=${d.awaitingRep}, msgAuthor=${message.author.id}`);
+      }
       const hasPendingTicket = Array.from(pendingTicketClose.entries()).some(
         ([channelId, data]) => {
-          return data.userId === message.author.id && data.awaitingRep === true;
+          return String(data.userId) === String(message.author.id) && data.awaitingRep === true;
         }
       );
 
