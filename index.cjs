@@ -3559,16 +3559,10 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("usunzakup")
-    .setDescription("Usuń konkretny zakup z historii gracza (Tylko Sprzedawca/Admin)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDescription("Wyświetl zakupy gracza i usuń wybrane (Tylko Właściciel)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addUserOption((o) =>
       o.setName("gracz").setDescription("Wybierz gracza").setRequired(true)
-    )
-    .addStringOption((o) =>
-      o
-        .setName("id_zakupu")
-        .setDescription("ID zakupu do usunięcia (znajdziesz w /panel-klienta → Historia)")
-        .setRequired(true)
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -6152,6 +6146,11 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
   const detectedServer = await detectServerFromContext(interaction);
+
+  if (customId.startsWith("usunzakup_")) {
+    await handleUsunZakupButton(interaction);
+    return;
+  }
 
   if (customId === "panel_klienta_spent") {
     await handlePanelKlientaSpent(interaction);
@@ -14206,54 +14205,185 @@ async function handleUsunZakupCommand(interaction) {
   }
 
   const targetUser = interaction.options.getUser("gracz");
-  const purchaseId = interaction.options.getString("id_zakupu");
   const guildId = interaction.guildId || "default";
 
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
   try {
     const purchases = await db.getUserPurchases(targetUser.id, guildId);
-    const purchase = purchases.find((p) => String(p.id) === purchaseId);
 
-    if (!purchase) {
-      return interaction.editReply({
-        content: `> \`❌\` Nie znaleziono zakupu o ID \`${purchaseId}\` dla użytkownika <@${targetUser.id}>. Sprawdź ID w historii zakupu (\`/panel-klienta\` → Historia).`
-      });
+    if (!purchases || purchases.length === 0) {
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "❌ New Shop × USUŃ ZAKUP\n" +
+          "```\n" +
+          `> ❌ × Użytkownik <@${targetUser.id}> nie ma żadnych zakupów w historii.`
+        )
+        .setBrandFooter();
+      return interaction.editReply({ embeds: [embed] });
     }
 
-    const success = await db.deleteUserPurchase(purchaseId, guildId);
-    if (!success) {
-      return interaction.editReply({
-        content: "> `❌` Wystąpił błąd podczas usuwania zakupu z bazy danych."
-      });
-    }
-
-    const amount = Number(purchase.price) || 0;
-    if (amount > 0) {
-      const currentSpent = await db.getUserSpent(targetUser.id, guildId);
-      const newAmount = Math.max(0, currentSpent - amount);
-      await db.setUserSpent(targetUser.id, newAmount, guildId);
-      await syncUserSpentRoles(interaction.guild, targetUser.id).catch(() => null);
-    }
-
-    const timestamp = Math.floor(new Date(purchase.created_at).getTime() / 1000);
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-        "✅ New Shop × USUNIĘTO ZAKUP\n" +
-        "```\n" +
-        `> \`👤\` × **Gracz:** <@${targetUser.id}>\n` +
-        `> \`🆔\` × **ID zakupu:** \`${purchaseId}\`\n` +
-        `> \`💰\` × **Kwota:** **${purchase.price} PLN**\n` +
-        `> \`🖥️\` × **Serwer:** **${purchase.server || "Brak"}**\n` +
-        `> \`📅\` × **Data:** <t:${timestamp}:f>`
-      );
-
-    await interaction.editReply({ embeds: [embed] });
+    await showUsunZakupPage(interaction, targetUser, purchases, 0);
   } catch (err) {
     console.error("Błąd w komendzie /usunzakup:", err);
-    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas usuwania zakupu." });
+    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas odczytu zakupów." });
+  }
+}
+
+async function sendUsunZakupPage(interactionOrMsg, targetUser, purchases, pageIndex) {
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(purchases.length / itemsPerPage);
+  const safePage = Math.max(0, Math.min(pageIndex, totalPages - 1));
+  const start = safePage * itemsPerPage;
+  const end = Math.min(start + itemsPerPage, purchases.length);
+  const pagePurchases = purchases.slice(start, end);
+
+  const descriptionParts = [
+    "```\n" +
+    "🗑️ New Shop × USUŃ ZAKUP\n" +
+    "```\n" +
+    `> \`👤\` × **Gracz:** <@${targetUser.id}>\n` +
+    `> \`📄\` × **Ilość zakupów:** ${purchases.length}\n`
+  ];
+
+  for (const p of pagePurchases) {
+    const ts = Math.floor(new Date(p.created_at).getTime() / 1000);
+    descriptionParts.push(
+      `> <:arrow:1491439525025095681> \`[${p.id}]\` <t:${ts}:d> <t:${ts}:t> — **${p.price} PLN** — ${p.server || "Brak"}`
+    );
+  }
+
+  const row = new ActionRowBuilder();
+
+  if (safePage > 0) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`usunzakup_page_${targetUser.id}_${safePage - 1}`)
+        .setLabel("◀ Poprzednia")
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+
+  if (safePage < totalPages - 1) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`usunzakup_page_${targetUser.id}_${safePage + 1}`)
+        .setLabel("Następna ▶")
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+
+  // Dodaj przycisk usuwania dla każdego zakupu na stronie
+  for (const p of pagePurchases) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`usunzakup_del_${targetUser.id}_${p.id}`)
+        .setLabel(`Usuń #${p.id}`)
+        .setStyle(ButtonStyle.Danger)
+    );
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(descriptionParts.join("\n"))
+    .setBrandFooter();
+
+  const msgData = { embeds: [embed], components: row.components.length > 0 ? [row] : [] };
+
+  if (interactionOrMsg.isButton && interactionOrMsg.isButton()) {
+    await interactionOrMsg.update(msgData);
+  } else {
+    await interactionOrMsg.editReply(msgData);
+  }
+}
+
+// Handler dla przycisków /usunzakup
+async function handleUsunZakupButton(interaction) {
+  const customId = interaction.customId;
+  const parts = customId.split("_");
+  // Format: usunzakup_page_USERID_PAGE lub usunzakup_del_USERID_PURCHASEID
+  const action = parts[1];
+  const targetUserId = parts[2];
+  const guildId = interaction.guildId || "default";
+
+  if (!interaction.user.id === interaction.guild.ownerId) {
+    return interaction.reply({
+      content: "> `❌` × Tylko właściciel serwera może usuwać zakupy.",
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  try {
+    const targetUser = await client.users.fetch(targetUserId);
+
+    if (action === "page") {
+      const pageIndex = parseInt(parts[3], 10);
+      const purchases = await db.getUserPurchases(targetUserId, guildId);
+      if (!purchases || purchases.length === 0) {
+        const embed = new EmbedBuilder()
+          .setColor(COLOR_BLUE)
+          .setDescription(
+            "```\n" +
+            "❌ New Shop × USUŃ ZAKUP\n" +
+            "```\n" +
+            `> ❌ × Użytkownik <@${targetUserId}> nie ma już żadnych zakupów.`
+          )
+          .setBrandFooter();
+        return interaction.update({ embeds: [embed], components: [] });
+      }
+      await sendUsunZakupPage(interaction, targetUser, purchases, pageIndex);
+    } else if (action === "del") {
+      const purchaseId = parts[3];
+      const purchases = await db.getUserPurchases(targetUserId, guildId);
+      const purchase = purchases.find((p) => String(p.id) === purchaseId);
+
+      if (!purchase) {
+        return interaction.reply({
+          content: `> ❌ Zakup #${purchaseId} już nie istnieje.`,
+          flags: [MessageFlags.Ephemeral]
+        });
+      }
+
+      const success = await db.deleteUserPurchase(purchaseId, guildId);
+      if (!success) {
+        return interaction.reply({
+          content: "> ❌ Błąd podczas usuwania zakupu.",
+          flags: [MessageFlags.Ephemeral]
+        });
+      }
+
+      const amount = Number(purchase.price) || 0;
+      if (amount > 0) {
+        const currentSpent = await db.getUserSpent(targetUserId, guildId);
+        const newAmount = Math.max(0, currentSpent - amount);
+        await db.setUserSpent(targetUserId, newAmount, guildId);
+        await syncUserSpentRoles(interaction.guild, targetUserId).catch(() => null);
+      }
+
+      await interaction.deferUpdate();
+
+      // Odśwież listę
+      const updatedPurchases = await db.getUserPurchases(targetUserId, guildId);
+      if (!updatedPurchases || updatedPurchases.length === 0) {
+        const embed = new EmbedBuilder()
+          .setColor(COLOR_BLUE)
+          .setDescription(
+            "```\n" +
+            "✅ New Shop × USUNIĘTO ZAKUP\n" +
+            "```\n" +
+            `> ✅ Usunięto zakup #${purchaseId} (<t:${Math.floor(new Date(purchase.created_at).getTime() / 1000)}:d>) użytkownika <@${targetUserId}>.\n` +
+            `> Użytkownik nie ma już więcej zakupów.`
+          )
+          .setBrandFooter();
+        await interaction.editReply({ embeds: [embed], components: [] });
+      } else {
+        await sendUsunZakupPage(interaction, await client.users.fetch(targetUserId), updatedPurchases, 0);
+      }
+    }
+  } catch (err) {
+    console.error("Błąd w przycisku /usunzakup:", err);
   }
 }
 
@@ -18747,11 +18877,17 @@ client.on(Events.MessageCreate, async (message) => {
       if (!hasPendingTicket) {
         await message.delete().catch(() => null);
         try {
-          await message.author.send(
-            "> `❌` × Nie masz żadnych ticketów oczekujących na wystawienie legit repa.\n" +
-            "> Legit rep możesz wystawić **tylko po zakończeniu ticketa** komendą `/ticket-zakoncz` przez sprzedawcę.\n" +
-            "> Jeśli ktoś zakończył Twój ticket, wpisz `+rep @sprzedawca TYP KWOTA SERWER` na kanale legit-rep."
-          );
+          const embed = new EmbedBuilder()
+            .setColor(COLOR_BLUE)
+            .setDescription(
+              "```\n" +
+              "❌ New Shop × LEGIT REP\n" +
+              "```\n" +
+              "> ❌ × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa.\n" +
+              "> Legit rep możesz wystawić **tylko po zakończeniu ticketa** komendą `/ticket-zakoncz` przez sprzedawcę."
+            )
+            .setBrandFooter();
+          await message.author.send({ embeds: [embed] });
         } catch {}
         return;
       }
