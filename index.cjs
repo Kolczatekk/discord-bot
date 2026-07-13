@@ -18043,7 +18043,10 @@ async function handleModalSubmit(interaction) {
           locked: false,
           ticketTypeLabel,
           formInfo,
-          paymentMethod: interaction.fields.getTextInputValue("payment_method") || null, // Best effort capture
+          // Nie każdy modal ma pole tekstowe `payment_method` (część używa
+          // select menu albo innego customId). Wartość została już bezpiecznie
+          // odczytana w odpowiedniej gałęzi switcha.
+          paymentMethod: paymentMethod || null,
           openedAt: Date.now(),
         });
         if (isRewardTicketLabel(ticketTypeLabel)) {

@@ -40,3 +40,25 @@ CREATE POLICY "Allow public read access" ON public.user_purchases
 -- Allow write access for everyone (or configure authenticated only)
 CREATE POLICY "Allow write access for all" ON public.user_purchases
     FOR ALL USING (true) WITH CHECK (true);
+
+-- Active discount/reward codes used by the bot
+CREATE TABLE IF NOT EXISTS public.active_codes (
+    code TEXT PRIMARY KEY,
+    user_id TEXT,
+    discount NUMERIC NOT NULL DEFAULT 0,
+    expires_at TIMESTAMPTZ,
+    used BOOLEAN NOT NULL DEFAULT FALSE,
+    reward TEXT,
+    reward_amount NUMERIC,
+    reward_text TEXT,
+    type TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.active_codes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access active_codes" ON public.active_codes
+    FOR SELECT USING (true);
+
+CREATE POLICY "Allow write access active_codes" ON public.active_codes
+    FOR ALL USING (true) WITH CHECK (true);
