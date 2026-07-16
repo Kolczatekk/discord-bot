@@ -3493,17 +3493,18 @@ const commands = [
           { name: "WRĘCZYŁ NAGRODĘ", value: "wręczył nagrodę" }
         )
     )
-    .addStringOption((option) =>
+    .addIntegerOption((option) =>
       option
-        .setName("cena")
-        .setDescription("Kwota w PLN (np. 50)")
+        .setName("ile")
+        .setDescription("Kwota w PLN - wpisz tylko liczbę (np. 300)")
+        .setMinValue(1)
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("serwer")
         .setDescription("Wybierz serwer")
-        .setRequired(false)
+        .setRequired(true)
         .addChoices(
           { name: "ANARCHIA LIFESTEAL", value: "ANARCHIA LIFESTEAL" },
           { name: "ANARCHIA BOXPVP", value: "ANARCHIA BOXPVP" },
@@ -13663,6 +13664,7 @@ async function handleTicketZakonczCommand(interaction) {
   }
 
   const channel = interaction.channel;
+  const ticketData = ticketOwners.get(channel.id) || null;
 
   // Sprawdź czy komenda jest używana w tickecie
   if (!isTicketChannel(channel)) {
@@ -13675,11 +13677,8 @@ async function handleTicketZakonczCommand(interaction) {
 
   // Pobierz parametry
   const typ = interaction.options.getString("typ");
-  const cenaRaw = interaction.options.getString("cena") || "";
-  let formattedCena = cenaRaw.trim();
-  if (formattedCena && !formattedCena.toUpperCase().endsWith("PLN") && /^\d+$/.test(formattedCena)) {
-    formattedCena += " PLN";
-  }
+  const cena = interaction.options.getInteger("ile", true);
+  const formattedCena = `${cena} PLN`;
   const serwer = (interaction.options.getString("serwer") || "").trim();
 
   const ticketOwnerId = await resolveTicketOwnerId(channel);
@@ -13827,7 +13826,7 @@ async function handleTicketZakonczCommand(interaction) {
     statusLabel: "OCZEKUJE NA +REP",
     detailLines: [
       `Typ transakcji: ${typ}`,
-      `Co: ${co}`,
+      `Co: ${formattedCena}`,
       `Serwer: ${serwer}`,
       `Kanał legit-rep: <#${legitRepChannelId}>`,
       `Wzór: ${repMessage}`,
@@ -18831,9 +18830,9 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      // Wzórzec: +rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE PLN] [SERWER]
+      // Wzorzec: +rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]
       const mentionPattern = /<@!?\d+>|@\S+/;
-      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(zakup|sprzedaż|sprzedaz|wręczył\s+nagrodę|wreczyl\s+nagrode|sprzedał|sprzedal|kupił|kupil)\s+(\S+.*)/i;
+      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(zakup|sprzedaż|sprzedaz|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(\d+)\s+pln\s+(\S+(?:\s+\S+)*)$/i;
       const hasMention = mentionPattern.test(messageContent);
       const isValidRep = repPattern.test(messageContent);
 
