@@ -13530,8 +13530,8 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`panel_klienta_history_${safePageIndex - 1}`)
-            .setStyle(ButtonStyle.Primary)
-            .setLabel("◀")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel("<")
             .setDisabled(safePageIndex === 0),
           new ButtonBuilder()
             .setCustomId(`panel_klienta_history_info`)
@@ -13540,8 +13540,8 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
             .setDisabled(true),
           new ButtonBuilder()
             .setCustomId(`panel_klienta_history_${safePageIndex + 1}`)
-            .setStyle(ButtonStyle.Primary)
-            .setLabel("▶")
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel(">")
             .setDisabled(safePageIndex === totalPages - 1)
         )
       );
