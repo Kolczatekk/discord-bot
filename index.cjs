@@ -13330,12 +13330,12 @@ async function handlePanelKlientaCommand(interaction) {
 function buildPanelKlientaPayload(guildId) {
   const spentEmoji = findGuildEmojiByName(guildId, "kasa_3");
   const historyEmoji = findGuildEmojiByName(guildId, "shop");
-  const clientEmoji = findGuildEmojiByName(guildId, "klient");
-  const clientEmojiMarkup = clientEmoji ? toGuildEmojiMarkup(clientEmoji) : "👤";
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${clientEmojiMarkup} **New Shop × PANEL KLIENTA**\n\n` +
+      "```\n" +
+      "🛒 New Shop × PANEL KLIENTA\n" +
+      "```\n" +
       "> `⚡` × Wybierz jedną z opcji która najbardziej Cię interesuje."
     )
   );
