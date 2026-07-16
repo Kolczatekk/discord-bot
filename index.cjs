@@ -13499,7 +13499,10 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
     for (const p of pagePurchases) {
       const timestamp = Math.floor(new Date(p.created_at).getTime() / 1000);
       purchaseLines.push(
-        `> \`🗓️\` **Data:** <t:${timestamp}:d> • \`🕒\` **Godzina:** <t:${timestamp}:t> • \`💰\` **Kwota:** __${p.price}__ PLN`,
+        replaceNamedGuildEmojis(
+          `> \`🗓️\` **Data:** <t:${timestamp}:d> • \`🕒\` **Godzina:** <t:${timestamp}:t> • :kasa_3: **Kwota:** __${p.price}__ **PLN**`,
+          guild.id,
+        ),
       );
     }
 
