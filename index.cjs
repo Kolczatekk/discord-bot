@@ -13494,30 +13494,44 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
     const end = Math.min(start + itemsPerPage, purchases.length);
     const pagePurchases = purchases.slice(start, end);
 
-    const descriptionParts = [
-      "```",
-      "📄 New Shop × HISTORIA ZAKUPÓW",
-      "```"
-    ];
+    const totalSpent = purchases.reduce(
+      (sum, purchase) => sum + (Number(purchase.price) || 0),
+      0,
+    );
+    const formattedTotalSpent = totalSpent.toLocaleString("pl-PL", {
+      maximumFractionDigits: 2,
+    });
+    const purchaseLines = [];
 
     for (const p of pagePurchases) {
       const timestamp = Math.floor(new Date(p.created_at).getTime() / 1000);
-      descriptionParts.push(`> <a:arrowwhite:1491476759290449984> × **Data:** <t:${timestamp}:d> • **Godzina:** <t:${timestamp}:t> • **Kwota:** ${p.price} PLN`);
+      purchaseLines.push(
+        `> \`🗓️\` **Data:** <t:${timestamp}:d> • \`🕒\` **Godzina:** <t:${timestamp}:t> • \`💰\` **Kwota:** **${p.price} PLN**`,
+      );
     }
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(descriptionParts.join("\n"))
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        "📄 New Shop × HISTORIA ZAKUPÓW\n" +
+        "```\n" +
+        `> \`💳\` × **Łącznie wydano:** **${formattedTotalSpent} PLN**\n` +
+        `> \`🧾\` × **Liczba zakupów:** **${purchases.length}**`,
+      ),
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(purchaseLines.join("\n")),
     );
 
-    const components = [];
     if (totalPages > 1) {
       container.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`panel_klienta_history_${safePageIndex - 1}`)
-            .setStyle(ButtonStyle.Secondary)
-            .setLabel("<")
+            .setStyle(ButtonStyle.Primary)
+            .setLabel("◀")
             .setDisabled(safePageIndex === 0),
           new ButtonBuilder()
             .setCustomId(`panel_klienta_history_info`)
@@ -13526,8 +13540,8 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
             .setDisabled(true),
           new ButtonBuilder()
             .setCustomId(`panel_klienta_history_${safePageIndex + 1}`)
-            .setStyle(ButtonStyle.Secondary)
-            .setLabel(">")
+            .setStyle(ButtonStyle.Primary)
+            .setLabel("▶")
             .setDisabled(safePageIndex === totalPages - 1)
         )
       );
