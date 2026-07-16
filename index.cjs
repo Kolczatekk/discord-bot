@@ -13336,7 +13336,7 @@ function buildPanelKlientaPayload(guildId) {
       "```\n" +
       "🛒 New Shop × PANEL KLIENTA\n" +
       "```\n" +
-      "> 📫 Wybierz jedną z opcji poniżej."
+      "> `📫` × Wybierz jedną z opcji poniżej."
     )
   );
 
