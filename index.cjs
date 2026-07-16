@@ -13312,7 +13312,8 @@ async function handlePanelKlientaCommand(interaction) {
       return;
     }
 
-    await interaction.channel.send(buildPanelKlientaPayload());
+    await ensureEmbedTestEmojiCache(interaction.guildId);
+    await interaction.channel.send(buildPanelKlientaPayload(interaction.guildId));
 
     await interaction.editReply({
       content: "> `✅` × **Panel klienta** został wysłany na ten **kanał**.",
@@ -13326,7 +13327,9 @@ async function handlePanelKlientaCommand(interaction) {
   }
 }
 
-function buildPanelKlientaPayload() {
+function buildPanelKlientaPayload(guildId) {
+  const spentEmoji = findGuildEmojiByName(guildId, "kasa_3");
+  const historyEmoji = findGuildEmojiByName(guildId, "shop");
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -13347,13 +13350,17 @@ function buildPanelKlientaPayload() {
         label: toPanelFont("Sprawdź ile wydałeś"),
         value: "panel_klienta_spent",
         description: "Wyświetla sumę Twoich zakupów oraz rangę",
-        emoji: { id: "1476700165082710178", name: "kasa_2" }
+        emoji: spentEmoji
+          ? { id: spentEmoji.id, name: spentEmoji.name, animated: spentEmoji.animated }
+          : "💵"
       },
       {
         label: toPanelFont("Historia zakupów"),
         value: "panel_klienta_history",
         description: "Wyświetla listę Twoich zakupów",
-        emoji: "📄"
+        emoji: historyEmoji
+          ? { id: historyEmoji.id, name: historyEmoji.name, animated: historyEmoji.animated }
+          : "🛍️"
       }
     );
 
