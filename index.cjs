@@ -972,6 +972,30 @@ try {
 }
 
 // -------- Persistent storage helpers (invites, tickets, legit-rep) --------
+
+function simpleMapToObject(map) {
+  if (!(map instanceof Map)) return {};
+  const obj = {};
+  for (const [key, value] of map.entries()) {
+    obj[key] = value;
+  }
+  return obj;
+}
+
+function objectToMap(obj, targetMap) {
+  if (!obj || typeof obj !== "object") return;
+  for (const [key, value] of Object.entries(obj)) {
+    targetMap.set(key, value);
+  }
+}
+
+function loadNestedMapOfMaps(source, targetMap) {
+  const loaded = nestedObjectToMapOfMaps(source);
+  loaded.forEach((inner, key) => {
+    targetMap.set(key, inner);
+  });
+}
+
 function nestedObjectToMapOfMaps(source) {
   const top = new Map();
   if (!source || typeof source !== "object") return top;
@@ -1000,12 +1024,38 @@ function mapOfMapsToPlainObject(topMap) {
   return obj;
 }
 
+function nestedMapOfSetsToObject(map) {
+  const obj = {};
+  if (!(map instanceof Map)) return obj;
+  for (const [outerKey, userMap] of map.entries()) {
+    obj[outerKey] = {};
+    if (userMap && typeof userMap.forEach === "function") {
+      userMap.forEach((levelSet, innerKey) => {
+        obj[outerKey][innerKey] = Array.from(levelSet || []);
+      });
+    }
+  }
+  return obj;
+}
+
+function objectToNestedMapOfSets(source, targetMap) {
+  if (!source || typeof source !== "object") return;
+  for (const [outerKey, userObj] of Object.entries(source)) {
+    const userMap = new Map();
+    for (const [innerKey, levelsArray] of Object.entries(userObj)) {
+      if (Array.isArray(levelsArray)) {
+        userMap.set(innerKey, new Set(levelsArray));
+      }
+    }
+    targetMap.set(outerKey, userMap);
+  }
+}
+
 let saveStateTimeout = null;
 function buildPersistentStateData() {
   // Convert contests to plain object
   const contestsObj = {};
   for (const [msgId, meta] of contests.entries()) {
-    // ensure meta is serializable (avoid functions)
     contestsObj[msgId] = {
       ...(meta || {}),
       endsAt: meta && meta.endsAt ? meta.endsAt : null,
@@ -1015,15 +1065,12 @@ function buildPersistentStateData() {
   // Convert contest participants to plain object
   const participantsObj = {};
   for (const [msgId, setOrMap] of contestParticipants.entries()) {
-    // contestParticipants may store Set or Map — normalize to array of [userId, nick] pairs
     if (setOrMap instanceof Set) {
-      // Convert Set to array of [userId, ""] pairs (backward compatibility)
       participantsObj[msgId] = Array.from(setOrMap).map(userId => [userId, ""]);
     } else if (
       typeof setOrMap === "object" &&
       typeof setOrMap.forEach === "function"
     ) {
-      // Convert Map(userId -> nick) to array of [userId, nick] pairs
       participantsObj[msgId] = Array.from(setOrMap.entries());
     } else {
       participantsObj[msgId] = [];
@@ -1031,175 +1078,31 @@ function buildPersistentStateData() {
   }
 
   // Convert contest leave blocks to plain object
-  const leaveBlocksObj = {};
-  if (typeof contestLeaveBlocks !== "undefined" && contestLeaveBlocks instanceof Map) {
-    for (const [userId, contestBlocks] of contestLeaveBlocks.entries()) {
-      if (contestBlocks && typeof contestBlocks === "object") {
-        leaveBlocksObj[userId] = {};
-        for (const [msgId, blockData] of Object.entries(contestBlocks)) {
-          leaveBlocksObj[userId][msgId] = {
-            leaveCount: blockData.leaveCount || 0,
-            blockedUntil: blockData.blockedUntil || 0
-          };
-        }
+  const leaveBlocksObj = simpleMapToObject(contestLeaveBlocks);
+  for (const [userId, contestBlocks] of Object.entries(leaveBlocksObj)) {
+    if (contestBlocks && typeof contestBlocks === "object") {
+      const sanitized = {};
+      for (const [msgId, blockData] of Object.entries(contestBlocks)) {
+        sanitized[msgId] = {
+          leaveCount: blockData.leaveCount || 0,
+          blockedUntil: blockData.blockedUntil || 0,
+        };
       }
+      leaveBlocksObj[userId] = sanitized;
     }
   }
 
-  // optional: serialize fourMonthBlockList if you've added it
+  // Serialize fourMonthBlockList
   const fourMonthObj = {};
-  if (
-    typeof fourMonthBlockList !== "undefined" &&
-    fourMonthBlockList instanceof Map
-  ) {
+  if (fourMonthBlockList instanceof Map) {
     for (const [gId, setOfUsers] of fourMonthBlockList.entries()) {
       fourMonthObj[gId] = Array.from(setOfUsers || []);
     }
   }
 
-  // Convert guildInvites to plain object
-  const guildInvitesObj = {};
-  if (typeof guildInvites !== "undefined" && guildInvites instanceof Map) {
-    for (const [guildId, inviteMap] of guildInvites.entries()) {
-      if (inviteMap && typeof inviteMap.forEach === "function") {
-        guildInvitesObj[guildId] = {};
-        inviteMap.forEach((uses, code) => {
-          guildInvitesObj[guildId][code] = uses;
-        });
-      }
-    }
-  }
-
-  // Convert inviterOfMember to plain object
-  const inviterOfMemberObj = {};
-  if (typeof inviterOfMember !== "undefined" && inviterOfMember instanceof Map) {
-    for (const [key, inviterId] of inviterOfMember.entries()) {
-      inviterOfMemberObj[key] = inviterId;
-    }
-  }
-
-  // Convert inviterRateLimit to plain object
-  const inviterRateLimitObj = {};
-  if (typeof inviterRateLimit !== "undefined" && inviterRateLimit instanceof Map) {
-    for (const [guildId, rateMap] of inviterRateLimit.entries()) {
-      if (rateMap && typeof rateMap.forEach === "function") {
-        inviterRateLimitObj[guildId] = {};
-        rateMap.forEach((timestamps, inviterId) => {
-          inviterRateLimitObj[guildId][inviterId] = timestamps;
-        });
-      }
-    }
-  }
-
-  // Convert leaveRecords to plain object
-  const leaveRecordsObj = {};
-  if (typeof leaveRecords !== "undefined" && leaveRecords instanceof Map) {
-    for (const [key, inviterId] of leaveRecords.entries()) {
-      leaveRecordsObj[key] = inviterId;
-    }
-  }
-
-  // Convert verificationRoles to plain object
-  const verificationRolesObj = {};
-  if (typeof verificationRoles !== "undefined" && verificationRoles instanceof Map) {
-    for (const [guildId, roleId] of verificationRoles.entries()) {
-      verificationRolesObj[guildId] = roleId;
-    }
-  }
-
-  // Convert pendingVerifications to plain object
-  const pendingVerificationsObj = {};
-  if (typeof pendingVerifications !== "undefined" && pendingVerifications instanceof Map) {
-    for (const [modalId, data] of pendingVerifications.entries()) {
-      pendingVerificationsObj[modalId] = data;
-    }
-  }
-
-  // Convert ticketCategories to plain object
-  const ticketCategoriesObj = {};
-  if (typeof ticketCategories !== "undefined" && ticketCategories instanceof Map) {
-    for (const [guildId, categories] of ticketCategories.entries()) {
-      ticketCategoriesObj[guildId] = categories;
-    }
-  }
-
-  // Convert dropChannels to plain object
-  const dropChannelsObj = {};
-  if (typeof dropChannels !== "undefined" && dropChannels instanceof Map) {
-    for (const [guildId, channelId] of dropChannels.entries()) {
-      dropChannelsObj[guildId] = channelId;
-    }
-  }
-
-  // Convert sprawdzZaproszeniaCooldowns to plain object
-  const sprawdzZaproszeniaCooldownsObj = {};
-  if (typeof sprawdzZaproszeniaCooldowns !== "undefined" && sprawdzZaproszeniaCooldowns instanceof Map) {
-    for (const [userId, timestamp] of sprawdzZaproszeniaCooldowns.entries()) {
-      sprawdzZaproszeniaCooldownsObj[userId] = timestamp;
-    }
-  }
-
-  // Convert lastOpinionInstruction to plain object
-  const lastOpinionInstructionObj = {};
-  if (typeof lastOpinionInstruction !== "undefined" && lastOpinionInstruction instanceof Map) {
-    for (const [channelId, messageId] of lastOpinionInstruction.entries()) {
-      lastOpinionInstructionObj[channelId] = messageId;
-    }
-  }
-
-  // Convert lastDropInstruction to plain object
-  const lastDropInstructionObj = {};
-  if (typeof lastDropInstruction !== "undefined" && lastDropInstruction instanceof Map) {
-    for (const [channelId, messageId] of lastDropInstruction.entries()) {
-      lastDropInstructionObj[channelId] = messageId;
-    }
-  }
-
-  // Convert kalkulatorData to plain object
-  const kalkulatorDataObj = {};
-  if (typeof kalkulatorData !== "undefined" && kalkulatorData instanceof Map) {
-    for (const [userId, data] of kalkulatorData.entries()) {
-      kalkulatorDataObj[userId] = data;
-    }
-  }
-
-  // Convert infoCooldowns to plain object
-  const infoCooldownsObj = {};
-  if (typeof infoCooldowns !== "undefined" && infoCooldowns instanceof Map) {
-    for (const [userId, timestamp] of infoCooldowns.entries()) {
-      infoCooldownsObj[userId] = timestamp;
-    }
-  }
-
-  // Convert repLastInfoMessage to plain object
-  const repLastInfoMessageObj = {};
-  if (typeof repLastInfoMessage !== "undefined" && repLastInfoMessage instanceof Map) {
-    for (const [channelId, messageId] of repLastInfoMessage.entries()) {
-      repLastInfoMessageObj[channelId] = messageId;
-    }
-  }
-
-  // Convert dropCooldowns to plain object
-  const dropCooldownsObj = {};
-  if (typeof dropCooldowns !== "undefined" && dropCooldowns instanceof Map) {
-    for (const [userId, timestamp] of dropCooldowns.entries()) {
-      dropCooldownsObj[userId] = timestamp;
-    }
-  }
-
-  // Convert freeKasaCooldowns to plain object
-  const freeKasaCooldownsObj = {};
-  if (typeof freeKasaCooldowns !== "undefined" && freeKasaCooldowns instanceof Map) {
-    for (const [userId, timestamp] of freeKasaCooldowns.entries()) {
-      freeKasaCooldownsObj[userId] = timestamp;
-    }
-  }
-
+  // Serialize freeKasaRewardProgress with normalization
   const freeKasaRewardProgressObj = {};
-  if (
-    typeof freeKasaRewardProgress !== "undefined" &&
-    freeKasaRewardProgress instanceof Map
-  ) {
+  if (freeKasaRewardProgress instanceof Map) {
     for (const [userId, progress] of freeKasaRewardProgress.entries()) {
       freeKasaRewardProgressObj[userId] = {
         cashBalance: Number(progress?.cashBalance || 0),
@@ -1212,16 +1115,9 @@ function buildPersistentStateData() {
     }
   }
 
-  // Convert opinionCooldowns to plain object
-  const opinionCooldownsObj = {};
-  if (typeof opinionCooldowns !== "undefined" && opinionCooldowns instanceof Map) {
-    for (const [userId, timestamp] of opinionCooldowns.entries()) {
-      opinionCooldownsObj[userId] = timestamp;
-    }
-  }
-
+  // Serialize rewardTicketClaims with normalization
   const rewardTicketClaimsObj = {};
-  if (typeof rewardTicketClaims !== "undefined" && rewardTicketClaims instanceof Map) {
+  if (rewardTicketClaims instanceof Map) {
     for (const [channelId, claimData] of rewardTicketClaims.entries()) {
       rewardTicketClaimsObj[channelId] = {
         guildId: claimData?.guildId || null,
@@ -1236,63 +1132,9 @@ function buildPersistentStateData() {
     }
   }
 
-  // Convert pendingTicketClose to plain object
-  const pendingTicketCloseObj = {};
-  if (typeof pendingTicketClose !== "undefined" && pendingTicketClose instanceof Map) {
-    for (const [channelId, data] of pendingTicketClose.entries()) {
-      pendingTicketCloseObj[channelId] = data;
-    }
-  }
-
-  // Convert inviteRewardLevels to plain object
-  const inviteRewardLevelsObj = {};
-  if (typeof inviteRewardLevels !== "undefined" && inviteRewardLevels instanceof Map) {
-    for (const [guildId, userMap] of inviteRewardLevels.entries()) {
-      inviteRewardLevelsObj[guildId] = {};
-      if (userMap && typeof userMap.forEach === "function") {
-        userMap.forEach((levelSet, userId) => {
-          inviteRewardLevelsObj[guildId][userId] = Array.from(levelSet || []);
-        });
-      }
-    }
-  }
-
-  const claimedInviteRewardMilestonesObj = {};
-  if (
-    typeof claimedInviteRewardMilestones !== "undefined" &&
-    claimedInviteRewardMilestones instanceof Map
-  ) {
-    for (const [guildId, userMap] of claimedInviteRewardMilestones.entries()) {
-      claimedInviteRewardMilestonesObj[guildId] = {};
-      if (userMap && typeof userMap.forEach === "function") {
-        userMap.forEach((levelSet, userId) => {
-          claimedInviteRewardMilestonesObj[guildId][userId] = Array.from(levelSet || []);
-        });
-      }
-    }
-  }
-
-  // Convert opinieChannels to plain object
-  const opinieChannelsObj = {};
-  if (typeof opinieChannels !== "undefined" && opinieChannels instanceof Map) {
-    for (const [guildId, channelId] of opinieChannels.entries()) {
-      opinieChannelsObj[guildId] = channelId;
-    }
-  }
-
-  // Convert embedTestStates to plain object
-  const embedTestStatesObj = {};
-  if (typeof embedTestStates !== "undefined" && embedTestStates instanceof Map) {
-    for (const [messageId, state] of embedTestStates.entries()) {
-      embedTestStatesObj[messageId] = state;
-    }
-  }
-
+  // Serialize regulationPanels with cloning
   const regulationPanelsObj = {};
-  if (
-    typeof regulationPanels !== "undefined" &&
-    regulationPanels instanceof Map
-  ) {
+  if (regulationPanels instanceof Map) {
     for (const [messageId, panelState] of regulationPanels.entries()) {
       regulationPanelsObj[messageId] = cloneRegulationPanelState(panelState, {
         messageId,
@@ -1310,8 +1152,8 @@ function buildPersistentStateData() {
     inviteRewards: mapOfMapsToPlainObject(inviteRewards),
     inviteLeaves: mapOfMapsToPlainObject(inviteLeaves),
     inviteRewardsGiven: mapOfMapsToPlainObject(inviteRewardsGiven),
-    inviteRewardLevels: inviteRewardLevelsObj,
-    claimedInviteRewardMilestones: claimedInviteRewardMilestonesObj,
+    inviteRewardLevels: nestedMapOfSetsToObject(inviteRewardLevels),
+    claimedInviteRewardMilestones: nestedMapOfSetsToObject(claimedInviteRewardMilestones),
     inviteTotalJoined: mapOfMapsToPlainObject(inviteTotalJoined),
     inviteFakeAccounts: mapOfMapsToPlainObject(inviteFakeAccounts),
     inviteBonusInvites: mapOfMapsToPlainObject(inviteBonusInvites),
@@ -1322,31 +1164,30 @@ function buildPersistentStateData() {
     fourMonthBlockList: fourMonthObj,
     weeklySales: Object.fromEntries(weeklySales),
     activeCodes: Object.fromEntries(activeCodes),
-    guildInvites: guildInvitesObj,
-    inviterOfMember: inviterOfMemberObj,
-    embedTestStates: embedTestStatesObj,
+    guildInvites: mapOfMapsToPlainObject(guildInvites),
+    inviterOfMember: simpleMapToObject(inviterOfMember),
+    embedTestStates: simpleMapToObject(embedTestStates),
     regulationPanels: regulationPanelsObj,
-    inviterRateLimit: inviterRateLimitObj,
-    leaveRecords: leaveRecordsObj,
-    verificationRoles: verificationRolesObj,
-    pendingVerifications: pendingVerificationsObj,
-    ticketCategories: ticketCategoriesObj,
-    dropChannels: dropChannelsObj,
-    sprawdzZaproszeniaCooldowns: sprawdzZaproszeniaCooldownsObj,
-    lastOpinionInstruction: lastOpinionInstructionObj,
-    lastDropInstruction: lastDropInstructionObj,
-    kalkulatorData: kalkulatorDataObj,
-    infoCooldowns: infoCooldownsObj,
-    repLastInfoMessage: repLastInfoMessageObj,
-    dropCooldowns: dropCooldownsObj,
-    freeKasaCooldowns: freeKasaCooldownsObj,
+    inviterRateLimit: mapOfMapsToPlainObject(inviterRateLimit),
+    leaveRecords: simpleMapToObject(leaveRecords),
+    verificationRoles: simpleMapToObject(verificationRoles),
+    pendingVerifications: simpleMapToObject(pendingVerifications),
+    ticketCategories: simpleMapToObject(ticketCategories),
+    dropChannels: simpleMapToObject(dropChannels),
+    sprawdzZaproszeniaCooldowns: simpleMapToObject(sprawdzZaproszeniaCooldowns),
+    lastOpinionInstruction: simpleMapToObject(lastOpinionInstruction),
+    lastDropInstruction: simpleMapToObject(lastDropInstruction),
+    kalkulatorData: simpleMapToObject(kalkulatorData),
+    infoCooldowns: simpleMapToObject(infoCooldowns),
+    repLastInfoMessage: simpleMapToObject(repLastInfoMessage),
+    dropCooldowns: simpleMapToObject(dropCooldowns),
+    freeKasaCooldowns: simpleMapToObject(freeKasaCooldowns),
     freeKasaRewardProgress: freeKasaRewardProgressObj,
     freeKasaLossStreak: Number(freeKasaLossStreak || 0),
-    opinionCooldowns: opinionCooldownsObj,
+    opinionCooldowns: simpleMapToObject(opinionCooldowns),
     rewardTicketClaims: rewardTicketClaimsObj,
-    pendingTicketClose: pendingTicketCloseObj,
-    opinieChannels: opinieChannelsObj,
-    regulationPanels: regulationPanelsObj,
+    pendingTicketClose: simpleMapToObject(pendingTicketClose),
+    opinieChannels: simpleMapToObject(opinieChannels),
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
     autoVerifySettings: Object.fromEntries(autoVerifySettings),
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
@@ -2714,76 +2555,20 @@ async function loadPersistentState() {
         }
       }
 
-      if (botStateData.inviteCounts) {
-        const loaded = nestedObjectToMapOfMaps(botStateData.inviteCounts);
-        loaded.forEach((inner, guildId) => {
-          inviteCounts.set(guildId, inner);
-          console.log(`[state] Wczytano inviteCounts dla guild ${guildId}: ${inner.size} wpisów`);
-        });
-      }
-
-      if (botStateData.inviteRewards) {
-        const loaded = nestedObjectToMapOfMaps(botStateData.inviteRewards);
-        loaded.forEach((inner, guildId) => {
-          inviteRewards.set(guildId, inner);
-        });
-      }
-
-      if (botStateData.inviteLeaves) {
-        const loaded = nestedObjectToMapOfMaps(botStateData.inviteLeaves);
-        loaded.forEach((inner, guildId) => {
-          inviteLeaves.set(guildId, inner);
-        });
-      }
-
-      if (botStateData.inviteRewardsGiven) {
-        // NEW
-        const loaded = nestedObjectToMapOfMaps(botStateData.inviteRewardsGiven);
-        loaded.forEach((inner, guildId) => {
-          inviteRewardsGiven.set(guildId, inner);
-          console.log(`[state] Wczytano inviteRewardsGiven dla guild ${guildId}: ${inner.size} wpisów`);
-        });
-      }
+      if (botStateData.inviteCounts) loadNestedMapOfMaps(botStateData.inviteCounts, inviteCounts);
+      if (botStateData.inviteRewards) loadNestedMapOfMaps(botStateData.inviteRewards, inviteRewards);
+      if (botStateData.inviteLeaves) loadNestedMapOfMaps(botStateData.inviteLeaves, inviteLeaves);
+      if (botStateData.inviteRewardsGiven) loadNestedMapOfMaps(botStateData.inviteRewardsGiven, inviteRewardsGiven);
 
       if (botStateData.inviteRewardLevels) {
-        // Load inviteRewardLevels
-        for (const [guildId, userObj] of Object.entries(botStateData.inviteRewardLevels)) {
-          const userMap = new Map();
-          for (const [userId, levelsArray] of Object.entries(userObj)) {
-            if (Array.isArray(levelsArray)) {
-              userMap.set(userId, new Set(levelsArray));
-            }
-          }
-          inviteRewardLevels.set(guildId, userMap);
-        }
-        console.log("[state] Wczytano inviteRewardLevels");
+        objectToNestedMapOfSets(botStateData.inviteRewardLevels, inviteRewardLevels);
       }
 
       if (botStateData.claimedInviteRewardMilestones) {
-        for (const [guildId, userObj] of Object.entries(botStateData.claimedInviteRewardMilestones)) {
-          const userMap = new Map();
-          for (const [userId, levelsArray] of Object.entries(userObj)) {
-            if (Array.isArray(levelsArray)) {
-              userMap.set(userId, new Set(levelsArray));
-            }
-          }
-          claimedInviteRewardMilestones.set(guildId, userMap);
-        }
-        console.log("[state] Wczytano claimedInviteRewardMilestones");
+        objectToNestedMapOfSets(botStateData.claimedInviteRewardMilestones, claimedInviteRewardMilestones);
       }
 
-      if (
-        botStateData.lastInviteInstruction &&
-        typeof botStateData.lastInviteInstruction === "object"
-      ) {
-        for (const [channelId, messageId] of Object.entries(
-          botStateData.lastInviteInstruction,
-        )) {
-          if (typeof messageId === "string") {
-            lastInviteInstruction.set(channelId, messageId);
-          }
-        }
-      }
+      objectToMap(botStateData.lastInviteInstruction, lastInviteInstruction);
 
       // Load contests
       if (botStateData.contests && typeof botStateData.contests === "object") {
@@ -2960,155 +2745,31 @@ async function loadPersistentState() {
         console.error("[Supabase] Błąd wczytywania ticketOwners:", error);
       }
 
-      // Load invite total joined
-      if (botStateData.inviteTotalJoined) {
-        const loaded = nestedObjectToMapOfMaps(botStateData.inviteTotalJoined);
-        loaded.forEach((inner, guildId) => {
-          inviteTotalJoined.set(guildId, inner);
-        });
-      }
+      // Load nested Maps of Maps
+      if (botStateData.inviteTotalJoined) loadNestedMapOfMaps(botStateData.inviteTotalJoined, inviteTotalJoined);
+      if (botStateData.inviteFakeAccounts) loadNestedMapOfMaps(botStateData.inviteFakeAccounts, inviteFakeAccounts);
+      if (botStateData.inviteBonusInvites) loadNestedMapOfMaps(botStateData.inviteBonusInvites, inviteBonusInvites);
+      if (botStateData.guildInvites) loadNestedMapOfMaps(botStateData.guildInvites, guildInvites);
+      if (botStateData.inviterRateLimit) loadNestedMapOfMaps(botStateData.inviterRateLimit, inviterRateLimit);
 
-      // Load invite fake accounts
-      if (botStateData.inviteFakeAccounts) {
-        const loaded = nestedObjectToMapOfMaps(botStateData.inviteFakeAccounts);
-        loaded.forEach((inner, guildId) => {
-          inviteFakeAccounts.set(guildId, inner);
-        });
-      }
-
-      // Load invite bonus invites
-      if (botStateData.inviteBonusInvites) {
-        const loaded = nestedObjectToMapOfMaps(botStateData.inviteBonusInvites);
-        loaded.forEach((inner, guildId) => {
-          inviteBonusInvites.set(guildId, inner);
-        });
-      }
-
-      // Load guildInvites
-      if (botStateData.guildInvites && typeof botStateData.guildInvites === "object") {
-        for (const [guildId, inviteMap] of Object.entries(botStateData.guildInvites)) {
-          if (inviteMap && typeof inviteMap === "object") {
-            const map = new Map();
-            for (const [code, uses] of Object.entries(inviteMap)) {
-              map.set(code, uses);
-            }
-            guildInvites.set(guildId, map);
-          }
-        }
-      }
-
-      // Load inviterOfMember
-      if (botStateData.inviterOfMember && typeof botStateData.inviterOfMember === "object") {
-        for (const [key, memberData] of Object.entries(botStateData.inviterOfMember)) {
-          if (memberData && typeof memberData === "object") {
-            inviterOfMember.set(key, memberData);
-          }
-        }
-      }
-
-      // Load inviterRateLimit
-      if (botStateData.inviterRateLimit && typeof botStateData.inviterRateLimit === "object") {
-        for (const [guildId, rateMap] of Object.entries(botStateData.inviterRateLimit)) {
-          if (rateMap && typeof rateMap === "object") {
-            const map = new Map();
-            for (const [inviterId, timestamps] of Object.entries(rateMap)) {
-              map.set(inviterId, timestamps);
-            }
-            inviterRateLimit.set(guildId, map);
-          }
-        }
-      }
-
-      // Load leaveRecords
-      if (botStateData.leaveRecords && typeof botStateData.leaveRecords === "object") {
-        for (const [key, inviterId] of Object.entries(botStateData.leaveRecords)) {
-          leaveRecords.set(key, inviterId);
-        }
-      }
-
-      // Load verificationRoles
-      if (botStateData.verificationRoles && typeof botStateData.verificationRoles === "object") {
-        for (const [guildId, roleId] of Object.entries(botStateData.verificationRoles)) {
-          verificationRoles.set(guildId, roleId);
-        }
-      }
-
-      // Load pendingVerifications
-      if (botStateData.pendingVerifications && typeof botStateData.pendingVerifications === "object") {
-        for (const [modalId, verificationData] of Object.entries(botStateData.pendingVerifications)) {
-          pendingVerifications.set(modalId, verificationData);
-        }
-      }
-
-      // Load ticketCategories
-      if (botStateData.ticketCategories && typeof botStateData.ticketCategories === "object") {
-        for (const [guildId, categories] of Object.entries(botStateData.ticketCategories)) {
-          ticketCategories.set(guildId, categories);
-        }
-      }
-
-      // Load dropChannels
-      if (botStateData.dropChannels && typeof botStateData.dropChannels === "object") {
-        for (const [guildId, channelId] of Object.entries(botStateData.dropChannels)) {
-          dropChannels.set(guildId, channelId);
-        }
-      }
-
-      // Load sprawdzZaproszeniaCooldowns
-      if (botStateData.sprawdzZaproszeniaCooldowns && typeof botStateData.sprawdzZaproszeniaCooldowns === "object") {
-        for (const [userId, timestamp] of Object.entries(botStateData.sprawdzZaproszeniaCooldowns)) {
-          sprawdzZaproszeniaCooldowns.set(userId, timestamp);
-        }
-      }
-
-      // Load lastOpinionInstruction
-      if (botStateData.lastOpinionInstruction && typeof botStateData.lastOpinionInstruction === "object") {
-        for (const [channelId, messageId] of Object.entries(botStateData.lastOpinionInstruction)) {
-          lastOpinionInstruction.set(channelId, messageId);
-        }
-      }
-
-      // Load lastDropInstruction
-      if (botStateData.lastDropInstruction && typeof botStateData.lastDropInstruction === "object") {
-        for (const [channelId, messageId] of Object.entries(botStateData.lastDropInstruction)) {
-          lastDropInstruction.set(channelId, messageId);
-        }
-      }
-
-      // Load kalkulatorData
-      if (botStateData.kalkulatorData && typeof botStateData.kalkulatorData === "object") {
-        for (const [userId, calcData] of Object.entries(botStateData.kalkulatorData)) {
-          kalkulatorData.set(userId, calcData);
-        }
-      }
-
-      // Load infoCooldowns
-      if (botStateData.infoCooldowns && typeof botStateData.infoCooldowns === "object") {
-        for (const [userId, timestamp] of Object.entries(botStateData.infoCooldowns)) {
-          infoCooldowns.set(userId, timestamp);
-        }
-      }
-
-      // Load repLastInfoMessage
-      if (botStateData.repLastInfoMessage && typeof botStateData.repLastInfoMessage === "object") {
-        for (const [channelId, messageId] of Object.entries(botStateData.repLastInfoMessage)) {
-          repLastInfoMessage.set(channelId, messageId);
-        }
-      }
-
-      // Load dropCooldowns
-      if (botStateData.dropCooldowns && typeof botStateData.dropCooldowns === "object") {
-        for (const [userId, timestamp] of Object.entries(botStateData.dropCooldowns)) {
-          dropCooldowns.set(userId, timestamp);
-        }
-      }
-
-      // Load freeKasaCooldowns
-      if (botStateData.freeKasaCooldowns && typeof botStateData.freeKasaCooldowns === "object") {
-        for (const [userId, timestamp] of Object.entries(botStateData.freeKasaCooldowns)) {
-          freeKasaCooldowns.set(userId, timestamp);
-        }
-      }
+      // Load simple key-value Maps
+      objectToMap(botStateData.inviterOfMember, inviterOfMember);
+      objectToMap(botStateData.leaveRecords, leaveRecords);
+      objectToMap(botStateData.verificationRoles, verificationRoles);
+      objectToMap(botStateData.pendingVerifications, pendingVerifications);
+      objectToMap(botStateData.ticketCategories, ticketCategories);
+      objectToMap(botStateData.dropChannels, dropChannels);
+      objectToMap(botStateData.sprawdzZaproszeniaCooldowns, sprawdzZaproszeniaCooldowns);
+      objectToMap(botStateData.lastOpinionInstruction, lastOpinionInstruction);
+      objectToMap(botStateData.lastDropInstruction, lastDropInstruction);
+      objectToMap(botStateData.kalkulatorData, kalkulatorData);
+      objectToMap(botStateData.infoCooldowns, infoCooldowns);
+      objectToMap(botStateData.repLastInfoMessage, repLastInfoMessage);
+      objectToMap(botStateData.dropCooldowns, dropCooldowns);
+      objectToMap(botStateData.freeKasaCooldowns, freeKasaCooldowns);
+      objectToMap(botStateData.opinionCooldowns, opinionCooldowns);
+      objectToMap(botStateData.pendingTicketClose, pendingTicketClose);
+      objectToMap(botStateData.opinieChannels, opinieChannels);
 
       freeKasaLossStreak = Math.max(
         0,
@@ -3132,13 +2793,6 @@ async function loadPersistentState() {
         }
       }
 
-      // Load opinionCooldowns
-      if (botStateData.opinionCooldowns && typeof botStateData.opinionCooldowns === "object") {
-        for (const [userId, timestamp] of Object.entries(botStateData.opinionCooldowns)) {
-          opinionCooldowns.set(userId, timestamp);
-        }
-      }
-
       if (
         botStateData.rewardTicketClaims &&
         typeof botStateData.rewardTicketClaims === "object"
@@ -3158,21 +2812,7 @@ async function loadPersistentState() {
         }
       }
 
-      // Load pendingTicketClose
-      if (botStateData.pendingTicketClose && typeof botStateData.pendingTicketClose === "object") {
-        for (const [channelId, ticketData] of Object.entries(botStateData.pendingTicketClose)) {
-          pendingTicketClose.set(channelId, ticketData);
-        }
-      }
-
-      // Load opinieChannels
-      if (botStateData.opinieChannels && typeof botStateData.opinieChannels === "object") {
-        for (const [guildId, channelId] of Object.entries(botStateData.opinieChannels)) {
-          opinieChannels.set(guildId, channelId);
-        }
-      }
-
-      // Load autoPrzejmijSettings
+      // Load autoPrzejmijSettings (with filter)
       if (botStateData.autoPrzejmijSettings && typeof botStateData.autoPrzejmijSettings === "object") {
         for (const [guildId, cfg] of Object.entries(botStateData.autoPrzejmijSettings)) {
           if (cfg && typeof cfg === "object" && cfg.enabled) {
@@ -3181,7 +2821,7 @@ async function loadPersistentState() {
         }
       }
 
-      // Load autoVerifySettings
+      // Load autoVerifySettings (with boolean coercion)
       if (botStateData.autoVerifySettings && typeof botStateData.autoVerifySettings === "object") {
         for (const [guildId, val] of Object.entries(botStateData.autoVerifySettings)) {
           autoVerifySettings.set(guildId, !!val);
@@ -3206,9 +2846,6 @@ async function loadPersistentState() {
             updatedAt: Number(profile.updatedAt || Date.now()),
           });
         }
-        console.log(
-          `[state] Wczytano sellerPaymentProfiles: ${sellerPaymentProfiles.size} wpisów`,
-        );
       }
 
       if (
