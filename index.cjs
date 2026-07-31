@@ -347,6 +347,7 @@ function createEmptyDailyLegitStats(date = new Date()) {
     dateKey: getWarsawDateParts(date).dateKey,
     hourly: Array(24).fill(0),
     total: 0,
+    totalPln: 0,
     messageId: null,
     updatedAt: null,
   };
@@ -357,12 +358,14 @@ function normalizeDailyLegitStats(value) {
   const hourly = Array.from({ length: 24 }, (_, hour) =>
     Math.max(0, Math.floor(Number(value.hourly?.[hour] || 0))),
   );
+  const storedTotalPln = Number(value.totalPln || 0);
   return {
     dateKey: /^\d{4}-\d{2}-\d{2}$/.test(String(value.dateKey || ""))
       ? value.dateKey
       : getWarsawDateParts().dateKey,
     hourly,
     total: Math.max(0, Math.floor(Number(value.total ?? hourly.reduce((a, b) => a + b, 0)))),
+    totalPln: Number.isFinite(storedTotalPln) ? Math.max(0, storedTotalPln) : 0,
     messageId: value.messageId ? String(value.messageId) : null,
     updatedAt: value.updatedAt ? String(value.updatedAt) : null,
   };
@@ -396,11 +399,13 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
   const embed = new EmbedBuilder()
     .setColor(0x6d7cff)
     .setDescription(
-      "## `📊` Dzienny licznik legit repów\n\n" +
+      "## `📊` Dzienne legit repy\n\n" +
       `> \`📅\` **Data:** \`${displayDate}\`\n` +
-      `> \`✅\` **Wystawione legit repy:** \`${dailyLegitStats.total}\`\n` +
-      `> \`⏰\` **Najwięcej repów:** \`${bestHourText}\`\n\n` +
-      "-# 💎 New Shop • Dziękujemy za zaufanie 💙",
+      `> \`✅\` **Wystawione legit checki:** \`${dailyLegitStats.total}\`\n` +
+      `> \`💰\` **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\`\n` +
+      `> \`⏰\` **Najwięcej legit checków:** \`${bestHourText}\`\n\n` +
+      "-# ──────────────────────────────────\n" +
+      `-# ${NEWSHOP_EMOJI_MARKUP} © 2026 New Shop`,
     )
     .setTimestamp(dailyLegitStats.updatedAt ? new Date(dailyLegitStats.updatedAt) : new Date());
 
@@ -416,7 +421,7 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
     dailyLegitStats.messageId = chartMessage.id;
     scheduleSavePersistentState(true);
   }
-  console.log(`[daily-legit] Wykres zaktualizowany: ${dailyLegitStats.total} repów`);
+  console.log(`[daily-legit] Podsumowanie zaktualizowane: ${dailyLegitStats.total} legit checków`);
   scheduleDailyLegitChannelRename({ force: forceChannelRename });
 }
 
@@ -425,7 +430,7 @@ async function renameDailyLegitChannel() {
   if (!channel || typeof channel.setName !== "function") return;
   const desiredName = `🗓️×〢dzienne-lc➔${dailyLegitStats.total}`;
   if (channel.name === desiredName) return;
-  await channel.setName(desiredName, "Aktualizacja dziennego licznika legit repów");
+  await channel.setName(desiredName, "Aktualizacja dziennego licznika legit checków");
   lastDailyLegitChannelRename = Date.now();
   console.log(`[daily-legit] Zmieniono nazwę kanału na ${desiredName}`);
 }
@@ -461,11 +466,14 @@ function queueDailyLegitChartPublish(options = {}) {
   return dailyLegitPublishQueue;
 }
 
-function recordDailyLegitRep(source) {
+function recordDailyLegitRep(source, amountPln = 0) {
   rollDailyLegitStatsIfNeeded();
   const { hour } = getWarsawDateParts();
   dailyLegitStats.hourly[hour] += 1;
   dailyLegitStats.total += 1;
+  dailyLegitStats.totalPln = Math.round(
+    (dailyLegitStats.totalPln + Math.max(0, Number(amountPln || 0))) * 100,
+  ) / 100;
   dailyLegitStats.updatedAt = new Date().toISOString();
   scheduleSavePersistentState(true);
   console.log(`[daily-legit] +1 (${source}), godzina ${hour}, razem ${dailyLegitStats.total}`);
@@ -3762,7 +3770,7 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("anonim")
-    .setDescription("Bot wystawia legit rep i zamyka ticket anonimowo (po /ticket-zakoncz)")
+    .setDescription("Bot wystawia legit check i zamyka ticket anonimowo (po /ticket-zakoncz)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
@@ -3793,13 +3801,13 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("legit-rep-ustaw")
-    .setDescription("Ustaw licznik legit repów i zmień nazwę kanału")
+    .setName("legit-check-ustaw")
+    .setDescription("Ustaw licznik legit checków i zmień nazwę kanału")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((option) =>
       option
         .setName("ile")
-        .setDescription("Liczba legit repów (0-9999)")
+        .setDescription("Liczba legit checków (0-9999)")
         .setRequired(true)
         .setMinValue(0)
         .setMaxValue(9999)
@@ -3807,7 +3815,7 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("wykres-legit-test")
-    .setDescription("Testuj dzienny wykres bez wystawiania legit repa")
+    .setDescription("Testuj dzienne statystyki bez wystawiania legit checka")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addStringOption((option) =>
       option
@@ -3815,8 +3823,8 @@ const commands = [
         .setDescription("Wybierz operację testową")
         .setRequired(true)
         .addChoices(
-          { name: "Dodaj testowe repy", value: "dodaj" },
-          { name: "Odejmij testowe repy", value: "odejmij" },
+          { name: "Dodaj testowe legit checki", value: "dodaj" },
+          { name: "Odejmij testowe legit checki", value: "odejmij" },
           { name: "Wyzeruj dzisiejszy wykres", value: "wyzeruj" },
           { name: "Odśwież obraz wykresu", value: "odswiez" },
         ),
@@ -3824,7 +3832,7 @@ const commands = [
     .addIntegerOption((option) =>
       option
         .setName("ile")
-        .setDescription("Ile testowych repów dodać lub odjąć (domyślnie 1)")
+        .setDescription("Ile testowych legit checków dodać lub odjąć (domyślnie 1)")
         .setRequired(false)
         .setMinValue(1)
         .setMaxValue(100),
@@ -3836,6 +3844,14 @@ const commands = [
         .setRequired(false)
         .setMinValue(0)
         .setMaxValue(23),
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("kwota")
+        .setDescription("Testowa kwota wydana w PLN (domyślnie 0)")
+        .setRequired(false)
+        .setMinValue(0)
+        .setMaxValue(100000),
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -5192,9 +5208,9 @@ client.once(Events.ClientReady, async (c) => {
 
   // Ustaw status - gra w NewShop
   try {
-    c.user.setActivity(`LegitRepy: ${legitRepCount} 🛒`, { type: 0 });
+    c.user.setActivity(`Legit checki: ${legitRepCount}`, { type: 0 });
     setInterval(
-      () => c.user.setActivity(`LegitRepy: ${legitRepCount} 🛒`, { type: 0 }),
+      () => c.user.setActivity(`Legit checki: ${legitRepCount}`, { type: 0 }),
       60000,
     );
   } catch (e) {
@@ -5221,6 +5237,7 @@ client.once(Events.ClientReady, async (c) => {
         console.log(`Odczytano liczbę repów z kanału: ${legitRepCount}`);
         scheduleSavePersistentState();
       }
+      scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
     }
 
     // Try to find previously sent rep info message so we can reuse it
@@ -6400,7 +6417,7 @@ async function handleButtonInteraction(interaction) {
     const ticketData = pendingTicketClose.get(interaction.channelId);
     if (!ticketData || !ticketData.awaitingRep) {
       await interaction.reply({
-        content: "> `❌` Brak oczekującego legit-repa w tym kanale! Najpierw sprzedawca musi użyć komendy **/ticket-zakoncz**.",
+        content: "> `❌` Brak oczekującego legit checka w tym kanale! Najpierw sprzedawca musi użyć komendy **/ticket-zakoncz**.",
         flags: [MessageFlags.Ephemeral]
       });
       return;
@@ -7455,7 +7472,7 @@ async function handleSlashCommand(interaction) {
     case "zamknij-z-powodem":
       await handleZamknijZPowodemCommand(interaction);
       break;
-    case "legit-rep-ustaw":
+    case "legit-check-ustaw":
       await handleLegitRepUstawCommand(interaction);
       break;
     case "wykres-legit-test":
@@ -14044,7 +14061,7 @@ async function handleTicketZakonczCommand(interaction) {
     title: "Ticket oczekuje na +rep",
     icon: "🟠",
     color: COLOR_YELLOW,
-    summary: "Ticket został oznaczony jako zrealizowany i czeka na legit rep od klienta.",
+    summary: "Ticket został oznaczony jako zrealizowany i czeka na legit check od klienta.",
     ticketChannel: channel,
     ownerId: ticketOwnerId,
     actorId: interaction.user.id,
@@ -14055,7 +14072,7 @@ async function handleTicketZakonczCommand(interaction) {
       `Typ transakcji: ${typ}`,
       `Co: ${formattedCena}`,
       `Serwer: ${serwer}`,
-      `Kanał legit-rep: <#${legitRepChannelId}>`,
+      `Kanał legit-check: <#${legitRepChannelId}>`,
       `Wzór: ${repMessage}`,
     ],
   }).catch((err) => console.error("ticket-zakoncz log error:", err));
@@ -14089,7 +14106,7 @@ async function handleAnonimCommand(interaction) {
   const ticketData = pendingTicketClose.get(channel.id);
   if (!ticketData || !ticketData.awaitingRep) {
     await interaction.reply({
-      content: "> `❌` Brak oczekującego legit-repa! Najpierw użyj komendy **/ticket-zakoncz**.",
+      content: "> `❌` Brak oczekującego legit checka! Najpierw użyj komendy **/ticket-zakoncz**.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
@@ -14225,12 +14242,12 @@ async function handleZamknijZPowodemCommand(interaction) {
 async function closeTicketAnonymously(channel, guild, executorId) {
   const ticketData = pendingTicketClose.get(channel.id);
   if (!ticketData || !ticketData.awaitingRep) {
-    throw new Error("Brak oczekującego legit-repa! Najpierw użyj komendy **/ticket-zakoncz**.");
+    throw new Error("Brak oczekującego legit checka! Najpierw użyj komendy **/ticket-zakoncz**.");
   }
 
   const repChannel = await client.channels.fetch(ticketData.legitRepChannelId).catch(() => null);
   if (!repChannel) {
-    throw new Error("Nie można znaleźć kanału w bazie (legit reps).");
+    throw new Error("Nie można znaleźć kanału w bazie (legit checki).");
   }
 
   let verb = "wystawił/a";
@@ -14249,7 +14266,8 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   await sendAnonRep(repChannel, simulatedRepText);
 
   legitRepCount++;
-  recordDailyLegitRep("anonimowy");
+  const dailyPurchaseAmount = ticketData.typ === "zakup" ? parsePLN(ticketData.co) : 0;
+  recordDailyLegitRep("anonimowy", dailyPurchaseAmount);
   console.log(`[anonim] +rep wystawione przez bota, licznik: ${legitRepCount}`);
 
   scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
@@ -14302,10 +14320,10 @@ async function closeTicketAnonymously(channel, guild, executorId) {
 
   const ticketMeta = ticketOwners.get(channel.id) || null;
   await archiveTicketOnClose(channel, executorId, ticketMeta, {
-    closeMethod: "Automatyczne zamknięcie po anonimowym repie",
+    closeMethod: "Automatyczne zamknięcie po anonimowym legit checku",
   }).catch(() => null);
   
-  await channel.delete('Ticket zamknięty po anonimowym repie');
+  await channel.delete('Ticket zamknięty po anonimowym legit checku');
   pendingTicketClose.delete(channel.id);
   await commitRewardTicketClaim(channel.id).catch(() => null);
   ticketOwners.delete(channel.id);
@@ -14320,7 +14338,7 @@ async function sendAnonRep(channel, content) {
       webhook = await channel.createWebhook({
         name: 'Anonimowy LC',
         avatar: client.user.displayAvatarURL(),
-        reason: 'Anonimowe Legit Repy'
+        reason: 'Anonimowe legit checki'
       }).catch(() => null);
     }
     if (webhook) {
@@ -14824,7 +14842,7 @@ async function handleSprawdzBonusyButton(interaction) {
   }
 }
 
-// ----------------- /legit-rep-ustaw handler -----------------
+// ----------------- /legit-check-ustaw handler -----------------
 async function handleDailyLegitChartTestCommand(interaction) {
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
     await interaction.reply({
@@ -14840,18 +14858,21 @@ async function handleDailyLegitChartTestCommand(interaction) {
   const action = interaction.options.getString("akcja", true);
   const amount = interaction.options.getInteger("ile") || 1;
   const selectedHour = interaction.options.getInteger("godzina");
+  const testAmountPln = interaction.options.getInteger("kwota") || 0;
   const hour = selectedHour ?? getWarsawDateParts().hour;
   let resultText;
 
   if (action === "dodaj") {
     dailyLegitStats.hourly[hour] += amount;
     dailyLegitStats.total += amount;
-    resultText = `Dodano **${amount}** testowych repów do godziny **${String(hour).padStart(2, "0")}:00**.`;
+    dailyLegitStats.totalPln = Math.round((dailyLegitStats.totalPln + testAmountPln) * 100) / 100;
+    resultText = `Dodano **${amount}** testowych legit checków do godziny **${String(hour).padStart(2, "0")}:00** i **${testAmountPln.toFixed(2)} PLN**.`;
   } else if (action === "odejmij") {
     const removed = Math.min(amount, dailyLegitStats.hourly[hour]);
     dailyLegitStats.hourly[hour] -= removed;
     dailyLegitStats.total = Math.max(0, dailyLegitStats.total - removed);
-    resultText = `Odjęto **${removed}** testowych repów z godziny **${String(hour).padStart(2, "0")}:00**.`;
+    dailyLegitStats.totalPln = Math.max(0, Math.round((dailyLegitStats.totalPln - testAmountPln) * 100) / 100);
+    resultText = `Odjęto **${removed}** testowych legit checków z godziny **${String(hour).padStart(2, "0")}:00** i **${testAmountPln.toFixed(2)} PLN**.`;
   } else if (action === "wyzeruj") {
     const messageId = dailyLegitStats.messageId;
     dailyLegitStats = createEmptyDailyLegitStats();
@@ -14866,13 +14887,13 @@ async function handleDailyLegitChartTestCommand(interaction) {
   await queueDailyLegitChartPublish({ forceChannelRename: action === "wyzeruj" });
 
   await interaction.editReply({
-    content: `> \`✅\` × ${resultText}\n> Dzisiejszy wynik wykresu: **${dailyLegitStats.total}**. Główny licznik legit repów nie został zmieniony.`,
+    content: `> \`✅\` × ${resultText}\n> Dzisiejszy wynik: **${dailyLegitStats.total}** legit checków i **${dailyLegitStats.totalPln.toFixed(2)} PLN**. Główny licznik nie został zmieniony.`,
   });
 }
 
 async function handleLegitRepUstawCommand(interaction) {
   try {
-    console.log("[/legit-rep-ustaw] start", {
+    console.log("[/legit-check-ustaw] start", {
       user: interaction.user?.id,
       guild: interaction.guild?.id,
     });
@@ -14905,23 +14926,23 @@ async function handleLegitRepUstawCommand(interaction) {
     // Zmień nazwę kanału
     const channelId = "1449840030947217529";
     const channel = await client.channels.fetch(channelId).catch((err) => {
-      console.error("legit-rep-ustaw fetch channel error", err);
+      console.error("legit-check-ustaw fetch channel error", err);
       return null;
     });
 
     if (!channel) {
-      const payload = { content: "> `❌` × **Nie znaleziono** kanału legit-rep.", flags: [MessageFlags.Ephemeral] };
+      const payload = { content: "> `❌` × **Nie znaleziono** kanału legit-check.", flags: [MessageFlags.Ephemeral] };
       if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
       else await interaction.reply(payload);
       return;
     }
 
-    const newName = `✅×〢legit-rep➔${ile}`;
+    const newName = `✅×〢legit-checki➔${ile}`;
     await channel.setName(newName);
 
     // Wyślij informacyjną wiadomość
     const successPayload = {
-      content: `LegitRepy: ${ile}\nLegitChecki: ${ile}`,
+      content: `Legit checki: ${ile}`,
       flags: [MessageFlags.Ephemeral],
     };
     if (interaction.deferred || interaction.replied) await interaction.editReply(successPayload);
@@ -14930,9 +14951,9 @@ async function handleLegitRepUstawCommand(interaction) {
     // Zapisz stan
     scheduleSavePersistentState();
 
-    console.log(`Nazwa kanału legit-rep zmieniona na: ${newName} przez ${interaction.user.tag}`);
+    console.log(`Nazwa kanału legit-check zmieniona na: ${newName} przez ${interaction.user.tag}`);
   } catch (error) {
-    console.error("Błąd podczas ustawiania legit-rep (outer catch):", error);
+    console.error("Błąd podczas ustawiania legit-check (outer catch):", error);
     const payload = { content: "> `❌` × **Wystąpił** błąd podczas zmiany nazwy kanału.", flags: [MessageFlags.Ephemeral] };
     if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
     else await interaction.reply(payload);
@@ -19073,7 +19094,7 @@ client.on(Events.MessageCreate, async (message) => {
     message.channel.id === REP_CHANNEL_ID &&
     !message.author.bot
   ) {
-    console.log(`[+rep] Otrzymano wiadomość na kanale legit-rep: ${message.content} od ${message.author.tag}`);
+    console.log(`[+rep] Otrzymano wiadomość na kanale legit-check: ${message.content} od ${message.author.tag}`);
     try {
       // ignore empty messages or slash-like content
       if (!message.content || message.content.trim().length === 0) return;
@@ -19096,7 +19117,7 @@ client.on(Events.MessageCreate, async (message) => {
             "✅ New Shop × LEGIT CHECK\n" +
             "```\n" +
             `<a:arrowwhite:1491476759290449984> **__Stop!__**\n` +
-            `<a:arrowwhite:1491476759290449984> Możesz wystawić następnego **legit repa** za \`${humanizeMs(remaining)}\`!`
+            `<a:arrowwhite:1491476759290449984> Możesz wystawić następnego **legit checka** za \`${humanizeMs(remaining)}\`!`
           )
           .setTimestamp();
         message.author.send({ embeds: [cooldownEmbed] }).catch(() => null);
@@ -19123,7 +19144,7 @@ client.on(Events.MessageCreate, async (message) => {
             LEGIT_REP_WARNING_DELETE_DELAY_MS,
           );
         } catch (err) {
-          console.error("Błąd usuwania nieoznaczonego legit-rep:", err);
+          console.error("Błąd usuwania nieoznaczonego legit-check:", err);
         }
         return;
       }
@@ -19143,7 +19164,7 @@ client.on(Events.MessageCreate, async (message) => {
             LEGIT_REP_WARNING_DELETE_DELAY_MS,
           );
         } catch (err) {
-          console.error("Błąd usuwania nieprawidłowego legit-rep:", err);
+          console.error("Błąd usuwania nieprawidłowego legit-check:", err);
         }
         return;
       }
@@ -19153,11 +19174,20 @@ client.on(Events.MessageCreate, async (message) => {
       for (const [chId, d] of pendingTicketClose.entries()) {
         console.log(`[+rep] ticket ${chId}: userId=${d.userId}, awaitingRep=${d.awaitingRep}, msgAuthor=${message.author.id}`);
       }
-      const hasPendingTicket = Array.from(pendingTicketClose.entries()).some(
+      const pendingTicketEntry = Array.from(pendingTicketClose.entries()).find(
         ([channelId, data]) => {
-          return String(data.userId) === String(message.author.id) && data.awaitingRep === true;
+          const sellerMatches =
+            message.mentions.users.has(data.commandUserId) ||
+            messageContent.includes(`@${data.commandUsername}`);
+          return (
+            String(data.userId) === String(message.author.id) &&
+            data.awaitingRep === true &&
+            channel.id === data.legitRepChannelId &&
+            sellerMatches
+          );
         }
       );
+      const hasPendingTicket = Boolean(pendingTicketEntry);
 
       if (!hasPendingTicket) {
         await message.delete().catch(() => null);
@@ -19165,7 +19195,7 @@ client.on(Events.MessageCreate, async (message) => {
           const embed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
             .setDescription(
-              "> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit repa."
+              "> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit checka."
             );
           await message.author.send({ embeds: [embed] });
         } catch {}
@@ -19174,7 +19204,11 @@ client.on(Events.MessageCreate, async (message) => {
 
       // Valid +rep message - increment counter + cooldown
       legitRepCount++;
-      recordDailyLegitRep("wiadomość");
+      const pendingTicketData = pendingTicketEntry?.[1];
+      const dailyPurchaseAmount = pendingTicketData?.typ === "zakup"
+        ? parsePLN(pendingTicketData.co)
+        : 0;
+      recordDailyLegitRep("wiadomość", dailyPurchaseAmount);
       legitRepCooldown.set(message.author.id, now);
       console.log(`+rep otrzymany! Licznik: ${legitRepCount}`);
 
@@ -19702,7 +19736,7 @@ async function handleWyczyscKanalCommand(interaction) {
 async function scheduleRepChannelRename(channel, count) {
   if (!channel || typeof channel.setName !== "function") return;
 
-  const newName = `✅×〢legit-rep➔${count}`;
+  const newName = `✅×〢legit-checki➔${count}`;
   const now = Date.now();
   const since = now - lastChannelRename;
   const remaining = Math.max(0, CHANNEL_RENAME_COOLDOWN - since);
@@ -19819,7 +19853,7 @@ async function handleResetLCCommand(interaction) {
     if (remaining === 0 && !pendingRename) {
       try {
         // attempt immediate rename (may fail if missing ManageChannels)
-        await channel.setName(`✅×〢legit-rep➔${legitRepCount}`);
+        await channel.setName(`✅×〢legit-checki➔${legitRepCount}`);
         lastChannelRename = Date.now();
         pendingRename = false;
         console.log(`[resetlc] Kanał ${channel.id} zaktualizowany do 0.`);
