@@ -320,6 +320,9 @@ const DAILY_LEGIT_TIME_ZONE = "Europe/Warsaw";
 let dailyLegitStats = createEmptyDailyLegitStats();
 let dailyLegitPublishQueue = Promise.resolve();
 let dailyLegitMidnightTimer = null;
+let dailyLegitRenameTimer = null;
+let lastDailyLegitChannelRename = 0;
+const DAILY_LEGIT_RENAME_COOLDOWN = 10 * 60 * 1000;
 let lastChannelRename = 0;
 const CHANNEL_RENAME_COOLDOWN = 10 * 60 * 1000; // 10 minutes (Discord limit)
 let pendingRename = false;
@@ -409,6 +412,40 @@ async function publishDailyLegitChart({ forceNew = false } = {}) {
     scheduleSavePersistentState(true);
   }
   console.log(`[daily-legit] Wykres zaktualizowany: ${dailyLegitStats.total} repów`);
+  scheduleDailyLegitChannelRename();
+}
+
+async function renameDailyLegitChannel() {
+  const channel = await client.channels.fetch(DAILY_LEGIT_CHANNEL_ID).catch(() => null);
+  if (!channel || typeof channel.setName !== "function") return;
+  const desiredName = `🗓️×〢dzienne-lc➔${dailyLegitStats.total}`;
+  if (channel.name === desiredName) return;
+  await channel.setName(desiredName, "Aktualizacja dziennego licznika legit repów");
+  lastDailyLegitChannelRename = Date.now();
+  console.log(`[daily-legit] Zmieniono nazwę kanału na ${desiredName}`);
+}
+
+function scheduleDailyLegitChannelRename() {
+  if (dailyLegitRenameTimer) {
+    clearTimeout(dailyLegitRenameTimer);
+    dailyLegitRenameTimer = null;
+  }
+
+  const wait = Math.max(0, DAILY_LEGIT_RENAME_COOLDOWN - (Date.now() - lastDailyLegitChannelRename));
+  if (wait === 0) {
+    lastDailyLegitChannelRename = Date.now();
+    renameDailyLegitChannel().catch((error) =>
+      console.error("[daily-legit] Błąd zmiany nazwy kanału:", error),
+    );
+    return;
+  }
+
+  dailyLegitRenameTimer = setTimeout(() => {
+    dailyLegitRenameTimer = null;
+    renameDailyLegitChannel().catch((error) =>
+      console.error("[daily-legit] Błąd opóźnionej zmiany nazwy kanału:", error),
+    );
+  }, wait + 250);
 }
 
 function queueDailyLegitChartPublish(options = {}) {

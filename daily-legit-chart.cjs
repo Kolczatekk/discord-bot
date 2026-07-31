@@ -11,131 +11,147 @@ function roundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+function drawValuePill(ctx, text, x, y) {
+  ctx.font = "700 22px Arial";
+  const width = ctx.measureText(text).width + 24;
+  roundedRect(ctx, x, y - 25, width, 34, 7);
+  ctx.fillStyle = "#353740";
+  ctx.fill();
+  ctx.strokeStyle = "#4b4e5a";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = "#e5e7eb";
+  ctx.fillText(text, x + 12, y);
+  return width;
+}
+
+function drawRowIcon(ctx, label, y, color) {
+  roundedRect(ctx, 62, y - 25, 42, 36, 9);
+  ctx.fillStyle = "#30323b";
+  ctx.fill();
+  ctx.strokeStyle = "#454957";
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.font = "700 18px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(label, 83, y);
+  ctx.textAlign = "left";
+}
+
 function renderDailyLegitChart({ dateKey, hourly, total, updatedAt }) {
-  const width = 1200;
-  const height = 650;
+  const width = 1000;
+  const height = 560;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
-  const background = ctx.createLinearGradient(0, 0, width, height);
-  background.addColorStop(0, "#07111f");
-  background.addColorStop(1, "#101d35");
-  ctx.fillStyle = background;
+  ctx.fillStyle = "#1e1f22";
   ctx.fillRect(0, 0, width, height);
+  roundedRect(ctx, 20, 18, 960, 524, 16);
+  ctx.fillStyle = "#242529";
+  ctx.fill();
+  ctx.strokeStyle = "#34363c";
+  ctx.stroke();
+
+  roundedRect(ctx, 20, 18, 8, 524, 5);
+  const accent = ctx.createLinearGradient(20, 18, 20, 542);
+  accent.addColorStop(0, "#7c6cff");
+  accent.addColorStop(1, "#5865f2");
+  ctx.fillStyle = accent;
+  ctx.fill();
 
   const values = Array.from({ length: 24 }, (_, hour) =>
     Math.max(0, Number(hourly?.[hour] || 0)),
   );
-  const maxValue = Math.max(1, ...values);
   const bestValue = Math.max(...values);
   const bestHour = bestValue > 0 ? values.indexOf(bestValue) : null;
   const displayDate = /^\d{4}-\d{2}-\d{2}$/.test(dateKey || "")
     ? `${dateKey.slice(8, 10)}.${dateKey.slice(5, 7)}.${dateKey.slice(0, 4)}`
-    : dateKey;
+    : String(dateKey || "-");
 
-  ctx.fillStyle = "#f8fafc";
-  ctx.font = "700 34px Arial";
-  ctx.fillText("ILE REPÓW DOSTALIŚMY DZISIAJ?", 58, 58);
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = "20px Arial";
-  ctx.fillText(displayDate, 60, 91);
-
-  roundedRect(ctx, 58, 118, 500, 120, 22);
-  ctx.fillStyle = "rgba(37, 99, 235, 0.23)";
+  roundedRect(ctx, 55, 48, 62, 62, 13);
+  ctx.fillStyle = "#343746";
   ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 66px Arial";
-  ctx.fillText(String(total), 88, 200);
-  ctx.fillStyle = "#dbeafe";
-  ctx.font = "700 25px Arial";
-  ctx.fillText(total === 1 ? "+rep wystawiono dzisiaj" : "+repów wystawiono dzisiaj", 175, 181);
-  ctx.fillStyle = "#93c5fd";
-  ctx.font = "18px Arial";
-  ctx.fillText("To jest dzisiejszy wynik", 176, 211);
+  ctx.fillStyle = "#7c8cff";
+  ctx.fillRect(68, 73, 9, 24);
+  ctx.fillStyle = "#59c98d";
+  ctx.fillRect(82, 62, 9, 35);
+  ctx.fillStyle = "#ff637d";
+  ctx.fillRect(96, 82, 9, 15);
 
-  roundedRect(ctx, 585, 118, 557, 120, 22);
-  ctx.fillStyle = "rgba(15, 23, 42, 0.62)";
+  ctx.fillStyle = "#f5f5f5";
+  ctx.font = "700 38px Arial";
+  ctx.fillText("Dzienny licznik legit repów", 135, 91);
+  ctx.fillStyle = "#aeb1b8";
+  ctx.font = "18px Arial";
+  ctx.fillText("Proste podsumowanie aktywności z dzisiaj", 136, 119);
+
+  ctx.fillStyle = "#555861";
+  roundedRect(ctx, 48, 145, 6, 164, 3);
   ctx.fill();
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = "18px Arial";
-  ctx.fillText("NAJWIĘCEJ REPÓW BYŁO", 615, 157);
-  ctx.fillStyle = "#f8fafc";
-  ctx.font = "700 32px Arial";
-  ctx.fillText(
-    bestHour === null
-      ? "Jeszcze nie było żadnego"
-      : `O ${String(bestHour).padStart(2, "0")}:00  —  ${bestValue} ${bestValue === 1 ? "rep" : "repów"}`,
-    615,
-    203,
-  );
 
-  ctx.fillStyle = "#cbd5e1";
-  ctx.font = "18px Arial";
-  ctx.fillText("Każdy niebieski słupek pokazuje, ile repów było w danej godzinie.", 60, 276);
+  const rows = [
+    { icon: "D", label: "Dzisiejsza data:", value: displayDate, color: "#8ca0ff" },
+    { icon: "+", label: "Wystawione legit repy:", value: String(total), color: "#58d68d" },
+    {
+      icon: "H",
+      label: "Najwięcej repów:",
+      value: bestHour === null ? "Jeszcze brak" : `${String(bestHour).padStart(2, "0")}:00 (${bestValue})`,
+      color: "#ffca5c",
+    },
+  ];
 
-  const chart = { x: 75, y: 306, width: 1065, height: 230 };
-  const scaleStep = Math.max(1, Math.ceil(maxValue / 4));
-  const scaleMax = Math.max(1, Math.ceil(maxValue / scaleStep) * scaleStep);
+  rows.forEach((row, index) => {
+    const y = 181 + index * 55;
+    drawRowIcon(ctx, row.icon, y, row.color);
+    ctx.fillStyle = "#c7c9cf";
+    ctx.font = "700 22px Arial";
+    ctx.fillText(row.label, 122, y);
+    const labelWidth = ctx.measureText(row.label).width;
+    drawValuePill(ctx, row.value, 136 + labelWidth, y);
+  });
 
-  ctx.strokeStyle = "rgba(148, 163, 184, 0.18)";
-  ctx.lineWidth = 1;
-  ctx.fillStyle = "#718096";
-  ctx.font = "15px Arial";
-  const lineCount = Math.min(4, scaleMax);
-  for (let line = 0; line <= lineCount; line++) {
-    const value = line * scaleStep;
-    const y = chart.y + chart.height - (value / scaleMax) * chart.height;
-    ctx.beginPath();
-    ctx.moveTo(chart.x, y);
-    ctx.lineTo(chart.x + chart.width, y);
-    ctx.stroke();
-    ctx.textAlign = "right";
-    ctx.fillText(String(value), 58, y + 5);
-  }
+  ctx.fillStyle = "#f1f2f4";
+  ctx.font = "700 21px Arial";
+  ctx.fillText("Aktywność w ciągu dnia", 55, 356);
+  ctx.fillStyle = "#9da0a8";
+  ctx.font = "17px Arial";
+  ctx.fillText("Im wyższy słupek, tym więcej repów w tej godzinie", 55, 382);
 
-  const slotWidth = chart.width / 24;
-  const barWidth = Math.max(12, slotWidth - 12);
+  const chart = { x: 55, y: 405, width: 890, height: 76 };
+  const slot = chart.width / 24;
+  const maxValue = Math.max(1, ...values);
   for (let hour = 0; hour < 24; hour++) {
     const value = values[hour];
-    const barHeight = value === 0 ? 3 : (value / scaleMax) * chart.height;
-    const x = chart.x + hour * slotWidth + (slotWidth - barWidth) / 2;
+    const barHeight = value === 0 ? 5 : Math.max(10, (value / maxValue) * chart.height);
+    const x = chart.x + hour * slot + 7;
     const y = chart.y + chart.height - barHeight;
-    const gradient = ctx.createLinearGradient(0, y, 0, chart.y + chart.height);
-    gradient.addColorStop(0, "#60a5fa");
-    gradient.addColorStop(1, "#2563eb");
-    roundedRect(ctx, x, y, barWidth, barHeight, 6);
-    ctx.fillStyle = gradient;
+    roundedRect(ctx, x, y, 22, barHeight, 5);
+    ctx.fillStyle = value > 0 ? "#6d7cff" : "#3c3f48";
     ctx.fill();
-
-    if (value > 0) {
-      ctx.fillStyle = "#dbeafe";
-      ctx.font = "700 13px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(String(value), x + barWidth / 2, Math.max(chart.y + 15, y - 8));
-    }
-
-    if (hour % 3 === 0 || hour === 23) {
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "14px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(`${String(hour).padStart(2, "0")}:00`, x + barWidth / 2, 563);
-    }
   }
+
+  ctx.fillStyle = "#8e929a";
+  ctx.font = "14px Arial";
+  ctx.textAlign = "center";
+  [0, 6, 12, 18, 23].forEach((hour) => {
+    const x = chart.x + hour * slot + 18;
+    ctx.fillText(`${String(hour).padStart(2, "0")}:00`, x, 506);
+  });
   ctx.textAlign = "left";
 
-  ctx.fillStyle = "#64748b";
-  ctx.font = "16px Arial";
   const updateLabel = updatedAt
     ? new Intl.DateTimeFormat("pl-PL", {
         timeZone: "Europe/Warsaw",
         hour: "2-digit",
         minute: "2-digit",
-        second: "2-digit",
       }).format(new Date(updatedAt))
-    : "--:--:--";
-  ctx.fillText(`Zaktualizowano o ${updateLabel}`, 75, 620);
-  ctx.textAlign = "right";
-  ctx.fillText("Wynik od 00:00 do teraz", 1140, 620);
+    : "--:--";
+  ctx.fillStyle = "#b9bbc1";
+  ctx.font = "700 16px Arial";
+  ctx.fillText("New Shop", 55, 535);
+  ctx.fillStyle = "#777b84";
+  ctx.font = "16px Arial";
+  ctx.fillText(`• aktualizacja ${updateLabel}`, 135, 535);
 
   return canvas.toBuffer("image/png");
 }
