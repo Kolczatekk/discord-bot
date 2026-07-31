@@ -31,6 +31,7 @@ const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { renderDailyLegitChart } = require("./daily-legit-chart.cjs");
 
 // Load local .env when running on a PC (Render ma własne env vars)
 try {
@@ -314,9 +315,147 @@ const modsVideoOrderRanks = new Map(
 
 // legit rep counter
 let legitRepCount = 15;
+const DAILY_LEGIT_CHANNEL_ID = "1532859726033846292";
+const DAILY_LEGIT_TIME_ZONE = "Europe/Warsaw";
+let dailyLegitStats = createEmptyDailyLegitStats();
+let dailyLegitPublishQueue = Promise.resolve();
+let dailyLegitMidnightTimer = null;
 let lastChannelRename = 0;
 const CHANNEL_RENAME_COOLDOWN = 10 * 60 * 1000; // 10 minutes (Discord limit)
 let pendingRename = false;
+
+function getWarsawDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DAILY_LEGIT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value;
+  return {
+    dateKey: `${value("year")}-${value("month")}-${value("day")}`,
+    hour: Number(value("hour")),
+  };
+}
+
+function createEmptyDailyLegitStats(date = new Date()) {
+  return {
+    dateKey: getWarsawDateParts(date).dateKey,
+    hourly: Array(24).fill(0),
+    total: 0,
+    messageId: null,
+    updatedAt: null,
+  };
+}
+
+function normalizeDailyLegitStats(value) {
+  if (!value || typeof value !== "object") return createEmptyDailyLegitStats();
+  const hourly = Array.from({ length: 24 }, (_, hour) =>
+    Math.max(0, Math.floor(Number(value.hourly?.[hour] || 0))),
+  );
+  return {
+    dateKey: /^\d{4}-\d{2}-\d{2}$/.test(String(value.dateKey || ""))
+      ? value.dateKey
+      : getWarsawDateParts().dateKey,
+    hourly,
+    total: Math.max(0, Math.floor(Number(value.total ?? hourly.reduce((a, b) => a + b, 0)))),
+    messageId: value.messageId ? String(value.messageId) : null,
+    updatedAt: value.updatedAt ? String(value.updatedAt) : null,
+  };
+}
+
+function rollDailyLegitStatsIfNeeded(now = new Date()) {
+  const currentDateKey = getWarsawDateParts(now).dateKey;
+  if (dailyLegitStats.dateKey === currentDateKey) return false;
+  dailyLegitStats = createEmptyDailyLegitStats(now);
+  scheduleSavePersistentState(true);
+  console.log(`[daily-legit] Rozpoczęto nowy dzień: ${currentDateKey}`);
+  return true;
+}
+
+async function publishDailyLegitChart({ forceNew = false } = {}) {
+  rollDailyLegitStatsIfNeeded();
+  const channel = await client.channels.fetch(DAILY_LEGIT_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) {
+    throw new Error(`Nie znaleziono kanału tekstowego ${DAILY_LEGIT_CHANNEL_ID}`);
+  }
+
+  const fileName = `legit-repy-${dailyLegitStats.dateKey}.png`;
+  const image = renderDailyLegitChart(dailyLegitStats);
+  const attachment = new AttachmentBuilder(image, { name: fileName });
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setTitle("📊 Dzienne legit repy")
+    .setDescription(
+      `**Data:** ${dailyLegitStats.dateKey}\n` +
+      `**Łącznie dzisiaj:** ${dailyLegitStats.total}\n` +
+      "Wykres aktualizuje się po każdym poprawnie zaliczonym repie.",
+    )
+    .setImage(`attachment://${fileName}`)
+    .setTimestamp(dailyLegitStats.updatedAt ? new Date(dailyLegitStats.updatedAt) : new Date());
+
+  let chartMessage = null;
+  if (!forceNew && dailyLegitStats.messageId) {
+    chartMessage = await channel.messages.fetch(dailyLegitStats.messageId).catch(() => null);
+  }
+
+  if (chartMessage) {
+    await chartMessage.edit({ embeds: [embed], files: [attachment], attachments: [] });
+  } else {
+    chartMessage = await channel.send({ embeds: [embed], files: [attachment] });
+    dailyLegitStats.messageId = chartMessage.id;
+    scheduleSavePersistentState(true);
+  }
+  console.log(`[daily-legit] Wykres zaktualizowany: ${dailyLegitStats.total} repów`);
+}
+
+function queueDailyLegitChartPublish(options = {}) {
+  dailyLegitPublishQueue = dailyLegitPublishQueue
+    .then(() => publishDailyLegitChart(options))
+    .catch((error) => console.error("[daily-legit] Błąd publikacji wykresu:", error));
+  return dailyLegitPublishQueue;
+}
+
+function recordDailyLegitRep(source) {
+  rollDailyLegitStatsIfNeeded();
+  const { hour } = getWarsawDateParts();
+  dailyLegitStats.hourly[hour] += 1;
+  dailyLegitStats.total += 1;
+  dailyLegitStats.updatedAt = new Date().toISOString();
+  scheduleSavePersistentState(true);
+  console.log(`[daily-legit] +1 (${source}), godzina ${hour}, razem ${dailyLegitStats.total}`);
+  queueDailyLegitChartPublish();
+}
+
+function millisecondsUntilNextWarsawDay() {
+  const now = Date.now();
+  const currentDateKey = getWarsawDateParts(new Date(now)).dateKey;
+  let low = now + 1;
+  let high = now + 27 * 60 * 60 * 1000;
+  while (high - low > 1000) {
+    const middle = Math.floor((low + high) / 2);
+    if (getWarsawDateParts(new Date(middle)).dateKey === currentDateKey) low = middle + 1;
+    else high = middle;
+  }
+  return Math.max(1000, high - now + 500);
+}
+
+function scheduleDailyLegitMidnightRollover() {
+  if (dailyLegitMidnightTimer) clearTimeout(dailyLegitMidnightTimer);
+  dailyLegitMidnightTimer = setTimeout(async () => {
+    const changed = rollDailyLegitStatsIfNeeded();
+    if (changed) await queueDailyLegitChartPublish({ forceNew: true });
+    scheduleDailyLegitMidnightRollover();
+  }, millisecondsUntilNextWarsawDay());
+}
+
+async function initializeDailyLegitChart() {
+  const changed = rollDailyLegitStatsIfNeeded();
+  await queueDailyLegitChartPublish({ forceNew: changed });
+  scheduleDailyLegitMidnightRollover();
+}
 
 // NEW: cooldowns & limits
 const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
@@ -1303,6 +1442,7 @@ function buildPersistentStateData() {
 
   const data = {
     legitRepCount,
+    dailyLegitStats,
     legitRepCooldown: Object.fromEntries(legitRepCooldown),
     ticketCounter: Object.fromEntries(ticketCounter),
     ticketOwners: Object.fromEntries(ticketOwners),
@@ -2664,6 +2804,8 @@ async function loadPersistentState() {
         legitRepCount = botStateData.legitRepCount;
       }
 
+      dailyLegitStats = normalizeDailyLegitStats(botStateData.dailyLegitStats);
+
       if (botStateData.legitRepCooldown && typeof botStateData.legitRepCooldown === "object") {
         for (const [userId, ts] of Object.entries(botStateData.legitRepCooldown)) {
           if (typeof ts === "number") {
@@ -3377,7 +3519,7 @@ function getNextTicketNumber(guildId) {
 
 // Load persisted state once on startup (IMMEDIATELY after maps are defined)
 console.log("[state] Wywołuję loadPersistentState()...");
-loadPersistentState().then(() => {
+const persistentStateReady = loadPersistentState().then(() => {
   console.log("[state] loadPersistentState() zakończone");
 }).catch(err => {
   console.error("[state] Błąd loadPersistentState():", err);
@@ -4942,7 +5084,11 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[READY] Bot jest na ${c.guilds.cache.size} serwerach`);
   console.log(`[READY] Bot jest online i gotowy do pracy!`);
 
-  // loadPersistentState() już wywołane na początku pliku
+  await persistentStateReady;
+
+  await initializeDailyLegitChart().catch((error) =>
+    console.error("[daily-legit] Błąd inicjalizacji:", error),
+  );
 
   // --- Webhook startowy do Discorda ---
   try {
@@ -14019,6 +14165,7 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   await sendAnonRep(repChannel, simulatedRepText);
 
   legitRepCount++;
+  recordDailyLegitRep("anonimowy");
   console.log(`[anonim] +rep wystawione przez bota, licznik: ${legitRepCount}`);
 
   scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
@@ -18898,6 +19045,7 @@ client.on(Events.MessageCreate, async (message) => {
 
       // Valid +rep message - increment counter + cooldown
       legitRepCount++;
+      recordDailyLegitRep("wiadomość");
       legitRepCooldown.set(message.author.id, now);
       console.log(`+rep otrzymany! Licznik: ${legitRepCount}`);
 
