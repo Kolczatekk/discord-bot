@@ -3758,6 +3758,39 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("wykres-legit-test")
+    .setDescription("Testuj dzienny wykres bez wystawiania legit repa")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((option) =>
+      option
+        .setName("akcja")
+        .setDescription("Wybierz operację testową")
+        .setRequired(true)
+        .addChoices(
+          { name: "Dodaj testowe repy", value: "dodaj" },
+          { name: "Odejmij testowe repy", value: "odejmij" },
+          { name: "Wyzeruj dzisiejszy wykres", value: "wyzeruj" },
+          { name: "Odśwież obraz wykresu", value: "odswiez" },
+        ),
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("ile")
+        .setDescription("Ile testowych repów dodać lub odjąć (domyślnie 1)")
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(100),
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("godzina")
+        .setDescription("Godzina 0-23 (domyślnie aktualna)")
+        .setRequired(false)
+        .setMinValue(0)
+        .setMaxValue(23),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("help")
     .setDescription("Spis podstawowych komend bota")
     .toJSON(),
@@ -7376,6 +7409,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "legit-rep-ustaw":
       await handleLegitRepUstawCommand(interaction);
+      break;
+    case "wykres-legit-test":
+      await handleDailyLegitChartTestCommand(interaction);
       break;
     case "ticketpanel":
       await handleTicketPanelCommand(interaction);
@@ -14741,6 +14777,51 @@ async function handleSprawdzBonusyButton(interaction) {
 }
 
 // ----------------- /legit-rep-ustaw handler -----------------
+async function handleDailyLegitChartTestCommand(interaction) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+    await interaction.reply({
+      content: "> `❌` × Nie masz uprawnień do testowania wykresu.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  rollDailyLegitStatsIfNeeded();
+
+  const action = interaction.options.getString("akcja", true);
+  const amount = interaction.options.getInteger("ile") || 1;
+  const selectedHour = interaction.options.getInteger("godzina");
+  const hour = selectedHour ?? getWarsawDateParts().hour;
+  let resultText;
+
+  if (action === "dodaj") {
+    dailyLegitStats.hourly[hour] += amount;
+    dailyLegitStats.total += amount;
+    resultText = `Dodano **${amount}** testowych repów do godziny **${String(hour).padStart(2, "0")}:00**.`;
+  } else if (action === "odejmij") {
+    const removed = Math.min(amount, dailyLegitStats.hourly[hour]);
+    dailyLegitStats.hourly[hour] -= removed;
+    dailyLegitStats.total = Math.max(0, dailyLegitStats.total - removed);
+    resultText = `Odjęto **${removed}** testowych repów z godziny **${String(hour).padStart(2, "0")}:00**.`;
+  } else if (action === "wyzeruj") {
+    const messageId = dailyLegitStats.messageId;
+    dailyLegitStats = createEmptyDailyLegitStats();
+    dailyLegitStats.messageId = messageId;
+    resultText = "Wyzerowano testowy wynik na dzisiejszym wykresie.";
+  } else {
+    resultText = "Odświeżono obraz wykresu bez zmiany wyniku.";
+  }
+
+  dailyLegitStats.updatedAt = new Date().toISOString();
+  scheduleSavePersistentState(true);
+  await queueDailyLegitChartPublish();
+
+  await interaction.editReply({
+    content: `> \`✅\` × ${resultText}\n> Dzisiejszy wynik wykresu: **${dailyLegitStats.total}**. Główny licznik legit repów nie został zmieniony.`,
+  });
+}
+
 async function handleLegitRepUstawCommand(interaction) {
   try {
     console.log("[/legit-rep-ustaw] start", {
