@@ -31,7 +31,6 @@ const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { renderDailyLegitChart } = require("./daily-legit-chart.cjs");
 
 // Load local .env when running on a PC (Render ma własne env vars)
 try {
@@ -373,30 +372,36 @@ function rollDailyLegitStatsIfNeeded(now = new Date()) {
   const currentDateKey = getWarsawDateParts(now).dateKey;
   if (dailyLegitStats.dateKey === currentDateKey) return false;
   dailyLegitStats = createEmptyDailyLegitStats(now);
+  lastDailyLegitChannelRename = 0;
   scheduleSavePersistentState(true);
   console.log(`[daily-legit] Rozpoczęto nowy dzień: ${currentDateKey}`);
   return true;
 }
 
-async function publishDailyLegitChart({ forceNew = false } = {}) {
+async function publishDailyLegitChart({ forceNew = false, forceChannelRename = false } = {}) {
   rollDailyLegitStatsIfNeeded();
   const channel = await client.channels.fetch(DAILY_LEGIT_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased()) {
     throw new Error(`Nie znaleziono kanału tekstowego ${DAILY_LEGIT_CHANNEL_ID}`);
   }
 
-  const fileName = `legit-repy-${dailyLegitStats.dateKey}.png`;
-  const image = renderDailyLegitChart(dailyLegitStats);
-  const attachment = new AttachmentBuilder(image, { name: fileName });
+  const displayDate = /^\d{4}-\d{2}-\d{2}$/.test(dailyLegitStats.dateKey)
+    ? `${dailyLegitStats.dateKey.slice(8, 10)}.${dailyLegitStats.dateKey.slice(5, 7)}.${dailyLegitStats.dateKey.slice(0, 4)}`
+    : dailyLegitStats.dateKey;
+  const bestValue = Math.max(...dailyLegitStats.hourly);
+  const bestHour = bestValue > 0 ? dailyLegitStats.hourly.indexOf(bestValue) : null;
+  const bestHourText = bestHour === null
+    ? "Jeszcze brak"
+    : `${String(bestHour).padStart(2, "0")}:00 (${bestValue})`;
   const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setTitle("📊 Dzienne legit repy")
+    .setColor(0x6d7cff)
     .setDescription(
-      `**Data:** ${dailyLegitStats.dateKey}\n` +
-      `**Łącznie dzisiaj:** ${dailyLegitStats.total}\n` +
-      "Wykres aktualizuje się po każdym poprawnie zaliczonym repie.",
+      "## `📊` Dzienny licznik legit repów\n\n" +
+      `> \`📅\` **Data:** \`${displayDate}\`\n` +
+      `> \`✅\` **Wystawione legit repy:** \`${dailyLegitStats.total}\`\n` +
+      `> \`⏰\` **Najwięcej repów:** \`${bestHourText}\`\n\n` +
+      "-# 💎 New Shop • Dziękujemy za zaufanie 💙",
     )
-    .setImage(`attachment://${fileName}`)
     .setTimestamp(dailyLegitStats.updatedAt ? new Date(dailyLegitStats.updatedAt) : new Date());
 
   let chartMessage = null;
@@ -405,14 +410,14 @@ async function publishDailyLegitChart({ forceNew = false } = {}) {
   }
 
   if (chartMessage) {
-    await chartMessage.edit({ embeds: [embed], files: [attachment], attachments: [] });
+    await chartMessage.edit({ embeds: [embed], attachments: [] });
   } else {
-    chartMessage = await channel.send({ embeds: [embed], files: [attachment] });
+    chartMessage = await channel.send({ embeds: [embed] });
     dailyLegitStats.messageId = chartMessage.id;
     scheduleSavePersistentState(true);
   }
   console.log(`[daily-legit] Wykres zaktualizowany: ${dailyLegitStats.total} repów`);
-  scheduleDailyLegitChannelRename();
+  scheduleDailyLegitChannelRename({ force: forceChannelRename });
 }
 
 async function renameDailyLegitChannel() {
@@ -425,12 +430,13 @@ async function renameDailyLegitChannel() {
   console.log(`[daily-legit] Zmieniono nazwę kanału na ${desiredName}`);
 }
 
-function scheduleDailyLegitChannelRename() {
+function scheduleDailyLegitChannelRename({ force = false } = {}) {
   if (dailyLegitRenameTimer) {
     clearTimeout(dailyLegitRenameTimer);
     dailyLegitRenameTimer = null;
   }
 
+  if (force) lastDailyLegitChannelRename = 0;
   const wait = Math.max(0, DAILY_LEGIT_RENAME_COOLDOWN - (Date.now() - lastDailyLegitChannelRename));
   if (wait === 0) {
     lastDailyLegitChannelRename = Date.now();
@@ -483,14 +489,19 @@ function scheduleDailyLegitMidnightRollover() {
   if (dailyLegitMidnightTimer) clearTimeout(dailyLegitMidnightTimer);
   dailyLegitMidnightTimer = setTimeout(async () => {
     const changed = rollDailyLegitStatsIfNeeded();
-    if (changed) await queueDailyLegitChartPublish({ forceNew: true });
+    if (changed) {
+      await queueDailyLegitChartPublish({ forceNew: true, forceChannelRename: true });
+    }
     scheduleDailyLegitMidnightRollover();
   }, millisecondsUntilNextWarsawDay());
 }
 
 async function initializeDailyLegitChart() {
   const changed = rollDailyLegitStatsIfNeeded();
-  await queueDailyLegitChartPublish({ forceNew: changed });
+  await queueDailyLegitChartPublish({
+    forceNew: changed,
+    forceChannelRename: changed,
+  });
   scheduleDailyLegitMidnightRollover();
 }
 
@@ -14852,7 +14863,7 @@ async function handleDailyLegitChartTestCommand(interaction) {
 
   dailyLegitStats.updatedAt = new Date().toISOString();
   scheduleSavePersistentState(true);
-  await queueDailyLegitChartPublish();
+  await queueDailyLegitChartPublish({ forceChannelRename: action === "wyzeruj" });
 
   await interaction.editReply({
     content: `> \`✅\` × ${resultText}\n> Dzisiejszy wynik wykresu: **${dailyLegitStats.total}**. Główny licznik legit repów nie został zmieniony.`,
