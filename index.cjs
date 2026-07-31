@@ -396,8 +396,8 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
     new TextDisplayBuilder().setContent(
       "## `📊` Dzienne legit checki\n\n" +
       `> 📅 <a:arrowwhite:1491476759290449984> **Data:** \`${displayDate}\`\n` +
-      `> \`✅\` **Wystawione legit checki:** \`${dailyLegitStats.total}\`\n` +
-      `> \`💰\` **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\``,
+      `> ✅ <a:arrowwhite:1491476759290449984> **Wystawione legit checki:** \`${dailyLegitStats.total}\`\n` +
+      `> 💰 <a:arrowwhite:1491476759290449984> **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\``,
     ),
   );
   appendBrandFooterToContainer(container, channel.guildId);
