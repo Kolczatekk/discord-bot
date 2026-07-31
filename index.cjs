@@ -391,23 +391,16 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
   const displayDate = /^\d{4}-\d{2}-\d{2}$/.test(dailyLegitStats.dateKey)
     ? `${dailyLegitStats.dateKey.slice(8, 10)}.${dailyLegitStats.dateKey.slice(5, 7)}.${dailyLegitStats.dateKey.slice(0, 4)}`
     : dailyLegitStats.dateKey;
-  const bestValue = Math.max(...dailyLegitStats.hourly);
-  const bestHour = bestValue > 0 ? dailyLegitStats.hourly.indexOf(bestValue) : null;
-  const bestHourText = bestHour === null
-    ? "Jeszcze brak"
-    : `${String(bestHour).padStart(2, "0")}:00 (${bestValue})`;
-  const embed = new EmbedBuilder()
-    .setColor(0x6d7cff)
-    .setDescription(
-      "## `📊` Dzienne legit repy\n\n" +
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "## `📊` Dzienne legit checki\n\n" +
       `> \`📅\` **Data:** \`${displayDate}\`\n` +
       `> \`✅\` **Wystawione legit checki:** \`${dailyLegitStats.total}\`\n` +
-      `> \`💰\` **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\`\n` +
-      `> \`⏰\` **Najwięcej legit checków:** \`${bestHourText}\`\n\n` +
-      "-# ──────────────────────────────────\n" +
-      `-# ${NEWSHOP_EMOJI_MARKUP} © 2026 New Shop`,
-    )
-    .setTimestamp(dailyLegitStats.updatedAt ? new Date(dailyLegitStats.updatedAt) : new Date());
+      `> \`💰\` **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\``,
+    ),
+  );
+  appendBrandFooterToContainer(container, channel.guildId);
 
   let chartMessage = null;
   if (!forceNew && dailyLegitStats.messageId) {
@@ -415,9 +408,26 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
   }
 
   if (chartMessage) {
-    await chartMessage.edit({ embeds: [embed], attachments: [] });
-  } else {
-    chartMessage = await channel.send({ embeds: [embed] });
+    try {
+      await chartMessage.edit({
+        content: null,
+        embeds: [],
+        components: [container],
+        attachments: [],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    } catch (error) {
+      console.warn("[daily-legit] Nie udało się zmienić starego embeda na Components V2:", error);
+      await chartMessage.delete().catch(() => null);
+      chartMessage = null;
+    }
+  }
+
+  if (!chartMessage) {
+    chartMessage = await channel.send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
     dailyLegitStats.messageId = chartMessage.id;
     scheduleSavePersistentState(true);
   }
