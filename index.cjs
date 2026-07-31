@@ -5218,9 +5218,9 @@ client.once(Events.ClientReady, async (c) => {
 
   // Ustaw status - gra w NewShop
   try {
-    c.user.setActivity(`Legit checki: ${legitRepCount}`, { type: 0 });
+    c.user.setActivity(`Legit checki: ${legitRepCount} 🛒`, { type: 0 });
     setInterval(
-      () => c.user.setActivity(`Legit checki: ${legitRepCount}`, { type: 0 }),
+      () => c.user.setActivity(`Legit checki: ${legitRepCount} 🛒`, { type: 0 }),
       60000,
     );
   } catch (e) {
