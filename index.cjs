@@ -437,7 +437,7 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("daily_legit_record")
-        .setLabel("🏆︎︲Rekord")
+        .setLabel("🏆︲Rekord")
         .setStyle(ButtonStyle.Secondary),
     ),
   );
