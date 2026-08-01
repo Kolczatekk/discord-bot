@@ -17015,7 +17015,7 @@ async function handleModalSubmit(interaction) {
       tresc,
     )) {
       await interaction.reply({
-        content: "> `❌` × Ta opinia nie została opublikowana, ponieważ nie znaleźliśmy zakończonego zakupu na Twoim koncie.",
+        content: "> `❌` × Twoja opinia nie została opublikowana, dokonaj pierwszego zakupu i spróbuj ponownie.",
         flags: [MessageFlags.Ephemeral],
       });
       console.log(`[opinia-filter] Odrzucono podejrzaną opinię użytkownika ${interaction.user.id} bez historii zakupów.`);
@@ -19828,7 +19828,7 @@ async function handleOpinionCommand(interaction) {
     tresc,
   )) {
     await interaction.reply({
-      content: "> `❌` × Ta opinia nie została opublikowana, ponieważ nie znaleźliśmy zakończonego zakupu na Twoim koncie.",
+      content: "> `❌` × Twoja opinia nie została opublikowana, dokonaj pierwszego zakupu i spróbuj ponownie.",
       flags: [MessageFlags.Ephemeral],
     });
     console.log(`[opinia-filter] Odrzucono podejrzaną opinię użytkownika ${interaction.user.id} bez historii zakupów.`);
