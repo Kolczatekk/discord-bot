@@ -13589,6 +13589,73 @@ function formatOpinionText(value) {
   return formatInlineCodeText(value);
 }
 
+function normalizeOpinionModerationText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/ł/g, "l")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isSuspiciousUnverifiedOpinion(ratings, text) {
+  const hasOneStar = ratings.some((rating) => Number(rating) === 1);
+  const normalizedText = normalizeOpinionModerationText(text);
+  const suspiciousWords = [
+    "scam",
+    "scammer",
+    "oszust",
+    "oszustwo",
+    "oszukali",
+    "oszukal",
+    "oszukala",
+    "oszukuje",
+    "zlodziej",
+    "zlodzieje",
+  ];
+  const hasSuspiciousText = suspiciousWords.some((word) =>
+    normalizedText.split(" ").some((part) => part === word || part.startsWith(word)),
+  );
+  return hasOneStar || hasSuspiciousText;
+}
+
+async function getVerifiedBuyerStatus(userId, guildId) {
+  const [purchaseResult, spentResult] = await Promise.all([
+    db.supabase
+      .from("user_purchases")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("guild_id", guildId || "default")
+      .eq("type", "zakup")
+      .limit(1),
+    db.supabase
+      .from("user_spent")
+      .select("amount")
+      .eq("user_id", userId)
+      .eq("guild_id", guildId || "default")
+      .maybeSingle(),
+  ]);
+
+  if (Array.isArray(purchaseResult.data) && purchaseResult.data.length > 0) return true;
+  if (Number(spentResult.data?.amount || 0) > 0) return true;
+
+  if (purchaseResult.error && spentResult.error) {
+    console.error("[opinia-filter] Nie udało się sprawdzić historii zakupów:", {
+      purchases: purchaseResult.error.message,
+      spent: spentResult.error.message,
+    });
+    return null;
+  }
+  return false;
+}
+
+async function shouldRejectUnverifiedOpinion(userId, guildId, ratings, text) {
+  if (!isSuspiciousUnverifiedOpinion(ratings, text)) return false;
+  const buyerStatus = await getVerifiedBuyerStatus(userId, guildId);
+  return buyerStatus === false;
+}
+
 function buildOpinionModal() {
   const trescInput = new TextInputBuilder()
     .setCustomId("tresc_opinii")
@@ -16920,6 +16987,20 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
+    if (await shouldRejectUnverifiedOpinion(
+      interaction.user.id,
+      guildId,
+      [czas, przebieg, realizacja],
+      tresc,
+    )) {
+      await interaction.reply({
+        content: "> `❌` × Ta opinia nie została opublikowana, ponieważ nie znaleźliśmy zakończonego zakupu na Twoim koncie.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      console.log(`[opinia-filter] Odrzucono podejrzaną opinię użytkownika ${interaction.user.id} bez historii zakupów.`);
+      return;
+    }
+
     // Simulate /opinia command logic with the new modal fields
     const normalize = (s = "") =>
       s
@@ -19713,14 +19794,28 @@ async function handleOpinionCommand(interaction) {
     return;
   }
 
-  // mark cooldown (successful invocation)
-  opinionCooldowns.set(interaction.user.id, Date.now());
-
   // Pobranie opcji
   const czas = interaction.options.getInteger("czas_oczekiwania");
   const jakosc = interaction.options.getInteger("jakosc_produktu");
   const cena = interaction.options.getInteger("cena_produktu");
   const tresc = interaction.options.getString("tresc_opinii");
+
+  if (await shouldRejectUnverifiedOpinion(
+    interaction.user.id,
+    guildId,
+    [czas, jakosc, cena],
+    tresc,
+  )) {
+    await interaction.reply({
+      content: "> `❌` × Ta opinia nie została opublikowana, ponieważ nie znaleźliśmy zakończonego zakupu na Twoim koncie.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    console.log(`[opinia-filter] Odrzucono podejrzaną opinię użytkownika ${interaction.user.id} bez historii zakupów.`);
+    return;
+  }
+
+  // mark cooldown (successful invocation)
+  opinionCooldowns.set(interaction.user.id, Date.now());
 
   const starsInline = (n) => {
     return formatOpinionStars(n);
