@@ -194,15 +194,21 @@ client.on(Events.MessageCreate, (message) => {
 });
 
 client.on(Events.MessageDelete, (message) => {
-  handleDeletedOpinionMessage(message).catch((error) =>
-    console.error("[opinie-counter] Błąd po usunięciu opinii:", error),
+  Promise.all([
+    handleDeletedOpinionMessage(message),
+    handleDeletedLegitRepMessage(message),
+  ]).catch((error) =>
+    console.error("[message-counter] Błąd po usunięciu wiadomości:", error),
   );
 });
 
 client.on(Events.MessageBulkDelete, (messages) => {
   for (const message of messages.values()) {
-    handleDeletedOpinionMessage(message).catch((error) =>
-      console.error("[opinie-counter] Błąd po masowym usunięciu opinii:", error),
+    Promise.all([
+      handleDeletedOpinionMessage(message),
+      handleDeletedLegitRepMessage(message),
+    ]).catch((error) =>
+      console.error("[message-counter] Błąd po masowym usunięciu wiadomości:", error),
     );
   }
 });
@@ -363,6 +369,8 @@ const contestLeaveBlocks = new Map(); // userId -> { messageId: { leaveCount: nu
 // --- LEGITCHECK-REP info behavior --------------------------------------------------
 // channel ID where users post freeform reps and the bot should post the informational embed
 const REP_CHANNEL_ID = "1449840030947217529";
+const legitRepMessageIds = new Set();
+let legitRepHistoryInitialized = false;
 const LEGIT_REP_PING_DELETE_DELAY_MS = 4_000;
 const LEGIT_REP_WARNING_DELETE_DELAY_MS = 15_000;
 const DEFAULT_SELECT_EMPTY_PLACEHOLDER = "❌ × Nie wybrałeś/aś żadnej opcji.";
@@ -453,6 +461,54 @@ const DAILY_LEGIT_RENAME_COOLDOWN = 10 * 60 * 1000;
 let lastChannelRename = 0;
 const CHANNEL_RENAME_COOLDOWN = 10 * 60 * 1000; // 10 minutes (Discord limit)
 let pendingRename = false;
+let latestRepRenameCount = null;
+
+function isLegitRepMessage(message) {
+  return /^\+rep(?:\s|$)/i.test(String(message?.content || "").trim());
+}
+
+async function countExistingLegitRepMessages(channel) {
+  if (!channel?.isTextBased?.()) return null;
+
+  const foundIds = new Set();
+  let before;
+
+  try {
+    while (true) {
+      const options = { limit: 100 };
+      if (before) options.before = before;
+      const batch = await channel.messages.fetch(options);
+      if (!batch.size) break;
+
+      for (const message of batch.values()) {
+        if (isLegitRepMessage(message)) foundIds.add(message.id);
+      }
+
+      before = batch.last()?.id;
+      if (batch.size < 100 || !before) break;
+    }
+  } catch (error) {
+    console.error("[legit-counter] Nie udało się odczytać całej historii kanału:", error);
+    return null;
+  }
+
+  legitRepMessageIds.clear();
+  for (const messageId of foundIds) legitRepMessageIds.add(messageId);
+  legitRepHistoryInitialized = true;
+  console.log(`[legit-counter] Policzone wiadomości +rep: ${legitRepMessageIds.size}. Żadna wiadomość nie została usunięta.`);
+  return legitRepMessageIds.size;
+}
+
+async function handleDeletedLegitRepMessage(message) {
+  if (!legitRepHistoryInitialized || message?.channelId !== REP_CHANNEL_ID) return;
+  if (!legitRepMessageIds.delete(message.id)) return;
+
+  legitRepCount = legitRepMessageIds.size;
+  const channel = message.channel || await client.channels.fetch(REP_CHANNEL_ID).catch(() => null);
+  scheduleRepChannelRename(channel, legitRepCount).catch(() => null);
+  scheduleSavePersistentState();
+  console.log(`[legit-counter] Usunięto wpis z licznika po ręcznym usunięciu wiadomości: ${legitRepCount}`);
+}
 
 function getWarsawDateParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -5536,14 +5592,13 @@ client.once(Events.ClientReady, async (c) => {
     applyDefaultsForGuild(g.id).catch((e) => console.error(e));
   });
 
-  // Read current rep count from channel name
+  // Policz faktyczne wiadomości +rep w całej historii kanału.
   try {
     const repChannel = await c.channels.fetch(REP_CHANNEL_ID).catch(() => null);
-    if (repChannel && repChannel.name) {
-      const match = repChannel.name.match(/➔(\d+)$/);
-      if (match) {
-        legitRepCount = parseInt(match[1], 10);
-        console.log(`Odczytano liczbę repów z kanału: ${legitRepCount}`);
+    if (repChannel) {
+      const countedRepMessages = await countExistingLegitRepMessages(repChannel);
+      if (countedRepMessages !== null) {
+        legitRepCount = countedRepMessages;
         scheduleSavePersistentState();
       }
       scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
@@ -14723,9 +14778,14 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   // (Wydatki zostały już zaktualizowane automatycznie przy uruchomieniu komendy /ticket-zakoncz)
 
   // Send via webhook as "Anonimowy LC" if possible
-  await sendAnonRep(repChannel, simulatedRepText);
+  const sentAnonRep = await sendAnonRep(repChannel, simulatedRepText);
 
-  legitRepCount++;
+  if (legitRepHistoryInitialized && sentAnonRep?.id) {
+    legitRepMessageIds.add(sentAnonRep.id);
+    legitRepCount = legitRepMessageIds.size;
+  } else {
+    legitRepCount++;
+  }
   const dailyTransactionAmount = isDailyLegitMoneyTransaction(ticketData.typ)
     ? parsePLN(ticketData.co)
     : 0;
@@ -14806,17 +14866,17 @@ async function sendAnonRep(channel, content) {
       }).catch(() => null);
     }
     if (webhook) {
-      await webhook.send({
+      return await webhook.send({
         content: content,
         username: 'Anonimowy LC',
-        avatarURL: client.user.displayAvatarURL()
+        avatarURL: client.user.displayAvatarURL(),
+        wait: true,
       });
-      return;
     }
   } catch (err) {
     console.error("Failed to send anon rep via webhook:", err);
   }
-  await channel.send({ content: content });
+  return await channel.send({ content: content });
 }
 
 // Helper to parse PLN amount from a string
@@ -19680,8 +19740,13 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      // Valid +rep message - increment counter + cooldown
-      legitRepCount++;
+      // Valid +rep message - licznik odpowiada faktycznym wiadomościom na kanale.
+      if (legitRepHistoryInitialized) {
+        legitRepMessageIds.add(message.id);
+        legitRepCount = legitRepMessageIds.size;
+      } else {
+        legitRepCount++;
+      }
       const pendingTicketData = pendingTicketEntry?.[1];
       const dailyTransactionAmount = isDailyLegitMoneyTransaction(pendingTicketData?.typ)
         ? parsePLN(pendingTicketData.co)
@@ -20168,6 +20233,7 @@ async function handleWyczyscKanalCommand(interaction) {
 async function scheduleRepChannelRename(channel, count) {
   if (!channel || typeof channel.setName !== "function") return;
 
+  latestRepRenameCount = Math.max(0, Number(count) || 0);
   const newName = `✅×〢legit-checki➔${count}`;
   const now = Date.now();
   const since = now - lastChannelRename;
@@ -20184,6 +20250,9 @@ async function scheduleRepChannelRename(channel, count) {
       console.error("Błąd zmiany nazwy kanału (natychmiastowa próba):", err);
     } finally {
       pendingRename = false;
+      if (latestRepRenameCount !== count) {
+        scheduleRepChannelRename(channel, latestRepRenameCount).catch(() => null);
+      }
     }
   } else {
     // schedule once (if not already scheduled)
@@ -20201,14 +20270,19 @@ async function scheduleRepChannelRename(channel, count) {
     console.log(`Planuję zmianę nazwy kanału na ${newName} za ${delay} ms`);
 
     setTimeout(async () => {
+      const scheduledCount = latestRepRenameCount;
+      const scheduledName = `✅×〢legit-checki➔${scheduledCount}`;
       try {
-        await channel.setName(newName);
+        await channel.setName(scheduledName);
         lastChannelRename = Date.now();
-        console.log(`Zaplanowana zmiana nazwy wykonana: ${newName}`);
+        console.log(`Zaplanowana zmiana nazwy wykonana: ${scheduledName}`);
       } catch (err) {
         console.error("Błąd zmiany nazwy kanału (zaplanowana próba):", err);
       } finally {
         pendingRename = false;
+        if (latestRepRenameCount !== scheduledCount) {
+          scheduleRepChannelRename(channel, latestRepRenameCount).catch(() => null);
+        }
       }
     }, delay);
   }
