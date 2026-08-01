@@ -317,6 +317,7 @@ let legitRepCount = 15;
 const DAILY_LEGIT_CHANNEL_ID = "1532859726033846292";
 const DAILY_LEGIT_TIME_ZONE = "Europe/Warsaw";
 let dailyLegitStats = createEmptyDailyLegitStats();
+let dailyLegitRecords = {};
 let dailyLegitPublishQueue = Promise.resolve();
 let dailyLegitMidnightTimer = null;
 let dailyLegitRenameTimer = null;
@@ -371,9 +372,40 @@ function normalizeDailyLegitStats(value) {
   };
 }
 
+function normalizeDailyLegitRecords(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const normalized = {};
+  for (const [dateKey, record] of Object.entries(value)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !record || typeof record !== "object") continue;
+    const total = Math.max(0, Math.floor(Number(record.total || 0)));
+    const totalPln = Number(record.totalPln || 0);
+    normalized[dateKey] = {
+      dateKey,
+      total,
+      totalPln: Number.isFinite(totalPln) ? Math.max(0, totalPln) : 0,
+    };
+  }
+  return normalized;
+}
+
+function archiveDailyLegitStats(stats) {
+  if (!stats || !/^\d{4}-\d{2}-\d{2}$/.test(String(stats.dateKey || ""))) return;
+  dailyLegitRecords[stats.dateKey] = {
+    dateKey: stats.dateKey,
+    total: Math.max(0, Math.floor(Number(stats.total || 0))),
+    totalPln: Math.max(0, Number(stats.totalPln || 0)),
+  };
+
+  const orderedKeys = Object.keys(dailyLegitRecords).sort();
+  while (orderedKeys.length > 730) {
+    delete dailyLegitRecords[orderedKeys.shift()];
+  }
+}
+
 function rollDailyLegitStatsIfNeeded(now = new Date()) {
   const currentDateKey = getWarsawDateParts(now).dateKey;
   if (dailyLegitStats.dateKey === currentDateKey) return false;
+  archiveDailyLegitStats(dailyLegitStats);
   dailyLegitStats = createEmptyDailyLegitStats(now);
   lastDailyLegitChannelRename = 0;
   scheduleSavePersistentState(true);
@@ -398,6 +430,16 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
       `> \`📅\` <a:arrowwhite:1491476759290449984> **Data:** \`${displayDate}\`\n` +
       `> \`✅\` <a:arrowwhite:1491476759290449984> **Wystawione legit checki:** \`${dailyLegitStats.total}\`\n` +
       `> \`💰\` <a:arrowwhite:1491476759290449984> **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\``,
+    ),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("daily_legit_record")
+        .setLabel("︲Rekord")
+        .setEmoji("🏆")
+        .setStyle(ButtonStyle.Secondary),
     ),
   );
   appendBrandFooterToContainer(container, channel.guildId);
@@ -528,7 +570,7 @@ const DROP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours per user
 const OPINION_COOLDOWN_MS = 48 * 60 * 60 * 1000; // 48 hours per user
 const OPINION_BTN_STAR = "<:star:1505298878096871546>";
 const OPINION_STAR = "⭐";
-const OPINION_NO_STAR = "✩";
+const OPINION_NO_STAR = "☆";
 const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
@@ -1509,6 +1551,7 @@ function buildPersistentStateData() {
   const data = {
     legitRepCount,
     dailyLegitStats,
+    dailyLegitRecords,
     legitRepCooldown: Object.fromEntries(legitRepCooldown),
     ticketCounter: Object.fromEntries(ticketCounter),
     ticketOwners: Object.fromEntries(ticketOwners),
@@ -2871,6 +2914,7 @@ async function loadPersistentState() {
       }
 
       dailyLegitStats = normalizeDailyLegitStats(botStateData.dailyLegitStats);
+      dailyLegitRecords = normalizeDailyLegitRecords(botStateData.dailyLegitRecords);
 
       if (botStateData.legitRepCooldown && typeof botStateData.legitRepCooldown === "object") {
         for (const [userId, ts] of Object.entries(botStateData.legitRepCooldown)) {
@@ -6079,7 +6123,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "PYTANIE";
-      formInfo = `> <a:arrowwhite:1491476759290449984> × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1491476759290449984> × **Sprawa:** ${formatInlineCodeText(sprawa)}`;
       break;
     }
     default:
@@ -6176,7 +6220,7 @@ async function handleModalSubmit(interaction) {
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ 👤 × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
         `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
         `### ・ 📋 × Informacje z formularza:\n` +
         `${formInfo}`,
@@ -6405,6 +6449,45 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
   const detectedServer = await detectServerFromContext(interaction);
+
+  if (customId === "daily_legit_record") {
+    const records = {
+      ...dailyLegitRecords,
+      [dailyLegitStats.dateKey]: {
+        dateKey: dailyLegitStats.dateKey,
+        total: dailyLegitStats.total,
+        totalPln: dailyLegitStats.totalPln,
+      },
+    };
+    const allRecords = Object.values(records);
+    const legitRecord = allRecords.reduce(
+      (best, record) => (!best || record.total > best.total ? record : best),
+      null,
+    );
+    const moneyRecord = allRecords.reduce(
+      (best, record) => (!best || record.totalPln > best.totalPln ? record : best),
+      null,
+    );
+    const formatRecordDate = (dateKey) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))
+        ? `${dateKey.slice(8, 10)}.${dateKey.slice(5, 7)}.${dateKey.slice(0, 4)}`
+        : String(dateKey || "-");
+
+    const recordContainer = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    recordContainer.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## `🏆` Rekordy legit checków\n\n" +
+        `> \`✅\` <a:arrowwhite:1491476759290449984> **Najwięcej legit checków:** \`${legitRecord?.total || 0}\` — \`${formatRecordDate(legitRecord?.dateKey)}\`\n` +
+        `> \`💰\` <a:arrowwhite:1491476759290449984> **Największa wydana kwota:** \`${Number(moneyRecord?.totalPln || 0).toFixed(2)} PLN\` — \`${formatRecordDate(moneyRecord?.dateKey)}\``,
+      ),
+    );
+    appendBrandFooterToContainer(recordContainer, interaction.guildId);
+    await interaction.reply({
+      components: [recordContainer],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   if (customId.startsWith("usunzakup_")) {
     await handleUsunZakupButton(interaction);
@@ -13230,16 +13313,33 @@ function getOpinionRatingValue(interaction, customId) {
 }
 
 function formatOpinionStars(value) {
-  const count = Math.max(1, Math.min(5, Number(value) || 1));
+  const count = Math.max(1, Math.min(5, Math.trunc(Number(value) || 1)));
   const emptyCount = 5 - count;
   return `\`${OPINION_STAR.repeat(count)}${OPINION_NO_STAR.repeat(emptyCount)}\``;
 }
 
-function formatOpinionText(value) {
-  const clean = String(value || "")
+function sanitizeInlineCodeText(value, fallback = "-") {
+  const clean = String(value ?? "")
     .replace(/`/g, "ʼ")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
-  return `\`${clean || "-"}\``;
+  return clean || fallback;
+}
+
+function formatInlineCodeText(value, fallback = "-") {
+  return `\`${sanitizeInlineCodeText(value, fallback)}\``;
+}
+
+function getSafeTicketDisplayName(member, user) {
+  return sanitizeInlineCodeText(
+    member?.displayName || user?.globalName || user?.username,
+    user?.username || "Użytkownik",
+  );
+}
+
+function formatOpinionText(value) {
+  return formatInlineCodeText(value);
 }
 
 function buildOpinionModal() {
@@ -16388,7 +16488,7 @@ async function openRewardClaimTicket(interaction) {
       `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
       `### ・ \`👤\` × Informacje o kliencie:\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-      `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
       `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
       `### ・ \`📋\` × Informacje z formularza:\n` +
       `${formInfo}`,
@@ -18300,7 +18400,7 @@ async function handleModalSubmit(interaction) {
             `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
             `### ・ \`👤\` × Informacje o kliencie:\n` +
             `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-            `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+            `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
             `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
             `### ・ \`📋\` × Informacje z formularza:\n` +
             `${formInfo}`,
@@ -18388,7 +18488,7 @@ async function handleModalSubmit(interaction) {
       categoryId = categories["inne"];
       ticketType = "inne";
       ticketTypeLabel = "PYTANIE";
-      formInfo = `> <a:arrowwhite:1491476759290449984> × **Sprawa:** \`${sprawa}\``;
+      formInfo = `> <a:arrowwhite:1491476759290449984> × **Sprawa:** ${formatInlineCodeText(sprawa)}`;
       break;
     }
     default:
@@ -18603,7 +18703,7 @@ async function handleModalSubmit(interaction) {
         `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
         `### ・ \`👤\` × Informacje o kliencie:\n` +
         `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Nick:** \`${interaction.member?.displayName || user.globalName || user.username}\`\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
         `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
         `### ・ \`📋\` × Informacje z formularza:\n` +
         `${formInfo}`,
