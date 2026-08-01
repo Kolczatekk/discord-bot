@@ -6494,7 +6494,14 @@ async function handleButtonInteraction(interaction) {
     const recordContainer = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     recordContainer.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## `🏆` Rekordy legit checków\n\n" +
+        "```\n" +
+        "🏆 New Shop × REKORDY LC\n" +
+        "```",
+      ),
+    );
+    recordContainer.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
+    recordContainer.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
         `> \`✅\` <a:arrowwhite:1491476759290449984> **Najwięcej legit checków:** \`${legitRecord?.total || 0}\` - \`${formatRecordDate(legitRecord?.dateKey)}\`\n` +
         `> \`💰\` <a:arrowwhite:1491476759290449984> **Największa wydana kwota:** \`${Number(moneyRecord?.totalPln || 0).toFixed(2)} PLN\` - \`${formatRecordDate(moneyRecord?.dateKey)}\``,
       ),
