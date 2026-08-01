@@ -14424,8 +14424,10 @@ async function sendLegitCheckInfoMessage(channel) {
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "### `📝` × Jak napisać:\n" +
-      `> \`+rep\` <@${footerUserId}> \`[ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]\`\n\n` +
+      "### `🗒️` × Jak napisać:\n" +
+      "> `+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]`\n\n" +
+      "### `📝` × PRZYKŁAD:\n" +
+      `> **+rep** <@${footerUserId}> **ZAKUP 350 PLN ANARCHIA LIFESTEAL**\n\n` +
       `> \`📊\` **Aktualna liczba legit checków:** \`${legitRepCount}\``,
     ),
   );
