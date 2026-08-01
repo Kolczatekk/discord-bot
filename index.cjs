@@ -14430,17 +14430,7 @@ async function sendLegitCheckInfoMessage(channel) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "### `📝` × Przykład:\n" +
-      `> **+rep** <@${footerUserId}> **ZAKUP 350 PLN ANARCHIA LIFESTEAL**\n\n` +
-      `> \`📊\` **Aktualna liczba legit checków:** \`${legitRepCount}\``,
-    ),
-  );
-  const legitGif = new AttachmentBuilder(
-    path.join(__dirname, "attached_assets", "standard_1765794552774_1766946611654.gif"),
-    { name: "legit.gif" },
-  );
-  container.addMediaGalleryComponents(
-    new MediaGalleryBuilder().addItems(
-      new MediaGalleryItemBuilder().setURL("attachment://legit.gif"),
+      `> **+rep** <@${footerUserId}> **ZAKUP 350 PLN ANARCHIA LIFESTEAL**`,
     ),
   );
   appendBrandFooterToContainer(container, channel.guildId);
@@ -14451,7 +14441,6 @@ async function sendLegitCheckInfoMessage(channel) {
     : null;
   const newInfoMessage = await channel.send({
     components: [container],
-    files: [legitGif],
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: { parse: [] },
   });
