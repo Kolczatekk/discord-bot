@@ -426,7 +426,14 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "## `📊` Dzienne legit checki\n\n" +
+      "```\n" +
+      "📊 New Shop × DZIENNE LC\n" +
+      "```",
+    ),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
       `> \`📅\` <a:arrowwhite:1491476759290449984> **Data:** \`${displayDate}\`\n` +
       `> \`✅\` <a:arrowwhite:1491476759290449984> **Wystawione legit checki:** \`${dailyLegitStats.total}\`\n` +
       `> \`💰\` <a:arrowwhite:1491476759290449984> **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\``,
