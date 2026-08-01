@@ -184,6 +184,26 @@ client.on(Events.MessageReactionRemoveAll, async (message) => {
   }
 });
 
+client.on(Events.MessageCreate, (message) => {
+  handleNewOpinionMessage(message).catch((error) =>
+    console.error("[opinie-counter] Błąd po dodaniu opinii:", error),
+  );
+});
+
+client.on(Events.MessageDelete, (message) => {
+  handleDeletedOpinionMessage(message).catch((error) =>
+    console.error("[opinie-counter] Błąd po usunięciu opinii:", error),
+  );
+});
+
+client.on(Events.MessageBulkDelete, (messages) => {
+  for (const message of messages.values()) {
+    handleDeletedOpinionMessage(message).catch((error) =>
+      console.error("[opinie-counter] Błąd po masowym usunięciu opinii:", error),
+    );
+  }
+});
+
 function getBrandFooterIconUrl() {
   return BRAND_FOOTER_ICON_URL;
 }
@@ -699,6 +719,96 @@ const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
     default: value === 5,
   };
 });
+
+const opinionMessageIdsByChannel = new Map();
+const opinionCounterSyncInProgress = new Set();
+
+function isPublishedOpinionMessage(message) {
+  return Boolean(
+    message?.embeds?.some((embed) => {
+      const description = String(embed?.description || "");
+      return description.includes("New Shop") && description.includes("OPINIA");
+    }),
+  );
+}
+
+function isOpinionChannel(channel) {
+  if (!channel?.isTextBased?.() || !channel.guildId) return false;
+  if (opinieChannels.get(channel.guildId) === channel.id) return true;
+  return String(channel.name || "").toLowerCase().includes("opinie-klientow");
+}
+
+async function renameOpinionChannel(channel, count) {
+  if (!channel || typeof channel.setName !== "function") return;
+  const safeCount = Math.max(0, Number(count) || 0);
+  const desiredName = `⭐×〢opinie-klientow➔${safeCount}`;
+  if (channel.name === desiredName) return;
+
+  await channel.setName(desiredName, "Aktualizacja licznika opinii klientów");
+  console.log(`[opinie-counter] Zmieniono nazwę kanału na ${desiredName}`);
+}
+
+async function countExistingOpinions(channel) {
+  if (!isOpinionChannel(channel) || opinionCounterSyncInProgress.has(channel.id)) return;
+  opinionCounterSyncInProgress.add(channel.id);
+
+  try {
+    const opinionIds = new Set();
+    let before;
+
+    while (true) {
+      const options = { limit: 100 };
+      if (before) options.before = before;
+      const batch = await channel.messages.fetch(options);
+      if (!batch.size) break;
+
+      for (const message of batch.values()) {
+        if (isPublishedOpinionMessage(message)) opinionIds.add(message.id);
+      }
+
+      before = batch.last()?.id;
+      if (batch.size < 100 || !before) break;
+    }
+
+    opinionMessageIdsByChannel.set(channel.id, opinionIds);
+    await renameOpinionChannel(channel, opinionIds.size);
+    console.log(`[opinie-counter] Policzone istniejące opinie: ${opinionIds.size}`);
+  } catch (error) {
+    console.error("[opinie-counter] Nie udało się policzyć istniejących opinii:", error);
+  } finally {
+    opinionCounterSyncInProgress.delete(channel.id);
+  }
+}
+
+async function initializeOpinionCounters() {
+  const channels = client.channels.cache.filter((channel) => isOpinionChannel(channel));
+  for (const channel of channels.values()) {
+    await countExistingOpinions(channel);
+  }
+}
+
+async function handleNewOpinionMessage(message) {
+  if (!isOpinionChannel(message?.channel) || !isPublishedOpinionMessage(message)) return;
+
+  let opinionIds = opinionMessageIdsByChannel.get(message.channel.id);
+  if (!opinionIds) {
+    await countExistingOpinions(message.channel);
+    opinionIds = opinionMessageIdsByChannel.get(message.channel.id);
+  }
+  if (!opinionIds || opinionIds.has(message.id)) return;
+
+  opinionIds.add(message.id);
+  await renameOpinionChannel(message.channel, opinionIds.size);
+}
+
+async function handleDeletedOpinionMessage(message) {
+  const channelId = message?.channelId || message?.channel?.id;
+  const opinionIds = channelId ? opinionMessageIdsByChannel.get(channelId) : null;
+  if (!opinionIds?.delete(message.id)) return;
+
+  const channel = message.channel || await client.channels.fetch(channelId).catch(() => null);
+  await renameOpinionChannel(channel, opinionIds.size);
+}
 
 // FREE KASA cooldown (12h) and allowed channel
 const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -5398,6 +5508,10 @@ client.once(Events.ClientReady, async (c) => {
 
   // try to apply defaults on the provided server id
   await applyDefaultsForGuild(DEFAULT_GUILD_ID);
+
+  await initializeOpinionCounters().catch((error) =>
+    console.error("[opinie-counter] Błąd inicjalizacji licznika:", error),
+  );
 
   // also apply defaults for all cached guilds (if names match)
   client.guilds.cache.forEach((g) => {
