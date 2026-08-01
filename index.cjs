@@ -321,8 +321,6 @@ let dailyLegitRecords = {};
 let dailyLegitPublishQueue = Promise.resolve();
 let dailyLegitMidnightTimer = null;
 let dailyLegitRenameTimer = null;
-let dailyLegitRecordEmoji = null;
-let dailyLegitRecordEmojiAttempted = false;
 let lastDailyLegitChannelRename = 0;
 const DAILY_LEGIT_RENAME_COOLDOWN = 10 * 60 * 1000;
 let lastChannelRename = 0;
@@ -404,40 +402,6 @@ function archiveDailyLegitStats(stats) {
   }
 }
 
-async function resolveDailyLegitRecordEmoji(guild) {
-  if (dailyLegitRecordEmoji) return dailyLegitRecordEmoji;
-  if (!guild || dailyLegitRecordEmojiAttempted) return null;
-  dailyLegitRecordEmojiAttempted = true;
-
-  let emojis = guild.emojis.cache;
-  if (!emojis?.size) {
-    emojis = await guild.emojis.fetch().catch(() => guild.emojis.cache);
-  }
-
-  let emoji = emojis?.find((entry) => entry.name === "newshop_rekord") || null;
-  if (!emoji) {
-    const emojiPath = path.join(__dirname, "attached_assets", "newshop_record_trophy.png");
-    if (fs.existsSync(emojiPath)) {
-      emoji = await guild.emojis.create({
-        attachment: emojiPath,
-        name: "newshop_rekord",
-        reason: "Emoji przycisku dziennych legit checków",
-      }).catch((error) => {
-        console.warn("[daily-legit] Nie udało się utworzyć emoji newshop_rekord:", error);
-        return null;
-      });
-    }
-  }
-
-  if (!emoji) return null;
-  dailyLegitRecordEmoji = {
-    id: emoji.id,
-    name: emoji.name,
-    animated: Boolean(emoji.animated),
-  };
-  return dailyLegitRecordEmoji;
-}
-
 function rollDailyLegitStatsIfNeeded(now = new Date()) {
   const currentDateKey = getWarsawDateParts(now).dateKey;
   if (dailyLegitStats.dateKey === currentDateKey) return false;
@@ -459,7 +423,6 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
   const displayDate = /^\d{4}-\d{2}-\d{2}$/.test(dailyLegitStats.dateKey)
     ? `${dailyLegitStats.dateKey.slice(8, 10)}.${dailyLegitStats.dateKey.slice(5, 7)}.${dailyLegitStats.dateKey.slice(0, 4)}`
     : dailyLegitStats.dateKey;
-  const recordEmoji = await resolveDailyLegitRecordEmoji(channel.guild);
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -470,12 +433,14 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
     ),
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  const recordButton = new ButtonBuilder()
-    .setCustomId("daily_legit_record")
-    .setLabel(recordEmoji ? "︲Rekord" : "🏆︲Rekord")
-    .setStyle(ButtonStyle.Secondary);
-  if (recordEmoji) recordButton.setEmoji(recordEmoji);
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(recordButton));
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("daily_legit_record")
+        .setLabel("🏆︲Rekord")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
   appendBrandFooterToContainer(container, channel.guildId);
 
   let chartMessage = null;
