@@ -14421,6 +14421,7 @@ async function sendLegitCheckInfoMessage(channel) {
       "```",
     ),
   );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "### `🗒️` × Jak napisać:\n" +
