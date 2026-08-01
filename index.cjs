@@ -14415,20 +14415,21 @@ async function sendLegitCheckInfoMessage(channel) {
   const footerUserId = "1305200545979437129";
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent("## `✅` New Shop × LEGIT CHECK"),
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "✅ New Shop × LEGIT CHECK\n" +
+      "```",
+    ),
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "### `📝` × Jak napisać:\n" +
-      "> `+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]`\n\n" +
+      `> \`+rep\` <@${footerUserId}> \`[ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]\`\n\n` +
       `> \`📊\` **Aktualna liczba legit checków:** \`${legitRepCount}\``,
     ),
   );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`-# <@${footerUserId}>`),
-  );
+  appendBrandFooterToContainer(container, channel.guildId);
 
   const previousId = repLastInfoMessage.get(channel.id);
   const previousMessage = previousId
@@ -14437,7 +14438,7 @@ async function sendLegitCheckInfoMessage(channel) {
   const newInfoMessage = await channel.send({
     components: [container],
     flags: MessageFlags.IsComponentsV2,
-    allowedMentions: { users: [footerUserId] },
+    allowedMentions: { parse: [] },
   });
   repLastInfoMessage.set(channel.id, newInfoMessage.id);
   scheduleSavePersistentState(true);
