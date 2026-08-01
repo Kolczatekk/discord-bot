@@ -5549,9 +5549,8 @@ client.once(Events.ClientReady, async (c) => {
           `[ready] Znalazłem istniejącą wiadomość info-rep: ${found.id}`,
         );
       }
-      await sendLegitCheckInfoMessage(repChannel).catch((error) =>
-        console.error("[ready] Nie udało się odświeżyć panelu legit-check:", error),
-      );
+      // Przy restarcie tylko zapamiętujemy istniejący wzór. Nie wysyłamy go
+      // ponownie, aby restart bota nie przesuwał ani nie dublował wiadomości.
     }
 
     // Try to find previously sent opinion instruction messages in cached guilds
