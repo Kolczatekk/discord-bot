@@ -438,7 +438,7 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
       new ButtonBuilder()
         .setCustomId("daily_legit_record")
         .setLabel("︲Rekord")
-        .setEmoji(parseButtonEmojiInput("🏆", channel.guildId))
+        .setEmoji(parseButtonEmojiInput("🏆︎", channel.guildId))
         .setStyle(ButtonStyle.Secondary),
     ),
   );
