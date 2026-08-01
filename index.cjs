@@ -2350,9 +2350,8 @@ function buildFreeKasaInstructionPayload(guildId = null) {
       .setEmoji("🎰"),
     new ButtonBuilder()
       .setCustomId("free_kasa_claim")
-      .setLabel("Odbierz nagrodę")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("🎁"),
+      .setLabel("🎁︲Odbierz nagrodę")
+      .setStyle(ButtonStyle.Secondary),
   );
 
   return {
@@ -2639,6 +2638,19 @@ async function refreshFreeKasaInstruction(channel) {
   }
 }
 
+async function updateFreeKasaInstructionInPlace() {
+  const channel = await client.channels.fetch(FREE_KASA_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased?.()) return;
+
+  const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+  const existing = recent?.find((message) => isFreeKasaInstructionMessage(message));
+  if (!existing?.editable) return;
+
+  await existing.edit(buildFreeKasaInstructionPayload(channel.guildId));
+  lastFreeKasaInstruction.set(channel.id, existing.id);
+  console.log(`[free-kasa] Zaktualizowano istniejący panel bez ponownego wysyłania: ${existing.id}`);
+}
+
 function buildFreeKasaInstructionPayload(guildId = null) {
   const rawDescription = [
     "```",
@@ -2677,9 +2689,8 @@ function buildFreeKasaInstructionPayload(guildId = null) {
 
   const btnClaim = new ButtonBuilder()
     .setCustomId("free_kasa_claim")
-    .setLabel("︲Odbierz nagrodę")
-    .setStyle(ButtonStyle.Secondary)
-    .setEmoji("🎁");
+    .setLabel("🎁︲Odbierz nagrodę")
+    .setStyle(ButtonStyle.Secondary);
 
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(btnRoll, btnClaim)
@@ -5514,6 +5525,10 @@ client.once(Events.ClientReady, async (c) => {
 
   await initializeOpinionCounters().catch((error) =>
     console.error("[opinie-counter] Błąd inicjalizacji licznika:", error),
+  );
+
+  await updateFreeKasaInstructionInPlace().catch((error) =>
+    console.error("[free-kasa] Nie udało się zaktualizować istniejącego panelu:", error),
   );
 
   // also apply defaults for all cached guilds (if names match)
