@@ -185,8 +185,11 @@ client.on(Events.MessageReactionRemoveAll, async (message) => {
 });
 
 client.on(Events.MessageCreate, (message) => {
-  handleNewOpinionMessage(message).catch((error) =>
-    console.error("[opinie-counter] Błąd po dodaniu opinii:", error),
+  (async () => {
+    const deleted = await moderatePublishedOpinionMessage(message);
+    if (!deleted) await handleNewOpinionMessage(message);
+  })().catch((error) =>
+    console.error("[opinie-counter] Błąd po dodaniu lub moderacji opinii:", error),
   );
 });
 
@@ -13647,7 +13650,32 @@ async function getVerifiedBuyerStatus(userId, guildId) {
 async function shouldRejectUnverifiedOpinion(userId, guildId, ratings, text) {
   if (!isSuspiciousUnverifiedOpinion(ratings, text)) return false;
   const buyerStatus = await getVerifiedBuyerStatus(userId, guildId);
-  return buyerStatus === false;
+  // Podejrzana opinia przechodzi wyłącznie po jednoznacznym potwierdzeniu zakupu.
+  // Brak wpisu lub błąd bazy nie może przepuścić fałszywej opinii.
+  return buyerStatus !== true;
+}
+
+async function moderatePublishedOpinionMessage(message) {
+  if (!isOpinionChannel(message?.channel) || !isPublishedOpinionMessage(message)) return false;
+
+  const description = String(message.embeds?.[0]?.description || "");
+  const authorMatch = description.match(/<@!?(\d+)>/);
+  const authorId = authorMatch?.[1];
+  if (!authorId) {
+    console.warn(`[opinia-filter] Nie odczytano autora opinii ${message.id}; pozostawiam wiadomość do ręcznej kontroli.`);
+    return false;
+  }
+
+  const containsOneStar = description.includes(`${OPINION_STAR}${OPINION_NO_STAR.repeat(4)}`);
+  const ratings = containsOneStar ? [1] : [5];
+  if (!isSuspiciousUnverifiedOpinion(ratings, description)) return false;
+
+  const buyerStatus = await getVerifiedBuyerStatus(authorId, message.guildId);
+  if (buyerStatus === true) return false;
+
+  await message.delete();
+  console.log(`[opinia-filter] Usunięto opublikowaną podejrzaną opinię ${message.id} użytkownika ${authorId} bez potwierdzonego zakupu.`);
+  return true;
 }
 
 function buildOpinionModal() {
