@@ -535,6 +535,11 @@ function recordDailyLegitRep(source, amountPln = 0) {
   queueDailyLegitChartPublish();
 }
 
+function isDailyLegitMoneyTransaction(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  return normalized === "zakup" || normalized === "sprzedaz" || normalized === "sprzedaż";
+}
+
 function millisecondsUntilNextWarsawDay() {
   const now = Date.now();
   const currentDateKey = getWarsawDateParts(new Date(now)).dateKey;
@@ -14379,8 +14384,10 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   await sendAnonRep(repChannel, simulatedRepText);
 
   legitRepCount++;
-  const dailyPurchaseAmount = ticketData.typ === "zakup" ? parsePLN(ticketData.co) : 0;
-  recordDailyLegitRep("anonimowy", dailyPurchaseAmount);
+  const dailyTransactionAmount = isDailyLegitMoneyTransaction(ticketData.typ)
+    ? parsePLN(ticketData.co)
+    : 0;
+  recordDailyLegitRep("anonimowy", dailyTransactionAmount);
   console.log(`[anonim] +rep wystawione przez bota, licznik: ${legitRepCount}`);
 
   scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
@@ -19318,10 +19325,10 @@ client.on(Events.MessageCreate, async (message) => {
       // Valid +rep message - increment counter + cooldown
       legitRepCount++;
       const pendingTicketData = pendingTicketEntry?.[1];
-      const dailyPurchaseAmount = pendingTicketData?.typ === "zakup"
+      const dailyTransactionAmount = isDailyLegitMoneyTransaction(pendingTicketData?.typ)
         ? parsePLN(pendingTicketData.co)
         : 0;
-      recordDailyLegitRep("wiadomość", dailyPurchaseAmount);
+      recordDailyLegitRep("wiadomość", dailyTransactionAmount);
       legitRepCooldown.set(message.author.id, now);
       console.log(`+rep otrzymany! Licznik: ${legitRepCount}`);
 
