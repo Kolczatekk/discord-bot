@@ -14431,7 +14431,7 @@ async function sendLegitCheckInfoMessage(channel) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "### `📝` × Przykład:\n" +
-      `> **+rep** <@${footerUserId}> **ZAKUP 350 PLN ANARCHIA LIFESTEAL**`,
+      `> **+rep** <@${footerUserId}> **ZAKUP 50 PLN**`,
     ),
   );
   appendBrandFooterToContainer(container, channel.guildId);
