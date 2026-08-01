@@ -14417,16 +14417,20 @@ async function sendLegitCheckInfoMessage(channel) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "```\n" +
-      "✅ New Shop × LEGIT CHECK\n" +
+      "✅ New Shop × LEGIT CHECKI\n" +
       "```",
+    ),
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "### `🗒️` × Jak napisać:\n" +
+      "> `+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]`",
     ),
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "### `🗒️` × Jak napisać:\n" +
-      "> `+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]`\n\n" +
-      "### `📝` × PRZYKŁAD:\n" +
+      "### `📝` × Przykład:\n" +
       `> **+rep** <@${footerUserId}> **ZAKUP 350 PLN ANARCHIA LIFESTEAL**\n\n` +
       `> \`📊\` **Aktualna liczba legit checków:** \`${legitRepCount}\``,
     ),
