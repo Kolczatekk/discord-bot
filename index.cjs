@@ -86,12 +86,8 @@ const BRAND_FOOTER_ICON_URL = `https://cdn.discordapp.com/emojis/${NEWSHOP_EMOJI
 const CZY_LEGIT_CHANNEL_MARKER = "czy-legit";
 const CZY_LEGIT_MESSAGE_MARKER = "LEGIT SHOP";
 const CZY_LEGIT_REACTION = "✅";
-const CZY_LEGIT_RENAME_COOLDOWN_MS = 5 * 60 * 1000;
 let czyLegitTrackedMessageId = null;
 let czyLegitTrackedChannelId = null;
-let czyLegitLastRenameAt = 0;
-let czyLegitPendingCount = null;
-let czyLegitRenameTimer = null;
 
 function getCzyLegitReactionCount(message) {
   const reaction = message?.reactions?.cache?.find(
@@ -100,41 +96,18 @@ function getCzyLegitReactionCount(message) {
   return Math.max(0, Number(reaction?.count) || 0);
 }
 
-async function renameCzyLegitChannel(channel, count, force = false) {
+async function renameCzyLegitChannel(channel, count) {
   if (!channel || typeof channel.setName !== "function") return;
 
   const safeCount = Math.max(0, Number(count) || 0);
   const desiredName = `🤔×〢czy-legit➔${safeCount}`;
-  czyLegitPendingCount = safeCount;
-
-  if (channel.name === desiredName) {
-    czyLegitPendingCount = null;
-    return;
-  }
-
-  const elapsed = Date.now() - czyLegitLastRenameAt;
-  const waitMs = force ? 0 : Math.max(0, CZY_LEGIT_RENAME_COOLDOWN_MS - elapsed);
-  if (waitMs > 0) {
-    if (!czyLegitRenameTimer) {
-      czyLegitRenameTimer = setTimeout(async () => {
-        czyLegitRenameTimer = null;
-        const newestCount = czyLegitPendingCount;
-        czyLegitPendingCount = null;
-        await renameCzyLegitChannel(channel, newestCount, true).catch((error) =>
-          console.error("[czy-legit] Nie udało się wykonać zaplanowanej zmiany nazwy:", error),
-        );
-      }, waitMs);
-    }
-    return;
-  }
+  if (channel.name === desiredName) return;
 
   await channel.setName(desiredName, `Aktualizacja reakcji ${CZY_LEGIT_REACTION}`);
-  czyLegitLastRenameAt = Date.now();
-  czyLegitPendingCount = null;
   console.log(`[czy-legit] Zmieniono nazwę kanału na ${desiredName}`);
 }
 
-async function syncCzyLegitMessage(message, forceRename = false) {
+async function syncCzyLegitMessage(message) {
   if (!message) return false;
   if (message.partial) message = await message.fetch().catch(() => null);
   if (!message) return false;
@@ -147,7 +120,7 @@ async function syncCzyLegitMessage(message, forceRename = false) {
 
   czyLegitTrackedMessageId = message.id;
   czyLegitTrackedChannelId = channel.id;
-  await renameCzyLegitChannel(channel, getCzyLegitReactionCount(message), forceRename);
+  await renameCzyLegitChannel(channel, getCzyLegitReactionCount(message));
   return true;
 }
 
@@ -179,7 +152,7 @@ async function initializeCzyLegitCounter() {
     return;
   }
 
-  await syncCzyLegitMessage(target, true);
+  await syncCzyLegitMessage(target);
   console.log(`[czy-legit] Obserwuję wiadomość ${target.id} (${getCzyLegitReactionCount(target)} reakcji).`);
 }
 
