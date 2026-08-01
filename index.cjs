@@ -321,7 +321,6 @@ let dailyLegitRecords = {};
 let dailyLegitPublishQueue = Promise.resolve();
 let dailyLegitMidnightTimer = null;
 let dailyLegitRenameTimer = null;
-let dailyLegitRecordEmoji = null;
 let lastDailyLegitChannelRename = 0;
 const DAILY_LEGIT_RENAME_COOLDOWN = 10 * 60 * 1000;
 let lastChannelRename = 0;
@@ -433,29 +432,13 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
       `> \`💰\` <a:arrowwhite:1491476759290449984> **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\``,
     ),
   );
-  if (!dailyLegitRecordEmoji && channel.guild) {
-    let emojis = channel.guild.emojis.cache;
-    if (!emojis?.size) {
-      emojis = await channel.guild.emojis.fetch().catch(() => channel.guild.emojis.cache);
-    }
-    const customTrophy = emojis?.find((emoji) =>
-      /trophy|trofeum|puchar|rekord/i.test(String(emoji.name || "")),
-    );
-    if (customTrophy) {
-      dailyLegitRecordEmoji = {
-        id: customTrophy.id,
-        name: customTrophy.name,
-        animated: customTrophy.animated,
-      };
-    }
-  }
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("daily_legit_record")
         .setLabel("︲Rekord")
-        .setEmoji(dailyLegitRecordEmoji || "🏆")
+        .setEmoji(parseButtonEmojiInput("🏆", channel.guildId))
         .setStyle(ButtonStyle.Secondary),
     ),
   );
