@@ -14427,7 +14427,6 @@ async function sendLegitCheckInfoMessage(channel) {
       "> `+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]`",
     ),
   );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "### `📝` × Przykład:\n" +
