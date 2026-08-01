@@ -13621,32 +13621,26 @@ function isSuspiciousUnverifiedOpinion(ratings, text) {
 }
 
 async function getVerifiedBuyerStatus(userId, guildId) {
-  const [purchaseResult, spentResult] = await Promise.all([
-    db.supabase
-      .from("user_purchases")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("guild_id", guildId || "default")
-      .eq("type", "zakup")
-      .limit(1),
-    db.supabase
-      .from("user_spent")
-      .select("amount")
-      .eq("user_id", userId)
-      .eq("guild_id", guildId || "default")
-      .maybeSingle(),
-  ]);
+  const purchaseResult = await db.supabase
+    .from("user_purchases")
+    .select("id, price, server, created_at")
+    .eq("user_id", userId)
+    .eq("guild_id", guildId || "default")
+    .eq("type", "zakup")
+    .limit(1);
 
-  if (Array.isArray(purchaseResult.data) && purchaseResult.data.length > 0) return true;
-  if (Number(spentResult.data?.amount || 0) > 0) return true;
-
-  if (purchaseResult.error && spentResult.error) {
-    console.error("[opinia-filter] Nie udało się sprawdzić historii zakupów:", {
-      purchases: purchaseResult.error.message,
-      spent: spentResult.error.message,
-    });
+  if (purchaseResult.error) {
+    console.error("[opinia-filter] Nie udało się sprawdzić historii zakupów:", purchaseResult.error.message);
     return null;
   }
+
+  const purchase = Array.isArray(purchaseResult.data) ? purchaseResult.data[0] : null;
+  if (purchase) {
+    console.log(`[opinia-filter] Zweryfikowany zakup użytkownika ${userId}: ${purchase.id}, ${purchase.price} PLN, ${purchase.server}.`);
+    return true;
+  }
+
+  console.log(`[opinia-filter] Brak zakończonego zakupu dla użytkownika ${userId}.`);
   return false;
 }
 
