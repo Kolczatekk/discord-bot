@@ -5317,6 +5317,9 @@ client.once(Events.ClientReady, async (c) => {
           `[ready] Znalazłem istniejącą wiadomość info-rep: ${found.id}`,
         );
       }
+      await sendLegitCheckInfoMessage(repChannel).catch((error) =>
+        console.error("[ready] Nie udało się odświeżyć panelu legit-check:", error),
+      );
     }
 
     // Try to find previously sent opinion instruction messages in cached guilds
@@ -14393,50 +14396,9 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
   scheduleSavePersistentState();
 
-  // Delete previous info message
-  const prevId = repLastInfoMessage.get(repChannel.id);
-  if (prevId) {
-    try {
-      const prevMsg = await repChannel.messages.fetch(prevId).catch(() => null);
-      if (prevMsg && prevMsg.deletable) {
-        await prevMsg.delete().catch(() => null);
-      }
-    } catch (delErr) { }
-  }
-
-  // Send new info message
-  const userID = "1305200545979437129";
-  let attachment = null;
-  let imageUrl = "https://share.creavite.co/693f180207e523c90b19fbf9.gif";
-  try {
-    const gifPath = path.join(__dirname, "attached_assets", "standard_1765794552774_1766946611654.gif");
-    attachment = new AttachmentBuilder(gifPath, { name: "legit.gif" });
-    imageUrl = "attachment://legit.gif";
-  } catch (err) {
-    attachment = null;
-  }
-
-  const infoEmbed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-      "✅ New Shop × LEGIT CHECK\n" +
-      "```\n" +
-      "- `📝` **× Jak napisać:**\n" +
-      `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]\`\n\n` +
-      `*Aktualna liczba legitcheck: **${legitRepCount}***`
-    )
-    .setImage(imageUrl);
-
-  try {
-    const sendOptions = {
-      embeds: [infoEmbed],
-      allowedMentions: { users: [userID] },
-    };
-    if (attachment) sendOptions.files = [attachment];
-    const newInfoMsg = await repChannel.send(sendOptions);
-    repLastInfoMessage.set(repChannel.id, newInfoMsg.id);
-  } catch (err) { }
+  await sendLegitCheckInfoMessage(repChannel).catch((error) =>
+    console.error("[legit-check] Błąd panelu po anonimowym checku:", error),
+  );
 
   const ticketMeta = ticketOwners.get(channel.id) || null;
   await archiveTicketOnClose(channel, executorId, ticketMeta, {
@@ -14447,6 +14409,43 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   pendingTicketClose.delete(channel.id);
   await commitRewardTicketClaim(channel.id).catch(() => null);
   ticketOwners.delete(channel.id);
+}
+
+async function sendLegitCheckInfoMessage(channel) {
+  const footerUserId = "1305200545979437129";
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent("## `✅` New Shop × LEGIT CHECK"),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "### `📝` × Jak napisać:\n" +
+      "> `+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]`\n\n" +
+      `> \`📊\` **Aktualna liczba legit checków:** \`${legitRepCount}\``,
+    ),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`-# <@${footerUserId}>`),
+  );
+
+  const previousId = repLastInfoMessage.get(channel.id);
+  const previousMessage = previousId
+    ? await channel.messages.fetch(previousId).catch(() => null)
+    : null;
+  const newInfoMessage = await channel.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { users: [footerUserId] },
+  });
+  repLastInfoMessage.set(channel.id, newInfoMessage.id);
+  scheduleSavePersistentState(true);
+
+  if (previousMessage?.deletable) {
+    await previousMessage.delete().catch(() => null);
+  }
+  return newInfoMessage;
 }
 
 // Helper to send anonymous rep using Webhooks
@@ -19399,69 +19398,9 @@ client.on(Events.MessageCreate, async (message) => {
       infoCooldowns.set(message.author.id, Date.now());
       console.log(`Wysyłam embed dla ${message.author.username}`);
 
-      // delete previous info message (if we posted one earlier in this channel) to move new one to bottom
-      const prevId = repLastInfoMessage.get(channel.id);
-      if (prevId) {
-        try {
-          const prevMsg = await channel.messages.fetch(prevId).catch(() => null);
-          if (prevMsg && prevMsg.deletable) {
-            await prevMsg.delete().catch(() => null);
-          }
-        } catch (delErr) {
-          console.warn(
-            "Nie udało się usunąć poprzedniej wiadomości info:",
-            delErr,
-          );
-        }
-      }
-
-      // ID użytkownika
-      const userID = "1305200545979437129";
-
-      let attachment = null;
-      let imageUrl = "https://share.creavite.co/693f180207e523c90b19fbf9.gif"; // fallback URL
-
-      try {
-        const gifPath = path.join(
-          __dirname,
-          "attached_assets",
-          "standard_1765794552774_1766946611654.gif",
-        );
-        attachment = new AttachmentBuilder(gifPath, { name: "legit.gif" });
-        imageUrl = "attachment://legit.gif";
-      } catch (err) {
-        console.warn(
-          "Nie udało się załadować lokalnego GIFa do legit embed:",
-          err,
-        );
-        attachment = null;
-      }
-
-      const infoEmbed = new EmbedBuilder()
-        .setColor(COLOR_BLUE) // informational embed left color -> blue (rest is blue)
-        .setDescription(
-          "```\n" +
-          "✅ New Shop × LEGIT CHECK\n" +
-          "```\n" +
-          "- `📝` **× Jak napisać:**\n" +
-          `> \`+rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]\`\n\n` +
-          `*Aktualna liczba legitcheck: **${legitRepCount}***`,
-        )
-        .setImage(imageUrl);
-
-      // Always send a new info message (after deleting the previous one) so it appears below the new +rep
-      try {
-        const sendOptions = {
-          embeds: [infoEmbed],
-          allowedMentions: { users: [userID] },
-        };
-        if (attachment) sendOptions.files = [attachment];
-
-        const sent = await channel.send(sendOptions);
-        repLastInfoMessage.set(channel.id, sent.id);
-      } catch (err) {
-        console.error("Błąd wysyłania info embed (nowy):", err);
-      }
+      await sendLegitCheckInfoMessage(channel).catch((error) =>
+        console.error("Błąd wysyłania panelu legit-check:", error),
+      );
     } catch (err) {
       console.error("Błąd wysyłania info embed na legitcheck-rep:", err);
     }
