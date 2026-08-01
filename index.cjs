@@ -437,14 +437,14 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("daily_legit_record")
-        .setLabel("︲Rekord")
-        .setEmoji(parseButtonEmojiInput("🏆︎", channel.guildId))
+        .setLabel("🏆︎︲Rekord")
         .setStyle(ButtonStyle.Secondary),
     ),
   );
   appendBrandFooterToContainer(container, channel.guildId);
 
   let chartMessage = null;
+  let oldChartMessage = null;
   if (!forceNew && dailyLegitStats.messageId) {
     chartMessage = await channel.messages.fetch(dailyLegitStats.messageId).catch(() => null);
   }
@@ -460,7 +460,7 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
       });
     } catch (error) {
       console.warn("[daily-legit] Nie udało się zmienić starego embeda na Components V2:", error);
-      await chartMessage.delete().catch(() => null);
+      oldChartMessage = chartMessage;
       chartMessage = null;
     }
   }
@@ -472,6 +472,9 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
     });
     dailyLegitStats.messageId = chartMessage.id;
     scheduleSavePersistentState(true);
+    if (oldChartMessage) {
+      await oldChartMessage.delete().catch(() => null);
+    }
   }
   console.log(`[daily-legit] Podsumowanie zaktualizowane: ${dailyLegitStats.total} legit checków`);
   scheduleDailyLegitChannelRename({ force: forceChannelRename });
