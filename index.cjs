@@ -14434,6 +14434,15 @@ async function sendLegitCheckInfoMessage(channel) {
       `> \`📊\` **Aktualna liczba legit checków:** \`${legitRepCount}\``,
     ),
   );
+  const legitGif = new AttachmentBuilder(
+    path.join(__dirname, "attached_assets", "standard_1765794552774_1766946611654.gif"),
+    { name: "legit.gif" },
+  );
+  container.addMediaGalleryComponents(
+    new MediaGalleryBuilder().addItems(
+      new MediaGalleryItemBuilder().setURL("attachment://legit.gif"),
+    ),
+  );
   appendBrandFooterToContainer(container, channel.guildId);
 
   const previousId = repLastInfoMessage.get(channel.id);
@@ -14442,6 +14451,7 @@ async function sendLegitCheckInfoMessage(channel) {
     : null;
   const newInfoMessage = await channel.send({
     components: [container],
+    files: [legitGif],
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: { parse: [] },
   });
