@@ -15074,6 +15074,10 @@ async function handleShopTotalsCommand(interaction) {
 
   try {
     const totals = await db.getShopTotals(interaction.guildId || "default");
+    const sales = await getLegitChannelSalesTotals();
+    totals.saleAmount = sales.amount;
+    totals.saleCount = sales.count;
+    totals.transactionAmount = totals.purchaseAmount + totals.saleAmount;
     const formatPln = (value) =>
       Number(value || 0).toLocaleString("pl-PL", {
         minimumFractionDigits: 2,
@@ -15101,6 +15105,42 @@ async function handleShopTotalsCommand(interaction) {
       content: "> `❌` × Nie udało się pobrać łącznych statystyk sklepu.",
     });
   }
+}
+
+async function getLegitChannelSalesTotals() {
+  const channel = await client.channels.fetch(REP_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased?.()) {
+    throw new Error(`Nie znaleziono kanału legit-check ${REP_CHANNEL_ID}.`);
+  }
+
+  let before;
+  let count = 0;
+  let amount = 0;
+
+  while (true) {
+    const options = { limit: 100 };
+    if (before) options.before = before;
+    const messages = await channel.messages.fetch(options);
+    if (!messages.size) break;
+
+    for (const message of messages.values()) {
+      const normalized = String(message.content || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      if (!/^\s*\+rep\b/i.test(normalized)) continue;
+
+      const match = normalized.match(/\bSPRZEDAZ\s+(\d+(?:[.,]\d+)?)\s*PLN\b/i);
+      if (!match) continue;
+
+      amount += Number(match[1].replace(",", ".")) || 0;
+      count += 1;
+    }
+
+    before = messages.last()?.id;
+    if (messages.size < 100 || !before) break;
+  }
+
+  return { amount, count };
 }
 
 // ----------------- /usunzakup handler -----------------
