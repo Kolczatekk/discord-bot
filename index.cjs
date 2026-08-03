@@ -15087,9 +15087,9 @@ async function handleShopTotalsCommand(interaction) {
         "💰 New Shop × WYDATKI CAŁEGO SHOPA\n" +
         "```\n" +
         `> \`💸\` × **Łącznie wydane przez klientów:** ${formatPln(totals.customerSpent)} PLN\n` +
-        `> \`🛒\` × **Zakupy:** ${totals.purchaseCount} transakcji — ${formatPln(totals.purchaseAmount)} PLN\n` +
+        `> \`🛒\` × **Zakupy:** ${formatPln(totals.purchaseAmount)} PLN\n` +
         `> \`📦\` × **Sprzedaże:** ${totals.saleCount} transakcji — ${formatPln(totals.saleAmount)} PLN\n` +
-        `> \`📊\` × **Łączny zapisany obrót:** ${totals.transactionCount} transakcji — ${formatPln(totals.transactionAmount)} PLN`,
+        `> \`📊\` × **Łączny obrót:** ${formatPln(totals.transactionAmount)} PLN`,
       )
       .setTimestamp()
       .setBrandFooter();

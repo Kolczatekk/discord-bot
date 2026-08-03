@@ -726,18 +726,15 @@ async function getShopTotals(guildId = "default") {
     fetchAllRows("user_purchases", "user_id,price,type"),
   ]);
 
-  // Reset wydatków usuwa klienta z user_spent. Pomijamy więc stare wpisy
-  // zakupowe, które pozostały w historii po resetach wykonanych przed poprawką.
-  const activeBuyerIds = new Set(
-    spentRows
-      .filter((row) => (Number(row.amount) || 0) > 0)
-      .map((row) => String(row.user_id)),
+  const customerSpent = spentRows.reduce(
+    (sum, row) => sum + (Number(row.amount) || 0),
+    0,
   );
-
   const totals = {
-    customerSpent: spentRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
-    purchaseAmount: 0,
-    purchaseCount: 0,
+    customerSpent,
+    // user_spent jest źródłem prawdy dla aktualnych zakupów. Stara historia
+    // user_purchases może zawierać wpisy sprzed resetów wydatków.
+    purchaseAmount: customerSpent,
     saleAmount: 0,
     saleCount: 0,
   };
@@ -745,18 +742,13 @@ async function getShopTotals(guildId = "default") {
   for (const row of transactionRows) {
     const amount = Math.max(0, Number(row.price) || 0);
     const type = String(row.type || "").trim().toLowerCase();
-    if (type === "zakup") {
-      if (!activeBuyerIds.has(String(row.user_id))) continue;
-      totals.purchaseAmount += amount;
-      totals.purchaseCount += 1;
-    } else if (type === "sprzedaz" || type === "sprzedaż") {
+    if (type === "sprzedaz" || type === "sprzedaż") {
       totals.saleAmount += amount;
       totals.saleCount += 1;
     }
   }
 
   totals.transactionAmount = totals.purchaseAmount + totals.saleAmount;
-  totals.transactionCount = totals.purchaseCount + totals.saleCount;
   return totals;
 }
 
