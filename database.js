@@ -672,6 +672,21 @@ async function deleteUserPurchase(purchaseId, guildId = "default") {
   return true;
 }
 
+async function deleteUserPurchases(userId, guildId = "default", type = "zakup") {
+  const { error } = await supabase
+    .from("user_purchases")
+    .delete()
+    .eq("user_id", userId)
+    .eq("guild_id", guildId)
+    .eq("type", type);
+
+  if (error) {
+    console.error("[Supabase] Błąd usuwania historii zakupów użytkownika:", error);
+    return false;
+  }
+  return true;
+}
+
 async function getUserPurchases(userId, guildId = "default") {
   const { data, error } = await supabase
     .from("user_purchases")
@@ -707,9 +722,17 @@ async function getShopTotals(guildId = "default") {
   }
 
   const [spentRows, transactionRows] = await Promise.all([
-    fetchAllRows("user_spent", "amount"),
-    fetchAllRows("user_purchases", "price,type"),
+    fetchAllRows("user_spent", "user_id,amount"),
+    fetchAllRows("user_purchases", "user_id,price,type"),
   ]);
+
+  // Reset wydatków usuwa klienta z user_spent. Pomijamy więc stare wpisy
+  // zakupowe, które pozostały w historii po resetach wykonanych przed poprawką.
+  const activeBuyerIds = new Set(
+    spentRows
+      .filter((row) => (Number(row.amount) || 0) > 0)
+      .map((row) => String(row.user_id)),
+  );
 
   const totals = {
     customerSpent: spentRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
@@ -723,6 +746,7 @@ async function getShopTotals(guildId = "default") {
     const amount = Math.max(0, Number(row.price) || 0);
     const type = String(row.type || "").trim().toLowerCase();
     if (type === "zakup") {
+      if (!activeBuyerIds.has(String(row.user_id))) continue;
       totals.purchaseAmount += amount;
       totals.purchaseCount += 1;
     } else if (type === "sprzedaz" || type === "sprzedaż") {
@@ -773,6 +797,7 @@ module.exports = {
   addUserPurchase,
   getUserPurchases,
   deleteUserPurchase,
+  deleteUserPurchases,
   getShopTotals,
   supabase
 };

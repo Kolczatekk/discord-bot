@@ -15368,7 +15368,13 @@ async function handleWydaneStatsCommand(interaction) {
       await interaction.editReply({ embeds: [embed] });
       
     } else if (subcommand === "usun") {
-      await db.deleteUserSpent(targetUser.id, guildId);
+      const [spentDeleted, purchasesDeleted] = await Promise.all([
+        db.deleteUserSpent(targetUser.id, guildId),
+        db.deleteUserPurchases(targetUser.id, guildId, "zakup"),
+      ]);
+      if (!spentDeleted || !purchasesDeleted) {
+        throw new Error("Nie udało się całkowicie usunąć wydatków i historii zakupów.");
+      }
       await syncUserSpentRoles(interaction.guild, targetUser.id).catch(() => null);
       
       const embed = new EmbedBuilder()
