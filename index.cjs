@@ -26,6 +26,7 @@ const {
   ButtonStyle,
   AttachmentBuilder,
   MessageFlags,
+  AuditLogEvent,
 } = require("discord.js");
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
@@ -67,6 +68,7 @@ const client = new Client({
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildModeration,
   ],
   partials: [
     Partials.Channel,
@@ -369,6 +371,25 @@ const contestLeaveBlocks = new Map(); // userId -> { messageId: { leaveCount: nu
 // --- LEGITCHECK-REP info behavior --------------------------------------------------
 // channel ID where users post freeform reps and the bot should post the informational embed
 const REP_CHANNEL_ID = "1449840030947217529";
+const antiNukeWindows = new Map();
+const antiNukeCooldowns = new Map();
+const ANTI_NUKE_RULES = new Map([
+  [AuditLogEvent.MemberKick, { label: "wyrzucenia użytkowników", limit: 5, windowMs: 60_000 }],
+  [AuditLogEvent.MemberBanAdd, { label: "banowania użytkowników", limit: 5, windowMs: 60_000 }],
+  [AuditLogEvent.ChannelDelete, { label: "usuwania kanałów", limit: 3, windowMs: 60_000 }],
+  [AuditLogEvent.RoleDelete, { label: "usuwania ról", limit: 3, windowMs: 60_000 }],
+  [AuditLogEvent.WebhookCreate, { label: "tworzenia webhooków", limit: 4, windowMs: 60_000 }],
+  [AuditLogEvent.WebhookDelete, { label: "usuwania webhooków", limit: 4, windowMs: 60_000 }],
+]);
+const ANTI_NUKE_DANGEROUS_PERMISSIONS = [
+  PermissionsBitField.Flags.Administrator,
+  PermissionsBitField.Flags.BanMembers,
+  PermissionsBitField.Flags.KickMembers,
+  PermissionsBitField.Flags.ManageChannels,
+  PermissionsBitField.Flags.ManageRoles,
+  PermissionsBitField.Flags.ManageWebhooks,
+  PermissionsBitField.Flags.ManageGuild,
+];
 const legitRepMessageIds = new Set();
 let legitRepHistoryInitialized = false;
 const LEGIT_REP_PING_DELETE_DELAY_MS = 4_000;
@@ -1441,6 +1462,81 @@ client.on("inviteDelete", (invite) => {
     }
   } catch (e) {
     console.warn("inviteDelete handler error:", e);
+  }
+});
+
+async function sendAntiNukeAlert(guild, executorId, rule, count, removedRoles, failedRoles) {
+  const description = [
+    "🚨 **ANTY-NUKE ZAREAGOWAŁ**",
+    `> **Sprawca:** <@${executorId}> (\`${executorId}\`)`,
+    `> **Wykryto:** ${rule.label}`,
+    `> **Liczba:** ${count}/${rule.limit} w ${Math.round(rule.windowMs / 1000)} sekund`,
+    `> **Odebrane niebezpieczne role:** ${removedRoles.length ? removedRoles.map((id) => `<@&${id}>`).join(", ") : "brak"}`,
+  ];
+  if (failedRoles.length) {
+    description.push(`> **Nie udało się odebrać:** ${failedRoles.map((id) => `<@&${id}>`).join(", ")}`);
+  }
+
+  const alert = {
+    embeds: [new EmbedBuilder().setColor(COLOR_RED).setDescription(description.join("\n")).setTimestamp()],
+  };
+  const logChannel = guild.channels.cache.find((channel) => {
+    const name = String(channel.name || "").toLowerCase();
+    return channel.isTextBased?.() && (name.includes("logi-bota") || name.includes("logi-antynuke"));
+  });
+  if (logChannel) await logChannel.send(alert).catch(() => null);
+
+  const owner = await guild.fetchOwner().catch(() => null);
+  if (owner) {
+    await owner.send({ content: `Alarm anty-nuke na serwerze **${guild.name}**`, ...alert }).catch(() => null);
+  }
+}
+
+client.on(Events.GuildAuditLogEntryCreate, async (entry, guild) => {
+  try {
+    const rule = ANTI_NUKE_RULES.get(entry.action);
+    const executorId = entry.executorId;
+    if (!rule || !executorId) return;
+
+    // Właściciel serwera i sam bot nigdy nie podlegają anty-nuke.
+    if (executorId === guild.ownerId || executorId === client.user?.id) return;
+
+    const now = Date.now();
+    const key = `${guild.id}:${executorId}:${entry.action}`;
+    const recent = (antiNukeWindows.get(key) || []).filter((timestamp) => now - timestamp < rule.windowMs);
+    recent.push(now);
+    antiNukeWindows.set(key, recent);
+    if (recent.length < rule.limit) return;
+
+    const cooldownKey = `${guild.id}:${executorId}`;
+    if (now - (antiNukeCooldowns.get(cooldownKey) || 0) < 5 * 60_000) return;
+    antiNukeCooldowns.set(cooldownKey, now);
+
+    const member = await guild.members.fetch(executorId).catch(() => null);
+    const dangerousRoles = member
+      ? member.roles.cache.filter((role) =>
+          role.id !== guild.id &&
+          !role.managed &&
+          role.editable &&
+          ANTI_NUKE_DANGEROUS_PERMISSIONS.some((permission) => role.permissions.has(permission)),
+        )
+      : null;
+    const roleIds = dangerousRoles ? [...dangerousRoles.keys()] : [];
+    const removedRoles = [];
+    const failedRoles = [];
+
+    for (const roleId of roleIds) {
+      const removed = await member.roles
+        .remove(roleId, `Anty-nuke: ${rule.label}`)
+        .then(() => true)
+        .catch(() => false);
+      (removed ? removedRoles : failedRoles).push(roleId);
+    }
+
+    await sendAntiNukeAlert(guild, executorId, rule, recent.length, removedRoles, failedRoles);
+    console.warn(`[anti-nuke] ${guild.id}: ${executorId}, ${rule.label}, ${recent.length}/${rule.limit}`);
+  } catch (error) {
+    console.error("[anti-nuke] Błąd obsługi wpisu audytu:", error);
   }
 });
 // Invite rate-limit settings (zapobiega nadużyciom liczenia zaproszeń)
@@ -5549,6 +5645,22 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[READY] Bot zalogowany jako ${c.user.tag}`);
   console.log(`[READY] Bot jest na ${c.guilds.cache.size} serwerach`);
   console.log(`[READY] Bot jest online i gotowy do pracy!`);
+
+  for (const guild of c.guilds.cache.values()) {
+    const botMember = guild.members.me;
+    const missing = [];
+    if (!botMember?.permissions.has(PermissionsBitField.Flags.ViewAuditLog)) missing.push("Wyświetlanie dziennika audytu");
+    if (!botMember?.permissions.has(PermissionsBitField.Flags.ManageRoles)) missing.push("Zarządzanie rolami");
+    if (missing.length) {
+      console.error(`[anti-nuke] Brak uprawnień na ${guild.name}: ${missing.join(", ")}`);
+      const owner = await guild.fetchOwner().catch(() => null);
+      if (owner) {
+        await owner.send(
+          `⚠️ Anty-nuke na serwerze **${guild.name}** nie ma wymaganych uprawnień bota: ${missing.join(", ")}.`,
+        ).catch(() => null);
+      }
+    }
+  }
 
   await persistentStateReady;
 
@@ -19584,9 +19696,10 @@ client.on(Events.MessageCreate, async (message) => {
   // ANTI-DISCORD-INVITE: delete invite links and timeout user for 30 minutes
   try {
     const content = message.content || "";
+    const isGuildOwner = Boolean(message.guild && message.author.id === message.guild.ownerId);
     const inviteRegex =
       /(https?:\/\/)?(www\.)?(discord\.gg|discord(?:app)?\.com\/invite)\/[^\s/]+/i;
-    if (inviteRegex.test(content)) {
+    if (!isGuildOwner && inviteRegex.test(content)) {
       // delete message first
       try {
         await message.delete().catch(() => null);
@@ -19661,11 +19774,12 @@ client.on(Events.MessageCreate, async (message) => {
   // ANTI-MASS-PING: delete message and timeout user for 1 hour if 5+ pings in one message
   try {
     const content = message.content || "";
+    const isGuildOwner = Boolean(message.guild && message.author.id === message.guild.ownerId);
     // Catch all types of mentions: @user, @!user, @here, @everyone, and role mentions
     const mentionRegex = /<@!?(\d+)>|@here|@everyone|<@&(\d+)>/g;
     const mentions = content.match(mentionRegex) || [];
 
-    if (mentions.length >= 5) {
+    if (!isGuildOwner && mentions.length >= 5) {
       // delete message first
       try {
         await message.delete();
