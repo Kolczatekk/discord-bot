@@ -687,6 +687,55 @@ async function getUserPurchases(userId, guildId = "default") {
   return data || [];
 }
 
+async function getShopTotals(guildId = "default") {
+  const pageSize = 1000;
+
+  async function fetchAllRows(table, columns) {
+    const rows = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(columns)
+        .eq("guild_id", guildId)
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
+  }
+
+  const [spentRows, transactionRows] = await Promise.all([
+    fetchAllRows("user_spent", "amount"),
+    fetchAllRows("user_purchases", "price,type"),
+  ]);
+
+  const totals = {
+    customerSpent: spentRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+    purchaseAmount: 0,
+    purchaseCount: 0,
+    saleAmount: 0,
+    saleCount: 0,
+  };
+
+  for (const row of transactionRows) {
+    const amount = Math.max(0, Number(row.price) || 0);
+    const type = String(row.type || "").trim().toLowerCase();
+    if (type === "zakup") {
+      totals.purchaseAmount += amount;
+      totals.purchaseCount += 1;
+    } else if (type === "sprzedaz" || type === "sprzedaż") {
+      totals.saleAmount += amount;
+      totals.saleCount += 1;
+    }
+  }
+
+  totals.transactionAmount = totals.purchaseAmount + totals.saleAmount;
+  totals.transactionCount = totals.purchaseCount + totals.saleCount;
+  return totals;
+}
+
 module.exports = {
   saveWeeklySale,
   getWeeklySales,
@@ -724,5 +773,6 @@ module.exports = {
   addUserPurchase,
   getUserPurchases,
   deleteUserPurchase,
+  getShopTotals,
   supabase
 };

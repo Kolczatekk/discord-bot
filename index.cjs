@@ -4082,6 +4082,11 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("wydatkishop")
+    .setDescription("Pokaż łączne wydatki i obrót całego sklepu (tylko właściciel)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("wydanestats")
     .setDescription("Zarządzaj wydaną kwotą graczy (Tylko Administrator/Sprzedawca)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -4294,7 +4299,18 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zamknij")
     .setDescription("Zamknij ticket")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("dodaj")
+    .setDescription("Dodaj osobę do bieżącego ticketu")
+    .setDefaultMemberPermissions(null)
+    .addUserOption((option) =>
+      option
+        .setName("osoba")
+        .setDescription("Osoba, która ma otrzymać dostęp do ticketu")
+        .setRequired(true),
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("panelweryfikacja")
@@ -7875,6 +7891,9 @@ async function handleSlashCommand(interaction) {
     case "topwydane":
       await handleTopWydaneCommand(interaction);
       break;
+    case "wydatkishop":
+      await handleShopTotalsCommand(interaction);
+      break;
     case "wydanestats":
       await handleWydaneStatsCommand(interaction);
       break;
@@ -7898,6 +7917,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "zamknij":
       await handleCloseTicketCommand(interaction);
+      break;
+    case "dodaj":
+      await handleAddUserToTicketCommand(interaction);
       break;
     case "panelweryfikacja":
       await handlePanelWeryfikacjaCommand(interaction);
@@ -14407,6 +14429,73 @@ async function handleCloseTicketCommand(interaction) {
   }
 }
 
+async function handleAddUserToTicketCommand(interaction) {
+  const isOwner = interaction.user.id === interaction.guild.ownerId;
+  const hasSellerRole = interaction.member?.roles?.cache?.has(BASE_SELLER_ROLE_ID);
+
+  if (!isOwner && !hasSellerRole) {
+    await interaction.reply({
+      content: "> `❗` × Tylko właściciel lub sprzedawca może użyć tej komendy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const channel = interaction.channel;
+  if (!isTicketChannel(channel)) {
+    await interaction.reply({
+      content: "> `❌` × Ta komenda działa jedynie na ticketach!",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetUser = interaction.options.getUser("osoba", true);
+  if (targetUser.bot) {
+    await interaction.reply({
+      content: "> `❌` × Nie można dodać bota jako uczestnika ticketu.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const ticketData = ticketOwners.get(channel.id) || null;
+
+  try {
+    await channel.permissionOverwrites.edit(targetUser.id, {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true,
+    });
+
+    await sendTicketLogEntry(interaction.guild, {
+      title: "Dodano użytkownika do ticketu",
+      icon: "👥",
+      color: COLOR_BLUE,
+      summary: "Do ticketu został dodany dodatkowy użytkownik komendą /dodaj.",
+      ticketChannel: channel,
+      ownerId: ticketData?.userId || null,
+      actorId: interaction.user.id,
+      claimedById: ticketData?.claimedBy || null,
+      ticketMeta: ticketData,
+      statusLabel: ticketData?.claimedBy ? "PRZEJĘTY" : "OTWARTY",
+      detailLines: [`Dodano użytkownika: <@${targetUser.id}>`],
+    }).catch((error) => console.error("ticket /dodaj log error:", error));
+
+    await interaction.reply({
+      content: `> \`✅\` × Dodano <@${targetUser.id}> do ticketu.`,
+      allowedMentions: { users: [] },
+      flags: [MessageFlags.Ephemeral],
+    });
+  } catch (error) {
+    console.error("Błąd komendy /dodaj:", error);
+    await interaction.reply({
+      content: "> `❌` × Nie udało się dodać użytkownika do ticketu.",
+      flags: [MessageFlags.Ephemeral],
+    });
+  }
+}
+
 // ----------------- /ticket-zakoncz handler -----------------
 async function handleTicketZakonczCommand(interaction) {
   // Sprawdź czy właściciel lub sprzedawca
@@ -14458,14 +14547,22 @@ async function handleTicketZakonczCommand(interaction) {
         console.error("Error automatically adding user spent on ticket-zakoncz:", err)
       );
       // Zapisz transakcję do historii zakupów
-      await db.addUserPurchase(ticketOwnerId, amount, serwer || "Brak", typ, interaction.guildId || "default").catch((err) =>
-        console.error("Error saving purchase to history:", err)
-      );
       // Synchronizacja ról zakupowych klienta
       await syncUserSpentRoles(interaction.guild, ticketOwnerId).catch((err) =>
         console.error("Error syncing roles on ticket-zakoncz:", err)
       );
     }
+  }
+
+  // Zachowaj w historii obrotu zarówno zakupy, jak i sprzedaże.
+  if (typ === "zakup" || typ === "sprzedaż" || typ === "sprzedaz") {
+    await db.addUserPurchase(
+      ticketOwnerId,
+      cena,
+      serwer || "Brak",
+      typ,
+      interaction.guildId || "default",
+    ).catch((err) => console.error("Error saving shop transaction history:", err));
   }
 
   const legitRepChannelId = "1449840030947217529";
@@ -14961,6 +15058,48 @@ async function handleTopWydaneCommand(interaction) {
   } catch (err) {
     console.error("Błąd w komendzie /topwydane:", err);
     await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas pobierania danych o top spenders." });
+  }
+}
+
+async function handleShopTotalsCommand(interaction) {
+  if (interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({
+      content: "> `❗` × Tylko właściciel serwera może użyć tej komendy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    const totals = await db.getShopTotals(interaction.guildId || "default");
+    const formatPln = (value) =>
+      Number(value || 0).toLocaleString("pl-PL", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+        "💰 New Shop × WYDATKI CAŁEGO SHOPA\n" +
+        "```\n" +
+        `> \`💸\` × **Łącznie wydane przez klientów:** ${formatPln(totals.customerSpent)} PLN\n` +
+        `> \`🛒\` × **Zakupy:** ${totals.purchaseCount} transakcji — ${formatPln(totals.purchaseAmount)} PLN\n` +
+        `> \`📦\` × **Sprzedaże:** ${totals.saleCount} transakcji — ${formatPln(totals.saleAmount)} PLN\n` +
+        `> \`📊\` × **Łączny zapisany obrót:** ${totals.transactionCount} transakcji — ${formatPln(totals.transactionAmount)} PLN`,
+      )
+      .setTimestamp()
+      .setBrandFooter();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error("Błąd komendy /wydatkishop:", error);
+    await interaction.editReply({
+      content: "> `❌` × Nie udało się pobrać łącznych statystyk sklepu.",
+    });
   }
 }
 
