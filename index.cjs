@@ -14256,7 +14256,7 @@ function buildPanelKlientaPayload(guildId) {
         description: "Wyświetla aktywne kody przypisane do Twojego konta",
         emoji: codesEmoji
           ? { id: codesEmoji.id, name: codesEmoji.name, animated: codesEmoji.animated }
-          : "🔑"
+          : "🎁"
       }
     );
 
@@ -14443,9 +14443,10 @@ async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           "```\n" +
-          "🔑 New Shop × AKTYWNE KODY\n" +
+          "🎁 New Shop × AKTYWNE KODY\n" +
           "```\n" +
-          "> `❌` × Nie masz żadnych aktywnych kodów przypisanych do swojego konta."
+          "> <a:arrowwhite:1491476759290449984> × Aktualnie __nie posiadasz__ **żadnych aktywnych kodów**.\n" +
+          "> <a:arrowwhite:1491476759290449984> × Zdobyć je możesz __na kanale__ **#free-kasa** lub **#nagrody**."
         )
       );
       appendBrandFooterToContainer(container, guild.id);
@@ -14470,7 +14471,7 @@ async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
     container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           "```\n" +
-          "🔑 New Shop × AKTYWNE KODY\n" +
+          "🎁 New Shop × AKTYWNE KODY\n" +
           "```",
       ),
     );
@@ -14480,7 +14481,7 @@ async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `> \`🔑\` × **Kod:** \`${code}\`\n` +
+          `> \`🎁\` × **Kod:** \`${code}\`\n` +
           `> \`🏷️\` × **Rodzaj:** ${getClientCodeType(codeData)}\n` +
           `> \`🎁\` × **Nagroda:** __**${getClientCodeReward(codeData)}**__\n` +
           `> \`🕒\` × **Wygasa:** <t:${expiryTimestamp}:R>`
