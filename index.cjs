@@ -6946,10 +6946,10 @@ async function handleButtonInteraction(interaction) {
     return;
   }
 
-  const clientPanelHistoryMatch = customId.match(/^panel_klienta_history_(\d+)$/);
-  if (clientPanelHistoryMatch) {
-    const pageIndex = Number(clientPanelHistoryMatch[1]);
-    await handlePanelKlientaHistory(interaction, pageIndex);
+  const clientPanelCodesMatch = customId.match(/^panel_klienta_(?:codes|history)_(\d+)$/);
+  if (clientPanelCodesMatch) {
+    const pageIndex = Number(clientPanelCodesMatch[1]);
+    await handlePanelKlientaActiveCodes(interaction, pageIndex);
     return;
   }
 
@@ -14225,7 +14225,7 @@ async function handlePanelKlientaCommand(interaction) {
 
 function buildPanelKlientaPayload(guildId) {
   const spentEmoji = findGuildEmojiByName(guildId, "kasa_3");
-  const historyEmoji = findGuildEmojiByName(guildId, "shop");
+  const codesEmoji = findGuildEmojiByName(guildId, "shop");
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -14251,12 +14251,12 @@ function buildPanelKlientaPayload(guildId) {
           : "💵"
       },
       {
-        label: toPanelFont("Historia zakupów"),
-        value: "panel_klienta_history",
-        description: "Wyświetla listę Twoich zakupów",
-        emoji: historyEmoji
-          ? { id: historyEmoji.id, name: historyEmoji.name, animated: historyEmoji.animated }
-          : "🛍️"
+        label: toPanelFont("Sprawdź aktywne kody"),
+        value: "panel_klienta_codes",
+        description: "Wyświetla aktywne kody przypisane do Twojego konta",
+        emoji: codesEmoji
+          ? { id: codesEmoji.id, name: codesEmoji.name, animated: codesEmoji.animated }
+          : "🔑"
       }
     );
 
@@ -14348,8 +14348,77 @@ async function handlePanelKlientaSpent(interaction) {
   }
 }
 
-async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
-  const isUpdate = interaction.customId.startsWith("panel_klienta_history_");
+function getClientCodeType(codeData) {
+  if (codeData.type === "invite_cash" || codeData.type === "invite_reward") {
+    return "Nagroda za zaproszenia";
+  }
+  if (codeData.type === "free_kasa_reward") {
+    return Number(codeData.rewardAmount || 0) > 0
+      ? "Nagroda pieniężna"
+      : "Nagroda z Free Kasa";
+  }
+  if (codeData.type === "discount" || Number(codeData.discount || 0) > 0) {
+    return "Kod zniżkowy";
+  }
+  return "Kod nagrody";
+}
+
+function getClientCodeReward(codeData) {
+  if (codeData.rewardText) return String(codeData.rewardText);
+  if (codeData.reward) return String(codeData.reward);
+
+  const discount = Number(codeData.discount || 0);
+  if (discount > 0) return `-${discount}% na zakupy w sklepie`;
+
+  const rewardAmount = Number(codeData.rewardAmount || 0);
+  if (rewardAmount > 0) {
+    return `${rewardAmount.toLocaleString("pl-PL")}$ na anarchia.gg`;
+  }
+
+  return "Nagroda do odebrania";
+}
+
+async function getClientActiveCodes(userId) {
+  const databaseCodes = await db.getActiveCodes().catch((error) => {
+    console.error("Błąd odświeżania aktywnych kodów panelu klienta:", error);
+    return [];
+  });
+
+  for (const storedCodeData of databaseCodes) {
+    const normalizedCode = normalizeCodeInput(storedCodeData?.code);
+    if (!normalizedCode) continue;
+
+    const cached = activeCodes.get(normalizedCode) || {};
+    activeCodes.set(normalizedCode, {
+      ...cached,
+      oderId: storedCodeData.user_id || cached.oderId,
+      discount: Number(storedCodeData.discount || cached.discount || 0),
+      expiresAt: storedCodeData.expires_at
+        ? new Date(storedCodeData.expires_at).getTime()
+        : Number(cached.expiresAt || 0),
+      used: !!storedCodeData.used,
+      reward: storedCodeData.reward || cached.reward,
+      rewardAmount: Number(storedCodeData.reward_amount || cached.rewardAmount || 0),
+      rewardText: storedCodeData.reward_text || cached.rewardText,
+      type: storedCodeData.type || cached.type,
+    });
+  }
+
+  const now = Date.now();
+  return Array.from(activeCodes.entries())
+    .filter(([, codeData]) =>
+      String(codeData?.oderId || "") === String(userId) &&
+      !codeData?.used &&
+      Number(codeData?.expiresAt || 0) > now
+    )
+    .sort(([, first], [, second]) =>
+      Number(first.expiresAt || 0) - Number(second.expiresAt || 0)
+    );
+}
+
+async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
+  const isUpdate = interaction.customId.startsWith("panel_klienta_codes_") ||
+    interaction.customId.startsWith("panel_klienta_history_");
   if (isUpdate) {
     await interaction.deferUpdate();
   } else {
@@ -14367,16 +14436,16 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
       return;
     }
 
-    const purchases = await db.getUserPurchases(userId, guild.id);
+    const userCodes = await getClientActiveCodes(userId);
 
-    if (!purchases || purchases.length === 0) {
+    if (userCodes.length === 0) {
       const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           "```\n" +
-          "📄 New Shop × HISTORIA ZAKUPÓW\n" +
+          "🔑 New Shop × AKTYWNE KODY\n" +
           "```\n" +
-          "> `❌` × Nie dokonałeś jeszcze żadnego zakupu w naszym sklepie."
+          "> `❌` × Nie masz żadnych aktywnych kodów przypisanych do swojego konta."
         )
       );
       appendBrandFooterToContainer(container, guild.id);
@@ -14390,53 +14459,50 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
     }
 
     const itemsPerPage = 5;
-    const totalPages = Math.ceil(purchases.length / itemsPerPage);
+    const totalPages = Math.ceil(userCodes.length / itemsPerPage);
     const safePageIndex = Math.max(0, Math.min(pageIndex, totalPages - 1));
 
     const start = safePageIndex * itemsPerPage;
-    const end = Math.min(start + itemsPerPage, purchases.length);
-    const pagePurchases = purchases.slice(start, end);
-
-    const purchaseLines = [];
-
-    for (const p of pagePurchases) {
-      const timestamp = Math.floor(new Date(p.created_at).getTime() / 1000);
-      purchaseLines.push(
-        replaceNamedGuildEmojis(
-          `> \`🗓️\` **Data:** <t:${timestamp}:d> • \`🕒\` **Godzina:** <t:${timestamp}:t> • :kasa_3: **Kwota:** __**${p.price} PLN**__`,
-          guild.id,
-        ),
-      );
-    }
+    const end = Math.min(start + itemsPerPage, userCodes.length);
+    const pageCodes = userCodes.slice(start, end);
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "```\n" +
-        "📄 New Shop × HISTORIA ZAKUPÓW\n" +
-        "```",
+        new TextDisplayBuilder().setContent(
+          "```\n" +
+          "🔑 New Shop × AKTYWNE KODY\n" +
+          "```",
       ),
     );
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(purchaseLines.join("\n")),
-    );
+
+    for (const [code, codeData] of pageCodes) {
+      const expiryTimestamp = Math.floor(Number(codeData.expiresAt) / 1000);
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `> \`🔑\` × **Kod:** \`${code}\`\n` +
+          `> \`🏷️\` × **Rodzaj:** ${getClientCodeType(codeData)}\n` +
+          `> \`🎁\` × **Nagroda:** __**${getClientCodeReward(codeData)}**__\n` +
+          `> \`🕒\` × **Wygasa:** <t:${expiryTimestamp}:R>`
+        )
+      );
+    }
 
     if (totalPages > 1) {
       container.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`panel_klienta_history_${safePageIndex - 1}`)
+            .setCustomId(`panel_klienta_codes_${safePageIndex - 1}`)
             .setStyle(ButtonStyle.Secondary)
             .setLabel("<")
             .setDisabled(safePageIndex === 0),
           new ButtonBuilder()
-            .setCustomId(`panel_klienta_history_info`)
+            .setCustomId(`panel_klienta_codes_info`)
             .setStyle(ButtonStyle.Secondary)
             .setLabel(`${safePageIndex + 1}/${totalPages}`)
             .setDisabled(true),
           new ButtonBuilder()
-            .setCustomId(`panel_klienta_history_${safePageIndex + 1}`)
+            .setCustomId(`panel_klienta_codes_${safePageIndex + 1}`)
             .setStyle(ButtonStyle.Secondary)
             .setLabel(">")
             .setDisabled(safePageIndex === totalPages - 1)
@@ -14453,8 +14519,8 @@ async function handlePanelKlientaHistory(interaction, pageIndex = 0) {
 
     await interaction.editReply(payload);
   } catch (err) {
-    console.error("Błąd w handlePanelKlientaHistory:", err);
-    const errPayload = { content: "> `❌` Wystąpił błąd podczas pobierania historii.", flags: [MessageFlags.Ephemeral] };
+    console.error("Błąd w handlePanelKlientaActiveCodes:", err);
+    const errPayload = { content: "> `❌` Wystąpił błąd podczas pobierania aktywnych kodów.", flags: [MessageFlags.Ephemeral] };
     if (isUpdate) await interaction.followUp(errPayload);
     else await interaction.editReply(errPayload);
   }
@@ -16307,8 +16373,8 @@ async function handleSelectMenu(interaction) {
     const selectedValue = interaction.values[0];
     if (selectedValue === "panel_klienta_spent") {
       await handlePanelKlientaSpent(interaction);
-    } else if (selectedValue === "panel_klienta_history") {
-      await handlePanelKlientaHistory(interaction, 0);
+    } else if (selectedValue === "panel_klienta_codes" || selectedValue === "panel_klienta_history") {
+      await handlePanelKlientaActiveCodes(interaction, 0);
     }
     return;
   }
