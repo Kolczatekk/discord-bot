@@ -893,6 +893,7 @@ async function handleDeletedOpinionMessage(message) {
 // FREE KASA cooldown (12h) and allowed channel
 const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FREE_KASA_CHANNEL_ID = "1470103962245005454";
+const REWARDS_CHANNEL_ID = "1449159372293935104";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
 const FREE_KASA_CASH_CLAIM_THRESHOLD = 50_000;
@@ -14446,7 +14447,7 @@ async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
           "🎁 New Shop × AKTYWNE KODY\n" +
           "```\n" +
           "> <a:arrowwhite:1491476759290449984> × Aktualnie __nie posiadasz__ **żadnych aktywnych kodów**.\n" +
-          "> <a:arrowwhite:1491476759290449984> × Zdobyć je możesz __na kanale__ **#free-kasa** lub **#nagrody**."
+          `> <a:arrowwhite:1491476759290449984> × Zdobyć je możesz __na kanale__ <#${FREE_KASA_CHANNEL_ID}> lub <#${REWARDS_CHANNEL_ID}>.`
         )
       );
       appendBrandFooterToContainer(container, guild.id);
