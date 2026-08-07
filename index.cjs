@@ -1995,7 +1995,7 @@ function buildPersistentStateData() {
       minestarLfBulkRate: MINESTAR_LF_BULK_RATE,
       minestarLfBulkThresholdPln: MINESTAR_LF_BULK_THRESHOLD_PLN,
       donutSmpRate: DONUT_SMP_RATE,
-      rapyBoxpvpRate: RAPY_BOXPVP_RATE,
+      minestarSkypvpRate: MINESTAR_SKY_RATE,
     },
   };
 
@@ -3878,7 +3878,8 @@ async function loadPersistentState() {
         if (typeof rates.minestarLfBulkRate === "number") MINESTAR_LF_BULK_RATE = rates.minestarLfBulkRate;
         if (typeof rates.minestarLfBulkThresholdPln === "number") MINESTAR_LF_BULK_THRESHOLD_PLN = rates.minestarLfBulkThresholdPln;
         if (typeof rates.donutSmpRate === "number") DONUT_SMP_RATE = rates.donutSmpRate;
-        if (typeof rates.rapyBoxpvpRate === "number") RAPY_BOXPVP_RATE = rates.rapyBoxpvpRate;
+        if (typeof rates.minestarSkypvpRate === "number") MINESTAR_SKY_RATE = rates.minestarSkypvpRate;
+        if (typeof rates.minestarSkyRate === "number") MINESTAR_SKY_RATE = rates.minestarSkyRate;
         console.log("[state] Wczytano calculatorRates");
       }
 
@@ -4091,7 +4092,7 @@ const commands = [
           { name: "MineStar LF - Hurtowa (>=50zł)", value: "minestar_lf_bulk" },
           { name: "MineStar LF - Próg (zł)", value: "minestar_lf_threshold" },
           { name: "Donut SMP", value: "donut_smp" },
-          { name: "Rapy BoxPvP", value: "rapy_boxpvp" }
+          { name: "MineStar SkyPvP", value: "minestar_skypvp" }
         )
     )
     .addIntegerOption((option) =>
@@ -4158,7 +4159,7 @@ const commands = [
           { name: "ANARCHIA BOXPVP", value: "ANARCHIA BOXPVP" },
           { name: "MINESTAR LIFESTEAL", value: "MINESTAR LIFESTEAL" },
           { name: "DONUT SMP", value: "DONUT SMP" },
-          { name: "RAPY BOXPVP", value: "RAPY BOXPVP" }
+          { name: "MINESTAR SKYPVP", value: "MINESTAR SKYPVP" }
         )
     )
     .toJSON(),
@@ -5264,7 +5265,7 @@ let MINESTAR_LF_RATE = 300;
 let MINESTAR_LF_BULK_RATE = 400;
 let MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
 let DONUT_SMP_RATE = 5_500_000;
-let RAPY_BOXPVP_RATE = 10000;
+let MINESTAR_SKY_RATE = 10000;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) >= ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -5295,7 +5296,7 @@ function getMinestarLfRateForWaluta(waluta, methodRaw) {
 function getRateForPlnAmount(pln, serverRaw) {
   const server = (serverRaw || "").toString().trim().toUpperCase().replace(/\s+/g, "_");
 
-  if (server === "RAPY_BOXPVP" || server === "RAPYBOXPVP") return RAPY_BOXPVP_RATE;
+  if (server === "MINESTAR_SKY" || server === "MINESTAR_SKYPVP" || server === "MINESTAR_SKY_PVP") return MINESTAR_SKY_RATE;
   if (server === "ANARCHIA_BOXPVP") return ANARCHIA_BOXPVP_RATE;
   if (server === "ANARCHIA_LIFESTEAL" || server === "ANARCHIA_LF") return getAnarchiaLifestealRateForPln(pln);
   if (server === "MINESTAR_LF" || server === "MINESTAR_LIFESTEAL") return Number(pln) >= MINESTAR_LF_BULK_THRESHOLD_PLN ? MINESTAR_LF_BULK_RATE : MINESTAR_LF_RATE;
@@ -6867,8 +6868,8 @@ async function detectServerFromContext(interaction) {
 
   const normalized = textToSearch.toLowerCase();
 
-  if (normalized.includes("rapy")) {
-    return { testValue: "rapy_boxpvp", calcValue: "RAPY_BOXPVP" };
+  if (normalized.includes("skypvp") || normalized.includes("minestar-sky") || normalized.includes("minestarsky")) {
+    return { testValue: "minestar_skypvp", calcValue: "MINESTAR_SKY" };
   }
   if (normalized.includes("minestar")) {
     return { testValue: "minestar_lf", calcValue: "MINESTAR_LF" };
@@ -9005,8 +9006,8 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
 
   const server = (tryb || "").toString().toUpperCase();
   let rate;
-  if (server === "RAPY_BOXPVP") {
-    rate = RAPY_BOXPVP_RATE;
+  if (server === "MINESTAR_SKY" || server === "MINESTAR_SKYPVP") {
+    rate = MINESTAR_SKY_RATE;
   } else if (server === "ANARCHIA_BOXPVP") {
     rate = ANARCHIA_BOXPVP_RATE;
   } else if (server === "ANARCHIA_LIFESTEAL") {
@@ -13361,12 +13362,12 @@ const SHOP_SERVER_OPTION_DEFS = [
     emoji: { id: "1489578418432381059", name: "donutsmp" },
   },
   {
-    label: "Rapy BoxPvP",
-    testValue: "rapy_boxpvp",
-    calcValue: "RAPY_BOXPVP",
-    description: "Tryb BoxPvP na Rapy",
-    channelSlug: "rapy-boxpvp",
-    emoji: { id: "1523793647542337577", name: "rapy" },
+    label: "MineStar SkyPvP",
+    testValue: "minestar_skypvp",
+    calcValue: "MINESTAR_SKY",
+    description: "Tryb SkyPvP na MineStar",
+    channelSlug: "minestar-skypvp",
+    emoji: { id: "1515321503770607777", name: "minestarlf" },
   },
 ];
 
@@ -15919,8 +15920,8 @@ async function handleCennikCommand(interaction) {
         `> **Donut SMP:**`,
         `>  • \`${formatRateShort(DONUT_SMP_RATE)}$ → 1 zł\``,
         `> `,
-        `> **Rapy BoxPvP:**`,
-        `>  • \`${formatRateShort(RAPY_BOXPVP_RATE)}$ → 1 zł\``,
+        `> **MineStar SkyPvP:**`,
+        `>  • \`${formatRateShort(MINESTAR_SKY_RATE)}$ → 1 zł\``,
         `> `,
         `> *Użyj \`/cennik serwer:... stawka:...\` aby zmienić stawkę.*`,
       ];
@@ -15939,7 +15940,7 @@ async function handleCennikCommand(interaction) {
       minestar_lf_bulk:      { get: () => MINESTAR_LF_BULK_RATE,                 set: (v) => { MINESTAR_LF_BULK_RATE = v; },                 label: "MineStar LF - Hurtowa" },
       minestar_lf_threshold: { get: () => MINESTAR_LF_BULK_THRESHOLD_PLN,        set: (v) => { MINESTAR_LF_BULK_THRESHOLD_PLN = v; },        label: "MineStar LF - Próg (zł)" },
       donut_smp:             { get: () => DONUT_SMP_RATE,                        set: (v) => { DONUT_SMP_RATE = v; },                        label: "Donut SMP" },
-      rapy_boxpvp:           { get: () => RAPY_BOXPVP_RATE,                      set: (v) => { RAPY_BOXPVP_RATE = v; },                      label: "Rapy BoxPvP" },
+      minestar_skypvp:       { get: () => MINESTAR_SKY_RATE,                     set: (v) => { MINESTAR_SKY_RATE = v; },                     label: "MineStar SkyPvP" },
     };
 
     const entry = RATE_MAP[serwer];
