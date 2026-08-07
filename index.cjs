@@ -5265,7 +5265,7 @@ let MINESTAR_LF_RATE = 300;
 let MINESTAR_LF_BULK_RATE = 400;
 let MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
 let DONUT_SMP_RATE = 5_500_000;
-let MINESTAR_SKY_RATE = 10000;
+let MINESTAR_SKY_RATE = 3;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) >= ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -8952,12 +8952,13 @@ function buildKalkulatorModal(typ, detectedServer = null) {
 }
 
 function getKalkulatorRateDescription(rate, serverRaw) {
-  const server = (serverRaw || "").toString().trim().toUpperCase();
-  let rateStr = "";
-  if (rate === 8500) rateStr = "8,5k";
-  else if (rate === 8200) rateStr = "8,2k";
-  else if (rate === 5500000) rateStr = "5,5M";
-  else if (rate >= 1000000) {
+  const server = (serverRaw || "").toString().trim().toUpperCase().replace(/\s+/g, "_");
+  const isSky = (server === "MINESTAR_SKY" || server === "MINESTAR_SKYPVP" || server === "MINESTAR_SKY_PVP");
+  let rateStr;
+  if (rate >= 1000000000) {
+    const val = rate / 1000000000;
+    rateStr = val.toFixed(1).replace(".", ",").replace(",0", "") + "mld";
+  } else if (rate >= 1000000) {
     const val = rate / 1000000;
     rateStr = val.toFixed(1).replace(".", ",").replace(",0", "") + "M";
   } else if (rate >= 1000) {
@@ -8967,7 +8968,8 @@ function getKalkulatorRateDescription(rate, serverRaw) {
     rateStr = rate.toString();
   }
 
-  let desc = `Obliczone z cennika **${rateStr}** za **1zł**`;
+  const unitStr = isSky ? " odłamki" : "";
+  let desc = `Obliczone z cennika **${rateStr}${unitStr}** za **1zł**`;
   if (server === "ANARCHIA_LIFESTEAL" && rate === 8500) {
     desc += " (zakup powyżej **50**zł)";
   } else if (server === "MINESTAR_LF" && rate === 400) {
@@ -8984,6 +8986,9 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
   }
 
   const minPurchase = getMinPurchasePln(metoda);
+  const serverUpper = (tryb || "").toString().toUpperCase();
+  const isSky = serverUpper.includes("SKY") || serverUpper.includes("MINESTAR_SKY");
+  const currencyUnit = isSky ? " odłamków" : " $";
 
   if (typ === "otrzymam") {
     if (kwota < minPurchase) {
@@ -9000,7 +9005,7 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
     const walutaShort = formatShortWaluta(calculatedWaluta);
 
     return {
-      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta} $)**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
+      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta}${currencyUnit})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
     };
   }
 
@@ -9036,7 +9041,7 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
   const walutaShort = formatShortWaluta(walutaInt);
 
   return {
-    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
+    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt}${currencyUnit})** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
   };
 }
 
@@ -15918,7 +15923,7 @@ async function handleCennikCommand(interaction) {
         `>  • Próg: \`${MINESTAR_LF_BULK_THRESHOLD_PLN} zł\``,
         `> `,
         `> **MineStar SkyPvP:**`,
-        `>  • \`${formatRateShort(MINESTAR_SKY_RATE)}$ → 1 zł\``,
+        `>  • \`${formatRateShort(MINESTAR_SKY_RATE)} odłamki → 1 zł\``,
         `> `,
         `> **Donut SMP:**`,
         `>  • \`${formatRateShort(DONUT_SMP_RATE)}$ → 1 zł\``,
