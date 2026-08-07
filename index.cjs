@@ -4091,8 +4091,8 @@ const commands = [
           { name: "MineStar LF - Normalna", value: "minestar_lf_normal" },
           { name: "MineStar LF - Hurtowa (>=50zł)", value: "minestar_lf_bulk" },
           { name: "MineStar LF - Próg (zł)", value: "minestar_lf_threshold" },
-          { name: "Donut SMP", value: "donut_smp" },
-          { name: "MineStar SkyPvP", value: "minestar_skypvp" }
+          { name: "MineStar SkyPvP", value: "minestar_skypvp" },
+          { name: "Donut SMP", value: "donut_smp" }
         )
     )
     .addIntegerOption((option) =>
@@ -4158,8 +4158,8 @@ const commands = [
           { name: "ANARCHIA LIFESTEAL", value: "ANARCHIA LIFESTEAL" },
           { name: "ANARCHIA BOXPVP", value: "ANARCHIA BOXPVP" },
           { name: "MINESTAR LIFESTEAL", value: "MINESTAR LIFESTEAL" },
-          { name: "DONUT SMP", value: "DONUT SMP" },
-          { name: "MINESTAR SKYPVP", value: "MINESTAR SKYPVP" }
+          { name: "MINESTAR SKYPVP", value: "MINESTAR SKYPVP" },
+          { name: "DONUT SMP", value: "DONUT SMP" }
         )
     )
     .toJSON(),
@@ -13354,20 +13354,20 @@ const SHOP_SERVER_OPTION_DEFS = [
     emoji: { id: "1515321503770607777", name: "minestarlf" },
   },
   {
-    label: "Donut SMP",
-    testValue: "donut_smp",
-    calcValue: "DONUT_SMP",
-    description: "Tryb SMP na Donut",
-    channelSlug: "donut-smp",
-    emoji: { id: "1489578418432381059", name: "donutsmp" },
-  },
-  {
     label: "MineStar SkyPvP",
     testValue: "minestar_skypvp",
     calcValue: "MINESTAR_SKY",
     description: "Tryb SkyPvP na MineStar",
     channelSlug: "minestar-skypvp",
     emoji: { id: "1515321503770607777", name: "minestarlf" },
+  },
+  {
+    label: "Donut SMP",
+    testValue: "donut_smp",
+    calcValue: "DONUT_SMP",
+    description: "Tryb SMP na Donut",
+    channelSlug: "donut-smp",
+    emoji: { id: "1489578418432381059", name: "donutsmp" },
   },
 ];
 
@@ -15917,11 +15917,11 @@ async function handleCennikCommand(interaction) {
         `>  • Hurtowa (≥${MINESTAR_LF_BULK_THRESHOLD_PLN}zł): \`${formatRateShort(MINESTAR_LF_BULK_RATE)}$ → 1 zł\``,
         `>  • Próg: \`${MINESTAR_LF_BULK_THRESHOLD_PLN} zł\``,
         `> `,
-        `> **Donut SMP:**`,
-        `>  • \`${formatRateShort(DONUT_SMP_RATE)}$ → 1 zł\``,
-        `> `,
         `> **MineStar SkyPvP:**`,
         `>  • \`${formatRateShort(MINESTAR_SKY_RATE)}$ → 1 zł\``,
+        `> `,
+        `> **Donut SMP:**`,
+        `>  • \`${formatRateShort(DONUT_SMP_RATE)}$ → 1 zł\``,
         `> `,
         `> *Użyj \`/cennik serwer:... stawka:...\` aby zmienić stawkę.*`,
       ];
@@ -15939,8 +15939,8 @@ async function handleCennikCommand(interaction) {
       minestar_lf_normal:    { get: () => MINESTAR_LF_RATE,                      set: (v) => { MINESTAR_LF_RATE = v; },                      label: "MineStar LF - Normalna" },
       minestar_lf_bulk:      { get: () => MINESTAR_LF_BULK_RATE,                 set: (v) => { MINESTAR_LF_BULK_RATE = v; },                 label: "MineStar LF - Hurtowa" },
       minestar_lf_threshold: { get: () => MINESTAR_LF_BULK_THRESHOLD_PLN,        set: (v) => { MINESTAR_LF_BULK_THRESHOLD_PLN = v; },        label: "MineStar LF - Próg (zł)" },
-      donut_smp:             { get: () => DONUT_SMP_RATE,                        set: (v) => { DONUT_SMP_RATE = v; },                        label: "Donut SMP" },
       minestar_skypvp:       { get: () => MINESTAR_SKY_RATE,                     set: (v) => { MINESTAR_SKY_RATE = v; },                     label: "MineStar SkyPvP" },
+      donut_smp:             { get: () => DONUT_SMP_RATE,                        set: (v) => { DONUT_SMP_RATE = v; },                        label: "Donut SMP" },
     };
 
     const entry = RATE_MAP[serwer];
