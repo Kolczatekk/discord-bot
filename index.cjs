@@ -19648,23 +19648,28 @@ client.on(Events.MessageCreate, async (message) => {
   }
 
   // --- NOWA LOGIKA: PING SPRZEDAWCY PO 5 MIN OD 1 WIADOMOŚCI KLIENTA ---
-  const ticketData = ticketOwners.get(message.channel.id);
-  if (ticketData && ticketData.userId === message.author.id && !ticketData.claimedBy && !ticketData.firstMessageReceived) {
-    ticketData.firstMessageReceived = true;
-    ticketOwners.set(message.channel.id, ticketData);
+  const channelId = message.channel?.id;
+  if (channelId) {
+    const ticketData = ticketOwners.get(channelId);
+    if (ticketData && ticketData.userId === message.author?.id && !ticketData.claimedBy && !ticketData.firstMessageReceived) {
+      ticketData.firstMessageReceived = true;
+      ticketOwners.set(channelId, ticketData);
 
-    const type = ticketData.ticketTypeLabel;
-    if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
-      setTimeout(async () => {
-        const currentTicketData = ticketOwners.get(message.channel.id);
-        if (currentTicketData && !currentTicketData.claimedBy) {
-          try {
-            await message.channel.send("<@&1350786945944391733>").catch(() => null);
-          } catch (err) {
-            console.error("Błąd pingu po 5 min od pierwszej wiadomości:", err);
+      const type = ticketData.ticketTypeLabel;
+      if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
+        const targetChannel = message.channel;
+        setTimeout(async () => {
+          if (!targetChannel) return;
+          const currentTicketData = ticketOwners.get(channelId);
+          if (currentTicketData && !currentTicketData.claimedBy) {
+            try {
+              await targetChannel.send("<@&1350786945944391733>").catch(() => null);
+            } catch (err) {
+              console.error("Błąd pingu po 5 min od pierwszej wiadomości:", err);
+            }
           }
-        }
-      }, 5 * 60 * 1000);
+        }, 5 * 60 * 1000);
+      }
     }
   }
   // ----------------------------------------------------------------------
