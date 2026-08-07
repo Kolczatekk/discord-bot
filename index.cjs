@@ -5871,6 +5871,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleButtonInteraction(interaction);
     }
   } catch (error) {
+    if (error?.code === 10062 || error?.message?.includes("Unknown interaction")) {
+      return;
+    }
     console.error("Błąd obsługi interakcji:", error);
   }
 });
@@ -19484,6 +19487,8 @@ async function handleModalSubmit(interaction) {
     if (ticketTopic) createOptions.topic = ticketTopic;
     if (parentToUse) createOptions.parent = parentToUse;
 
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+
     const channel = await interaction.guild.channels.create(createOptions);
 
     const isPurchaseTicket = ticketType && (ticketType.startsWith("zakup-") || ticketType === "zakup" || ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTORYNKU");
@@ -19554,8 +19559,6 @@ async function handleModalSubmit(interaction) {
       components: [buttonRow],
     });
 
-
-
     ticketOwners.set(channel.id, {
       claimedBy: null,
       userId: user.id,
@@ -19570,8 +19573,6 @@ async function handleModalSubmit(interaction) {
     scheduleSavePersistentState();
 
     // LOG: ticket creation in logi-ticket channel (if exists)
-
-    // LOG: ticket creation in logi-ticket channel (if exists)
     try {
       await logTicketCreation(interaction.guild, channel, {
         openerId: user.id,
@@ -19584,10 +19585,16 @@ async function handleModalSubmit(interaction) {
       console.error("Błąd logowania utworzenia ticketu:", e);
     }
 
-    await interaction.reply({
-      content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
-      flags: [MessageFlags.Ephemeral],
-    });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({
+        content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
+      }).catch(() => null);
+    } else {
+      await interaction.reply({
+        content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
 
     if (ticketTypeLabel === "ZAKUP" && !forceOwnerOnlyVisibility) {
       await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
@@ -19595,11 +19602,22 @@ async function handleModalSubmit(interaction) {
       );
     }
   } catch (error) {
+    if (error?.code === 10062 || error?.message?.includes("Unknown interaction")) {
+      return;
+    }
     console.error("Błąd tworzenia ticketu:", error);
-    await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketu**.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketu**.",
+        }).catch(() => null);
+      } else {
+        await interaction.reply({
+          content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketu**.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+      }
+    } catch (_) {}
   }
 }
 
