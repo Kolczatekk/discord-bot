@@ -328,6 +328,9 @@ const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
+const creatingTicketUsers = new Set(); // userId set lock to prevent duplicate creation race conditions
+const ticketLogCards = new Map(); // channelId -> messageId; jeden czytelny log na cały cykl ticketu
+const ticketLogEventDedupe = new Map(); // channelId -> { key, timestamp }
 
 // (Usunięto nadpisywanie ticketOwners.set, timer 5 min od pierwszej wiadomosci jest w Events.MessageCreate)
 
@@ -486,6 +489,65 @@ let latestRepRenameCount = null;
 
 function isLegitRepMessage(message) {
   return /^\+rep(?:\s|$)/i.test(String(message?.content || "").trim());
+}
+
+const LEGIT_REP_SERVERS = [
+  "ANARCHIA LIFESTEAL",
+  "ANARCHIA BOXPVP",
+  "MINESTAR LIFESTEAL",
+  "MINESTAR SKYPVP",
+  "DONUT SMP",
+];
+
+function normalizeLegitRepPart(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleUpperCase("pl-PL");
+}
+
+function normalizeLegitRepVerb(value) {
+  const normalized = normalizeLegitRepPart(value)
+    .replace("SPRZEDAZ", "SPRZEDAŻ")
+    .replace("WRECZYL NAGRODE", "WRĘCZYŁ NAGRODĘ");
+  return normalized;
+}
+
+function parseLegitRepContent(content) {
+  const normalized = String(content || "").trim().replace(/\s+/g, " ");
+  const serverPattern = LEGIT_REP_SERVERS.join("|").replace(/\s+/g, "\\s+");
+  const pattern = new RegExp(
+    `^\\+rep\\s+(<@!?\\d+>|@[^\\s]+)\\s+` +
+      `(zakup|sprzedaż|sprzedaz|wręczył\\s+nagrodę|wreczyl\\s+nagrode)\\s+` +
+      `(\\d+)\\s+pln\\s+(${serverPattern})$`,
+    "iu",
+  );
+  const match = normalized.match(pattern);
+  if (!match) return null;
+
+  return {
+    seller: match[1],
+    verb: normalizeLegitRepVerb(match[2]),
+    amount: Number(match[3]),
+    server: normalizeLegitRepPart(match[4]),
+  };
+}
+
+function legitRepMatchesPendingTicket(parsed, message, ticketData) {
+  if (!parsed || !ticketData) return false;
+
+  const expectedSellerMention = `<@${ticketData.commandUserId}>`;
+  const expectedSellerNickname = `@${String(ticketData.commandUsername || "").toLocaleLowerCase("pl-PL")}`;
+  const parsedSeller = parsed.seller.toLocaleLowerCase("pl-PL");
+  const sellerMatches =
+    message.mentions.users.has(ticketData.commandUserId) ||
+    parsedSeller === expectedSellerMention.toLocaleLowerCase("pl-PL") ||
+    parsedSeller === `<@!${ticketData.commandUserId}>`.toLocaleLowerCase("pl-PL") ||
+    parsedSeller === expectedSellerNickname;
+
+  return (
+    sellerMatches &&
+    parsed.verb === normalizeLegitRepVerb(ticketData.typ) &&
+    parsed.amount === parsePLN(ticketData.co) &&
+    parsed.server === normalizeLegitRepPart(ticketData.serwer)
+  );
 }
 
 async function countExistingLegitRepMessages(channel) {
@@ -19297,8 +19359,16 @@ async function handleModalSubmit(interaction) {
       break;
   }
 
-  // If ticketType not set it was probably a settings modal handled above or unknown
-  if (!ticketType) return;
+  if (creatingTicketUsers.has(user.id)) {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({
+        content: "> `⏳` × **Trwa już tworzenie Twojego ticketu...** Proszę czekać.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
+    return;
+  }
+  creatingTicketUsers.add(user.id);
 
   try {
     // ENFORCE: One ticket per user
@@ -20058,11 +20128,11 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      // Wzorzec: +rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]
-      const mentionPattern = /<@!?\d+>|@\S+/;
-      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(zakup|sprzedaż|sprzedaz|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(\d+)\s+pln\s+(\S+(?:\s+\S+)*)$/i;
-      const hasMention = mentionPattern.test(messageContent);
-      const isValidRep = repPattern.test(messageContent);
+      // Format jest zamknięty: po nazwie jednego z obsługiwanych serwerów
+      // nie może znaleźć się żaden komentarz ani dodatkowy tekst.
+      const parsedRep = parseLegitRepContent(messageContent);
+      const hasMention = Boolean(parsedRep?.seller);
+      const isValidRep = Boolean(parsedRep);
 
       console.log(`[+rep] Otrzymano wiadomość: "${messageContent}" | hasMention=${hasMention} | valid=${isValidRep}`);
 
@@ -20110,14 +20180,11 @@ client.on(Events.MessageCreate, async (message) => {
       }
       const pendingTicketEntry = Array.from(pendingTicketClose.entries()).find(
         ([channelId, data]) => {
-          const sellerMatches =
-            message.mentions.users.has(data.commandUserId) ||
-            messageContent.includes(`@${data.commandUsername}`);
           return (
             String(data.userId) === String(message.author.id) &&
             data.awaitingRep === true &&
             channel.id === data.legitRepChannelId &&
-            sellerMatches
+            legitRepMatchesPendingTicket(parsedRep, message, data)
           );
         }
       );
@@ -20161,8 +20228,9 @@ client.on(Events.MessageCreate, async (message) => {
           console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
           if (
             ticketData.awaitingRep &&
-            ticketData.userId === senderId &&
-            channel.id === ticketData.legitRepChannelId
+            String(ticketData.userId) === String(senderId) &&
+            channel.id === ticketData.legitRepChannelId &&
+            legitRepMatchesPendingTicket(parsedRep, message, ticketData)
           ) {
             // Sprawdź czy w wiadomości +rep jest wzmianka o sprzedawcy/używającym komendę
             const expectedUsername = ticketData.commandUsername;
@@ -20170,7 +20238,9 @@ client.on(Events.MessageCreate, async (message) => {
             const msgContent = message.content.trim();
 
             const mentionMatchesSeller = message.mentions.users.has(expectedId);
-            const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
+            const usernameIncluded =
+              parsedRep.seller.toLocaleLowerCase("pl-PL") ===
+              `@${expectedUsername}`.toLocaleLowerCase("pl-PL");
 
             if (mentionMatchesSeller || usernameIncluded) {
               console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
@@ -23003,118 +23073,147 @@ function buildTicketLogDetailsValue({ formInfo = "", detailLines = [] } = {}) {
   return truncateTicketLogValue(chunks.join("\n"), 1024);
 }
 
+async function findTicketLogCard(logCh, ticketId) {
+  if (!ticketId) return null;
+
+  const rememberedId = ticketLogCards.get(ticketId);
+  if (rememberedId) {
+    const remembered = await logCh.messages.fetch(rememberedId).catch(() => null);
+    if (remembered) return remembered;
+    ticketLogCards.delete(ticketId);
+  }
+
+  const recent = await logCh.messages.fetch({ limit: 100 }).catch(() => null);
+  const existing = recent?.find((message) =>
+    message.author?.id === client.user?.id &&
+    message.embeds?.some((embed) =>
+      String(embed.footer?.text || "").includes(`Ticket ID: ${ticketId}`),
+    ),
+  ) || null;
+
+  if (existing) ticketLogCards.set(ticketId, existing.id);
+  return existing;
+}
+
+function getTicketLogTimeline(existingMessage) {
+  const field = existingMessage?.embeds?.[0]?.fields?.find(
+    (item) => item.name === "Historia",
+  );
+  if (!field?.value) return [];
+  return String(field.value).split("\n").filter(Boolean).slice(-7);
+}
+
 async function sendTicketLogEntry(guild, options = {}) {
   const logCh = await getLogiTicketChannel(guild);
   if (!logCh) return null;
 
   const ticketChannel = options.ticketChannel || null;
   const ticketMeta = options.ticketMeta || null;
+  const ticketId = String(ticketChannel?.id || options.ticketId || "");
+  const existingMessage = await findTicketLogCard(logCh, ticketId);
+  const now = Date.now();
+  const actorId = options.actorId || null;
+  const title = options.title || "Akcja na tickecie";
+  const icon = options.icon || "🎫";
+  const eventKey = `${title}|${actorId || "system"}|${options.statusLabel || ""}|${options.reason || ""}`;
+  const lastEvent = ticketLogEventDedupe.get(ticketId);
+  const isDuplicate =
+    lastEvent?.key === eventKey && now - Number(lastEvent.timestamp || 0) < 15_000;
+
+  let timeline = getTicketLogTimeline(existingMessage);
+  if (!isDuplicate) {
+    timeline.push(
+      `<t:${Math.floor(now / 1000)}:t> ${icon} **${truncateTicketLogValue(title, 80)}**` +
+      (actorId ? ` — <@${actorId}>` : ""),
+    );
+    timeline = timeline.slice(-8);
+    ticketLogEventDedupe.set(ticketId, { key: eventKey, timestamp: now });
+  }
+
   const detailsValue = buildTicketLogDetailsValue({
     formInfo: options.formInfo,
     detailLines: options.detailLines,
   });
+  const info = [];
+  if (options.reason) info.push(`**Powód:** ${truncateTicketLogValue(options.reason, 700)}`);
+  if (detailsValue !== "brak") info.push(detailsValue);
+  if (typeof options.messageCount === "number") {
+    info.push(`**Wiadomości:** \`${options.messageCount}\``);
+  }
+  if (options.participantsText) {
+    info.push(`**Uczestnicy:** ${truncateTicketLogValue(options.participantsText, 700)}`);
+  }
+
+  const openedAt =
+    options.openedAt ?? ticketMeta?.openedAt ?? ticketChannel?.createdTimestamp ?? null;
+  const status = options.statusLabel || "BRAK STATUSU";
+  const type = options.ticketTypeLabel || guessTicketTypeLabel(ticketChannel, ticketMeta);
+  const ownerId = options.ownerId ?? ticketMeta?.userId ?? null;
+  const claimedById = options.claimedById ?? ticketMeta?.claimedBy ?? null;
 
   const embed = new EmbedBuilder()
     .setColor(options.color ?? COLOR_BLUE)
-    .setAuthor({ name: "New Shop × Logi Ticketów" })
-    .setTitle(`${options.icon || "🎫"} ${options.title || "Akcja na tickecie"}`)
-    .setTimestamp();
+    .setAuthor({
+      name: "New Shop • Centrum ticketu",
+      iconURL: guild.iconURL?.({ size: 128 }) || undefined,
+    })
+    .setTitle(`${icon} ${title}`)
+    .setDescription(
+      truncateTicketLogValue(
+        options.summary ||
+          `Aktualny stan ticketu ${ticketChannel ? `<#${ticketChannel.id}>` : `\`${ticketId}\``}.`,
+        4096,
+      ),
+    )
+    .addFields(
+      { name: "Status", value: `\`${status}\``, inline: true },
+      { name: "Typ", value: `\`${type}\``, inline: true },
+      {
+        name: "Kanał",
+        value: ticketChannel ? `<#${ticketChannel.id}>\n\`${ticketChannel.name}\`` : `\`${ticketId}\``,
+        inline: true,
+      },
+      { name: "Klient", value: formatTicketLogUser(ownerId), inline: true },
+      { name: "Obsługa", value: formatTicketLogUser(claimedById), inline: true },
+      { name: "Ostatnia akcja", value: formatTicketLogUser(actorId), inline: true },
+    );
 
-  if (options.summary) {
-    embed.setDescription(truncateTicketLogValue(options.summary, 4096));
-  }
-
-  const fields = [
-    {
-      name: "Kanał",
-      value: truncateTicketLogValue(formatTicketLogChannel(ticketChannel)),
-      inline: true,
-    },
-    {
-      name: "Status",
-      value: truncateTicketLogValue(options.statusLabel || "brak"),
-      inline: true,
-    },
-    {
-      name: "Typ",
-      value: truncateTicketLogValue(
-        options.ticketTypeLabel || guessTicketTypeLabel(ticketChannel, ticketMeta),
-      ),
-      inline: true,
-    },
-    {
-      name: "Właściciel",
-      value: truncateTicketLogValue(
-        formatTicketLogUser(options.ownerId ?? ticketMeta?.userId ?? null),
-      ),
-      inline: true,
-    },
-    {
-      name: "Wykonał",
-      value: truncateTicketLogValue(formatTicketLogUser(options.actorId)),
-      inline: true,
-    },
-    {
-      name: "Przejęty przez",
-      value: truncateTicketLogValue(
-        formatTicketLogUser(options.claimedById ?? ticketMeta?.claimedBy ?? null),
-      ),
-      inline: true,
-    },
-    {
-      name: "Kategoria",
-      value: truncateTicketLogValue(formatTicketLogCategory(ticketChannel)),
-      inline: true,
-    },
-    {
-      name: "Utworzony",
-      value: truncateTicketLogValue(
-        formatTicketLogTimestamp(
-          options.openedAt ?? ticketMeta?.openedAt ?? ticketChannel?.createdTimestamp,
-        ),
-      ),
-      inline: true,
-    },
-  ];
-
-  if (typeof options.messageCount === "number") {
-    fields.push({
-      name: "Wiadomości",
-      value: `\`${options.messageCount}\``,
-      inline: true,
+  if (info.length) {
+    embed.addFields({
+      name: "Informacje",
+      value: truncateTicketLogValue(info.join("\n"), 1024),
+      inline: false,
     });
   }
-
-  if (options.participantsText) {
-    fields.push({
-      name: "Uczestnicy",
-      value: truncateTicketLogValue(options.participantsText, 1024),
+  if (timeline.length) {
+    embed.addFields({
+      name: "Historia",
+      value: truncateTicketLogValue(timeline.join("\n"), 1024),
       inline: false,
     });
   }
 
-  if (options.reason) {
-    fields.push({
-      name: "Powód",
-      value: truncateTicketLogValue(options.reason, 1024),
-      inline: false,
-    });
-  }
-
-  if (detailsValue !== "brak") {
-    fields.push({
-      name: "Szczegóły",
-      value: detailsValue,
-      inline: false,
-    });
-  }
-
-  embed.addFields(fields.slice(0, 25));
+  embed
+    .setFooter({
+      text: `Ticket ID: ${ticketId || "brak"}` +
+        (openedAt ? ` • utworzony ${new Date(openedAt).toLocaleDateString("pl-PL")}` : ""),
+    })
+    .setTimestamp(now);
 
   const payload = { embeds: [embed] };
   if (options.files?.length) payload.files = options.files;
-  await logCh.send(payload);
-  return logCh;
+
+  let logMessage = existingMessage;
+  if (logMessage) {
+    const edited = await logMessage.edit(payload).catch(() => null);
+    if (!edited) logMessage = null;
+  }
+  if (!logMessage) {
+    logMessage = await logCh.send(payload);
+  }
+
+  if (ticketId && logMessage?.id) ticketLogCards.set(ticketId, logMessage.id);
+  return logMessage;
 }
 
 async function logTicketCreation(guild, ticketChannel, details) {
