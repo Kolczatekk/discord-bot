@@ -328,6 +328,9 @@ const verificationRoles = new Map(); // guildId -> roleId
 const pendingVerifications = new Map(); // modalId -> { answer, guildId, userId, roleId }
 
 const ticketOwners = new Map(); // channelId -> { claimedBy, userId, ticketMessageId, locked, lastClaimMsgId }
+const creatingTicketUsers = new Set(); // userId set lock to prevent duplicate creation race conditions
+const ticketLogCards = new Map(); // channelId -> messageId; jeden czytelny log na cały cykl ticketu
+const ticketLogEventDedupe = new Map(); // channelId -> { key, timestamp }
 
 // (Usunięto nadpisywanie ticketOwners.set, timer 5 min od pierwszej wiadomosci jest w Events.MessageCreate)
 
@@ -486,6 +489,65 @@ let latestRepRenameCount = null;
 
 function isLegitRepMessage(message) {
   return /^\+rep(?:\s|$)/i.test(String(message?.content || "").trim());
+}
+
+const LEGIT_REP_SERVERS = [
+  "ANARCHIA LIFESTEAL",
+  "ANARCHIA BOXPVP",
+  "MINESTAR LIFESTEAL",
+  "MINESTAR SKYPVP",
+  "DONUT SMP",
+];
+
+function normalizeLegitRepPart(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleUpperCase("pl-PL");
+}
+
+function normalizeLegitRepVerb(value) {
+  const normalized = normalizeLegitRepPart(value)
+    .replace("SPRZEDAZ", "SPRZEDAŻ")
+    .replace("WRECZYL NAGRODE", "WRĘCZYŁ NAGRODĘ");
+  return normalized;
+}
+
+function parseLegitRepContent(content) {
+  const normalized = String(content || "").trim().replace(/\s+/g, " ");
+  const serverPattern = LEGIT_REP_SERVERS.join("|").replace(/\s+/g, "\\s+");
+  const pattern = new RegExp(
+    `^\\+rep\\s+(<@!?\\d+>|@[^\\s]+)\\s+` +
+      `(zakup|sprzedaż|sprzedaz|wręczył\\s+nagrodę|wreczyl\\s+nagrode)\\s+` +
+      `(\\d+)\\s+pln\\s+(${serverPattern})$`,
+    "iu",
+  );
+  const match = normalized.match(pattern);
+  if (!match) return null;
+
+  return {
+    seller: match[1],
+    verb: normalizeLegitRepVerb(match[2]),
+    amount: Number(match[3]),
+    server: normalizeLegitRepPart(match[4]),
+  };
+}
+
+function legitRepMatchesPendingTicket(parsed, message, ticketData) {
+  if (!parsed || !ticketData) return false;
+
+  const expectedSellerMention = `<@${ticketData.commandUserId}>`;
+  const expectedSellerNickname = `@${String(ticketData.commandUsername || "").toLocaleLowerCase("pl-PL")}`;
+  const parsedSeller = parsed.seller.toLocaleLowerCase("pl-PL");
+  const sellerMatches =
+    message.mentions.users.has(ticketData.commandUserId) ||
+    parsedSeller === expectedSellerMention.toLocaleLowerCase("pl-PL") ||
+    parsedSeller === `<@!${ticketData.commandUserId}>`.toLocaleLowerCase("pl-PL") ||
+    parsedSeller === expectedSellerNickname;
+
+  return (
+    sellerMatches &&
+    parsed.verb === normalizeLegitRepVerb(ticketData.typ) &&
+    parsed.amount === parsePLN(ticketData.co) &&
+    parsed.server === normalizeLegitRepPart(ticketData.serwer)
+  );
 }
 
 async function countExistingLegitRepMessages(channel) {
@@ -1995,7 +2057,7 @@ function buildPersistentStateData() {
       minestarLfBulkRate: MINESTAR_LF_BULK_RATE,
       minestarLfBulkThresholdPln: MINESTAR_LF_BULK_THRESHOLD_PLN,
       donutSmpRate: DONUT_SMP_RATE,
-      rapyBoxpvpRate: RAPY_BOXPVP_RATE,
+      minestarSkypvpRate: MINESTAR_SKY_RATE,
     },
   };
 
@@ -3878,7 +3940,8 @@ async function loadPersistentState() {
         if (typeof rates.minestarLfBulkRate === "number") MINESTAR_LF_BULK_RATE = rates.minestarLfBulkRate;
         if (typeof rates.minestarLfBulkThresholdPln === "number") MINESTAR_LF_BULK_THRESHOLD_PLN = rates.minestarLfBulkThresholdPln;
         if (typeof rates.donutSmpRate === "number") DONUT_SMP_RATE = rates.donutSmpRate;
-        if (typeof rates.rapyBoxpvpRate === "number") RAPY_BOXPVP_RATE = rates.rapyBoxpvpRate;
+        if (typeof rates.minestarSkypvpRate === "number") MINESTAR_SKY_RATE = rates.minestarSkypvpRate;
+        if (typeof rates.minestarSkyRate === "number") MINESTAR_SKY_RATE = rates.minestarSkyRate;
         console.log("[state] Wczytano calculatorRates");
       }
 
@@ -4090,8 +4153,8 @@ const commands = [
           { name: "MineStar LF - Normalna", value: "minestar_lf_normal" },
           { name: "MineStar LF - Hurtowa (>=50zł)", value: "minestar_lf_bulk" },
           { name: "MineStar LF - Próg (zł)", value: "minestar_lf_threshold" },
-          { name: "Donut SMP", value: "donut_smp" },
-          { name: "Rapy BoxPvP", value: "rapy_boxpvp" }
+          { name: "MineStar SkyPvP", value: "minestar_skypvp" },
+          { name: "Donut SMP", value: "donut_smp" }
         )
     )
     .addIntegerOption((option) =>
@@ -4157,8 +4220,8 @@ const commands = [
           { name: "ANARCHIA LIFESTEAL", value: "ANARCHIA LIFESTEAL" },
           { name: "ANARCHIA BOXPVP", value: "ANARCHIA BOXPVP" },
           { name: "MINESTAR LIFESTEAL", value: "MINESTAR LIFESTEAL" },
-          { name: "DONUT SMP", value: "DONUT SMP" },
-          { name: "RAPY BOXPVP", value: "RAPY BOXPVP" }
+          { name: "MINESTAR SKYPVP", value: "MINESTAR SKYPVP" },
+          { name: "DONUT SMP", value: "DONUT SMP" }
         )
     )
     .toJSON(),
@@ -5264,7 +5327,7 @@ let MINESTAR_LF_RATE = 300;
 let MINESTAR_LF_BULK_RATE = 400;
 let MINESTAR_LF_BULK_THRESHOLD_PLN = 50;
 let DONUT_SMP_RATE = 5_500_000;
-let RAPY_BOXPVP_RATE = 10000;
+let MINESTAR_SKY_RATE = 3;
 
 function getAnarchiaLifestealRateForPln(pln) {
   return Number(pln) >= ANARCHIA_LIFESTEAL_BULK_THRESHOLD_PLN
@@ -5295,7 +5358,7 @@ function getMinestarLfRateForWaluta(waluta, methodRaw) {
 function getRateForPlnAmount(pln, serverRaw) {
   const server = (serverRaw || "").toString().trim().toUpperCase().replace(/\s+/g, "_");
 
-  if (server === "RAPY_BOXPVP" || server === "RAPYBOXPVP") return RAPY_BOXPVP_RATE;
+  if (server === "MINESTAR_SKY" || server === "MINESTAR_SKYPVP" || server === "MINESTAR_SKY_PVP") return MINESTAR_SKY_RATE;
   if (server === "ANARCHIA_BOXPVP") return ANARCHIA_BOXPVP_RATE;
   if (server === "ANARCHIA_LIFESTEAL" || server === "ANARCHIA_LF") return getAnarchiaLifestealRateForPln(pln);
   if (server === "MINESTAR_LF" || server === "MINESTAR_LIFESTEAL") return Number(pln) >= MINESTAR_LF_BULK_THRESHOLD_PLN ? MINESTAR_LF_BULK_RATE : MINESTAR_LF_RATE;
@@ -5870,6 +5933,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleButtonInteraction(interaction);
     }
   } catch (error) {
+    if (error?.code === 10062 || error?.message?.includes("Unknown interaction")) {
+      return;
+    }
     console.error("Błąd obsługi interakcji:", error);
   }
 });
@@ -6867,8 +6933,8 @@ async function detectServerFromContext(interaction) {
 
   const normalized = textToSearch.toLowerCase();
 
-  if (normalized.includes("rapy")) {
-    return { testValue: "rapy_boxpvp", calcValue: "RAPY_BOXPVP" };
+  if (normalized.includes("skypvp") || normalized.includes("minestar-sky") || normalized.includes("minestarsky")) {
+    return { testValue: "minestar_skypvp", calcValue: "MINESTAR_SKY" };
   }
   if (normalized.includes("minestar")) {
     return { testValue: "minestar_lf", calcValue: "MINESTAR_LF" };
@@ -8951,12 +9017,13 @@ function buildKalkulatorModal(typ, detectedServer = null) {
 }
 
 function getKalkulatorRateDescription(rate, serverRaw) {
-  const server = (serverRaw || "").toString().trim().toUpperCase();
-  let rateStr = "";
-  if (rate === 8500) rateStr = "8,5k";
-  else if (rate === 8200) rateStr = "8,2k";
-  else if (rate === 5500000) rateStr = "5,5M";
-  else if (rate >= 1000000) {
+  const server = (serverRaw || "").toString().trim().toUpperCase().replace(/\s+/g, "_");
+  const isSky = (server === "MINESTAR_SKY" || server === "MINESTAR_SKYPVP" || server === "MINESTAR_SKY_PVP");
+  let rateStr;
+  if (rate >= 1000000000) {
+    const val = rate / 1000000000;
+    rateStr = val.toFixed(1).replace(".", ",").replace(",0", "") + "mld";
+  } else if (rate >= 1000000) {
     const val = rate / 1000000;
     rateStr = val.toFixed(1).replace(".", ",").replace(",0", "") + "M";
   } else if (rate >= 1000) {
@@ -8966,7 +9033,8 @@ function getKalkulatorRateDescription(rate, serverRaw) {
     rateStr = rate.toString();
   }
 
-  let desc = `Obliczone z cennika **${rateStr}** za **1zł**`;
+  const unitStr = isSky ? " odłamki" : "";
+  let desc = `Obliczone z cennika **${rateStr}${unitStr}** za **1zł**`;
   if (server === "ANARCHIA_LIFESTEAL" && rate === 8500) {
     desc += " (zakup powyżej **50**zł)";
   } else if (server === "MINESTAR_LF" && rate === 400) {
@@ -8983,6 +9051,9 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
   }
 
   const minPurchase = getMinPurchasePln(metoda);
+  const serverUpper = (tryb || "").toString().toUpperCase();
+  const isSky = serverUpper.includes("SKY") || serverUpper.includes("MINESTAR_SKY");
+  const currencyUnit = isSky ? " odłamków" : " $";
 
   if (typ === "otrzymam") {
     if (kwota < minPurchase) {
@@ -8999,14 +9070,14 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
     const walutaShort = formatShortWaluta(calculatedWaluta);
 
     return {
-      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta} $)**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
+      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta}${currencyUnit})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
     };
   }
 
   const server = (tryb || "").toString().toUpperCase();
   let rate;
-  if (server === "RAPY_BOXPVP") {
-    rate = RAPY_BOXPVP_RATE;
+  if (server === "MINESTAR_SKY" || server === "MINESTAR_SKYPVP") {
+    rate = MINESTAR_SKY_RATE;
   } else if (server === "ANARCHIA_BOXPVP") {
     rate = ANARCHIA_BOXPVP_RATE;
   } else if (server === "ANARCHIA_LIFESTEAL") {
@@ -9035,7 +9106,7 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
   const walutaShort = formatShortWaluta(walutaInt);
 
   return {
-    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt} $)** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
+    message: `> \`🔢\` × **Aby otrzymać:** \`${walutaShort}\` **(${walutaInt}${currencyUnit})** **musisz zapłacić ${totalZl}zł (${metoda} prowizja: ${feeLabel})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
   };
 }
 
@@ -13355,20 +13426,20 @@ const SHOP_SERVER_OPTION_DEFS = [
     emoji: { id: "1515321503770607777", name: "minestarlf" },
   },
   {
+    label: "MineStar SkyPvP",
+    testValue: "minestar_skypvp",
+    calcValue: "MINESTAR_SKY",
+    description: "Tryb SkyPvP na MineStar",
+    channelSlug: "minestar-skypvp",
+    emoji: { id: "1515321503770607777", name: "minestarlf" },
+  },
+  {
     label: "Donut SMP",
     testValue: "donut_smp",
     calcValue: "DONUT_SMP",
     description: "Tryb SMP na Donut",
     channelSlug: "donut-smp",
     emoji: { id: "1489578418432381059", name: "donutsmp" },
-  },
-  {
-    label: "Rapy BoxPvP",
-    testValue: "rapy_boxpvp",
-    calcValue: "RAPY_BOXPVP",
-    description: "Tryb BoxPvP na Rapy",
-    channelSlug: "rapy-boxpvp",
-    emoji: { id: "1523793647542337577", name: "rapy" },
   },
 ];
 
@@ -15918,11 +15989,11 @@ async function handleCennikCommand(interaction) {
         `>  • Hurtowa (≥${MINESTAR_LF_BULK_THRESHOLD_PLN}zł): \`${formatRateShort(MINESTAR_LF_BULK_RATE)}$ → 1 zł\``,
         `>  • Próg: \`${MINESTAR_LF_BULK_THRESHOLD_PLN} zł\``,
         `> `,
+        `> **MineStar SkyPvP:**`,
+        `>  • \`${formatRateShort(MINESTAR_SKY_RATE)} odłamki → 1 zł\``,
+        `> `,
         `> **Donut SMP:**`,
         `>  • \`${formatRateShort(DONUT_SMP_RATE)}$ → 1 zł\``,
-        `> `,
-        `> **Rapy BoxPvP:**`,
-        `>  • \`${formatRateShort(RAPY_BOXPVP_RATE)}$ → 1 zł\``,
         `> `,
         `> *Użyj \`/cennik serwer:... stawka:...\` aby zmienić stawkę.*`,
       ];
@@ -15940,8 +16011,8 @@ async function handleCennikCommand(interaction) {
       minestar_lf_normal:    { get: () => MINESTAR_LF_RATE,                      set: (v) => { MINESTAR_LF_RATE = v; },                      label: "MineStar LF - Normalna" },
       minestar_lf_bulk:      { get: () => MINESTAR_LF_BULK_RATE,                 set: (v) => { MINESTAR_LF_BULK_RATE = v; },                 label: "MineStar LF - Hurtowa" },
       minestar_lf_threshold: { get: () => MINESTAR_LF_BULK_THRESHOLD_PLN,        set: (v) => { MINESTAR_LF_BULK_THRESHOLD_PLN = v; },        label: "MineStar LF - Próg (zł)" },
+      minestar_skypvp:       { get: () => MINESTAR_SKY_RATE,                     set: (v) => { MINESTAR_SKY_RATE = v; },                     label: "MineStar SkyPvP" },
       donut_smp:             { get: () => DONUT_SMP_RATE,                        set: (v) => { DONUT_SMP_RATE = v; },                        label: "Donut SMP" },
-      rapy_boxpvp:           { get: () => RAPY_BOXPVP_RATE,                      set: (v) => { RAPY_BOXPVP_RATE = v; },                      label: "Rapy BoxPvP" },
     };
 
     const entry = RATE_MAP[serwer];
@@ -19290,8 +19361,16 @@ async function handleModalSubmit(interaction) {
       break;
   }
 
-  // If ticketType not set it was probably a settings modal handled above or unknown
-  if (!ticketType) return;
+  if (creatingTicketUsers.has(user.id)) {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.reply({
+        content: "> `⏳` × **Trwa już tworzenie Twojego ticketu...** Proszę czekać.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
+    return;
+  }
+  creatingTicketUsers.add(user.id);
 
   try {
     // ENFORCE: One ticket per user
@@ -19480,6 +19559,8 @@ async function handleModalSubmit(interaction) {
     if (ticketTopic) createOptions.topic = ticketTopic;
     if (parentToUse) createOptions.parent = parentToUse;
 
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+
     const channel = await interaction.guild.channels.create(createOptions);
 
     const isPurchaseTicket = ticketType && (ticketType.startsWith("zakup-") || ticketType === "zakup" || ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTORYNKU");
@@ -19550,8 +19631,6 @@ async function handleModalSubmit(interaction) {
       components: [buttonRow],
     });
 
-
-
     ticketOwners.set(channel.id, {
       claimedBy: null,
       userId: user.id,
@@ -19566,8 +19645,6 @@ async function handleModalSubmit(interaction) {
     scheduleSavePersistentState();
 
     // LOG: ticket creation in logi-ticket channel (if exists)
-
-    // LOG: ticket creation in logi-ticket channel (if exists)
     try {
       await logTicketCreation(interaction.guild, channel, {
         openerId: user.id,
@@ -19580,10 +19657,16 @@ async function handleModalSubmit(interaction) {
       console.error("Błąd logowania utworzenia ticketu:", e);
     }
 
-    await interaction.reply({
-      content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
-      flags: [MessageFlags.Ephemeral],
-    });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({
+        content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
+      }).catch(() => null);
+    } else {
+      await interaction.reply({
+        content: `> \`✅\` × Ticket został stworzony: <#${channel.id}>`,
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
 
     if (ticketTypeLabel === "ZAKUP" && !forceOwnerOnlyVisibility) {
       await maybeAutoPrzejmijNewTicket(interaction.guild, channel.id).catch((err) =>
@@ -19591,11 +19674,24 @@ async function handleModalSubmit(interaction) {
       );
     }
   } catch (error) {
+    if (error?.code === 10062 || error?.message?.includes("Unknown interaction")) {
+      return;
+    }
     console.error("Błąd tworzenia ticketu:", error);
-    await interaction.reply({
-      content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketu**.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketu**.",
+        }).catch(() => null);
+      } else {
+        await interaction.reply({
+          content: "> `❌` × **Wystąpił** błąd podczas tworzenia **ticketu**.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+      }
+    } catch (_) {}
+  } finally {
+    creatingTicketUsers.delete(user.id);
   }
 }
 
@@ -19644,23 +19740,28 @@ client.on(Events.MessageCreate, async (message) => {
   }
 
   // --- NOWA LOGIKA: PING SPRZEDAWCY PO 5 MIN OD 1 WIADOMOŚCI KLIENTA ---
-  const ticketData = ticketOwners.get(message.channel.id);
-  if (ticketData && ticketData.userId === message.author.id && !ticketData.claimedBy && !ticketData.firstMessageReceived) {
-    ticketData.firstMessageReceived = true;
-    ticketOwners.set(message.channel.id, ticketData);
+  const channelId = message.channel?.id;
+  if (channelId) {
+    const ticketData = ticketOwners.get(channelId);
+    if (ticketData && ticketData.userId === message.author?.id && !ticketData.claimedBy && !ticketData.firstMessageReceived) {
+      ticketData.firstMessageReceived = true;
+      ticketOwners.set(channelId, ticketData);
 
-    const type = ticketData.ticketTypeLabel;
-    if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
-      setTimeout(async () => {
-        const currentTicketData = ticketOwners.get(message.channel.id);
-        if (currentTicketData && !currentTicketData.claimedBy) {
-          try {
-            await message.channel.send("<@&1350786945944391733>").catch(() => null);
-          } catch (err) {
-            console.error("Błąd pingu po 5 min od pierwszej wiadomości:", err);
+      const type = ticketData.ticketTypeLabel;
+      if (type === "ZAKUP" || type === "SPRZEDAŻ" || type === "ZAKUP AUTORYNKU" || type === "ZAKUP MODÓW") {
+        const targetChannel = message.channel;
+        setTimeout(async () => {
+          if (!targetChannel) return;
+          const currentTicketData = ticketOwners.get(channelId);
+          if (currentTicketData && !currentTicketData.claimedBy) {
+            try {
+              await targetChannel.send("<@&1350786945944391733>").catch(() => null);
+            } catch (err) {
+              console.error("Błąd pingu po 5 min od pierwszej wiadomości:", err);
+            }
           }
-        }
-      }, 5 * 60 * 1000);
+        }, 5 * 60 * 1000);
+      }
     }
   }
   // ----------------------------------------------------------------------
@@ -20031,11 +20132,11 @@ client.on(Events.MessageCreate, async (message) => {
         return;
       }
 
-      // Wzorzec: +rep @sprzedawca [ZAKUP/SPRZEDAŻ] [ILE] PLN [SERWER]
-      const mentionPattern = /<@!?\d+>|@\S+/;
-      const repPattern = /^\+rep\s+(<@!?\d+>|@\S+)\s+(zakup|sprzedaż|sprzedaz|wręczył\s+nagrodę|wreczyl\s+nagrode)\s+(\d+)\s+pln\s+(\S+(?:\s+\S+)*)$/i;
-      const hasMention = mentionPattern.test(messageContent);
-      const isValidRep = repPattern.test(messageContent);
+      // Format jest zamknięty: po nazwie jednego z obsługiwanych serwerów
+      // nie może znaleźć się żaden komentarz ani dodatkowy tekst.
+      const parsedRep = parseLegitRepContent(messageContent);
+      const hasMention = Boolean(parsedRep?.seller);
+      const isValidRep = Boolean(parsedRep);
 
       console.log(`[+rep] Otrzymano wiadomość: "${messageContent}" | hasMention=${hasMention} | valid=${isValidRep}`);
 
@@ -20083,14 +20184,11 @@ client.on(Events.MessageCreate, async (message) => {
       }
       const pendingTicketEntry = Array.from(pendingTicketClose.entries()).find(
         ([channelId, data]) => {
-          const sellerMatches =
-            message.mentions.users.has(data.commandUserId) ||
-            messageContent.includes(`@${data.commandUsername}`);
           return (
             String(data.userId) === String(message.author.id) &&
             data.awaitingRep === true &&
             channel.id === data.legitRepChannelId &&
-            sellerMatches
+            legitRepMatchesPendingTicket(parsedRep, message, data)
           );
         }
       );
@@ -20134,8 +20232,9 @@ client.on(Events.MessageCreate, async (message) => {
           console.log(`[+rep] Sprawdzam ticket ${ticketChannelId}: awaitingRep=${ticketData.awaitingRep}, userId=${ticketData.userId}`);
           if (
             ticketData.awaitingRep &&
-            ticketData.userId === senderId &&
-            channel.id === ticketData.legitRepChannelId
+            String(ticketData.userId) === String(senderId) &&
+            channel.id === ticketData.legitRepChannelId &&
+            legitRepMatchesPendingTicket(parsedRep, message, ticketData)
           ) {
             // Sprawdź czy w wiadomości +rep jest wzmianka o sprzedawcy/używającym komendę
             const expectedUsername = ticketData.commandUsername;
@@ -20143,7 +20242,9 @@ client.on(Events.MessageCreate, async (message) => {
             const msgContent = message.content.trim();
 
             const mentionMatchesSeller = message.mentions.users.has(expectedId);
-            const usernameIncluded = msgContent.includes(`@${expectedUsername}`);
+            const usernameIncluded =
+              parsedRep.seller.toLocaleLowerCase("pl-PL") ===
+              `@${expectedUsername}`.toLocaleLowerCase("pl-PL");
 
             if (mentionMatchesSeller || usernameIncluded) {
               console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
@@ -22976,118 +23077,147 @@ function buildTicketLogDetailsValue({ formInfo = "", detailLines = [] } = {}) {
   return truncateTicketLogValue(chunks.join("\n"), 1024);
 }
 
+async function findTicketLogCard(logCh, ticketId) {
+  if (!ticketId) return null;
+
+  const rememberedId = ticketLogCards.get(ticketId);
+  if (rememberedId) {
+    const remembered = await logCh.messages.fetch(rememberedId).catch(() => null);
+    if (remembered) return remembered;
+    ticketLogCards.delete(ticketId);
+  }
+
+  const recent = await logCh.messages.fetch({ limit: 100 }).catch(() => null);
+  const existing = recent?.find((message) =>
+    message.author?.id === client.user?.id &&
+    message.embeds?.some((embed) =>
+      String(embed.footer?.text || "").includes(`Ticket ID: ${ticketId}`),
+    ),
+  ) || null;
+
+  if (existing) ticketLogCards.set(ticketId, existing.id);
+  return existing;
+}
+
+function getTicketLogTimeline(existingMessage) {
+  const field = existingMessage?.embeds?.[0]?.fields?.find(
+    (item) => item.name === "Historia",
+  );
+  if (!field?.value) return [];
+  return String(field.value).split("\n").filter(Boolean).slice(-7);
+}
+
 async function sendTicketLogEntry(guild, options = {}) {
   const logCh = await getLogiTicketChannel(guild);
   if (!logCh) return null;
 
   const ticketChannel = options.ticketChannel || null;
   const ticketMeta = options.ticketMeta || null;
+  const ticketId = String(ticketChannel?.id || options.ticketId || "");
+  const existingMessage = await findTicketLogCard(logCh, ticketId);
+  const now = Date.now();
+  const actorId = options.actorId || null;
+  const title = options.title || "Akcja na tickecie";
+  const icon = options.icon || "🎫";
+  const eventKey = `${title}|${actorId || "system"}|${options.statusLabel || ""}|${options.reason || ""}`;
+  const lastEvent = ticketLogEventDedupe.get(ticketId);
+  const isDuplicate =
+    lastEvent?.key === eventKey && now - Number(lastEvent.timestamp || 0) < 15_000;
+
+  let timeline = getTicketLogTimeline(existingMessage);
+  if (!isDuplicate) {
+    timeline.push(
+      `<t:${Math.floor(now / 1000)}:t> ${icon} **${truncateTicketLogValue(title, 80)}**` +
+      (actorId ? ` — <@${actorId}>` : ""),
+    );
+    timeline = timeline.slice(-8);
+    ticketLogEventDedupe.set(ticketId, { key: eventKey, timestamp: now });
+  }
+
   const detailsValue = buildTicketLogDetailsValue({
     formInfo: options.formInfo,
     detailLines: options.detailLines,
   });
+  const info = [];
+  if (options.reason) info.push(`**Powód:** ${truncateTicketLogValue(options.reason, 700)}`);
+  if (detailsValue !== "brak") info.push(detailsValue);
+  if (typeof options.messageCount === "number") {
+    info.push(`**Wiadomości:** \`${options.messageCount}\``);
+  }
+  if (options.participantsText) {
+    info.push(`**Uczestnicy:** ${truncateTicketLogValue(options.participantsText, 700)}`);
+  }
+
+  const openedAt =
+    options.openedAt ?? ticketMeta?.openedAt ?? ticketChannel?.createdTimestamp ?? null;
+  const status = options.statusLabel || "BRAK STATUSU";
+  const type = options.ticketTypeLabel || guessTicketTypeLabel(ticketChannel, ticketMeta);
+  const ownerId = options.ownerId ?? ticketMeta?.userId ?? null;
+  const claimedById = options.claimedById ?? ticketMeta?.claimedBy ?? null;
 
   const embed = new EmbedBuilder()
     .setColor(options.color ?? COLOR_BLUE)
-    .setAuthor({ name: "New Shop × Logi Ticketów" })
-    .setTitle(`${options.icon || "🎫"} ${options.title || "Akcja na tickecie"}`)
-    .setTimestamp();
+    .setAuthor({
+      name: "New Shop • Centrum ticketu",
+      iconURL: guild.iconURL?.({ size: 128 }) || undefined,
+    })
+    .setTitle(`${icon} ${title}`)
+    .setDescription(
+      truncateTicketLogValue(
+        options.summary ||
+          `Aktualny stan ticketu ${ticketChannel ? `<#${ticketChannel.id}>` : `\`${ticketId}\``}.`,
+        4096,
+      ),
+    )
+    .addFields(
+      { name: "Status", value: `\`${status}\``, inline: true },
+      { name: "Typ", value: `\`${type}\``, inline: true },
+      {
+        name: "Kanał",
+        value: ticketChannel ? `<#${ticketChannel.id}>\n\`${ticketChannel.name}\`` : `\`${ticketId}\``,
+        inline: true,
+      },
+      { name: "Klient", value: formatTicketLogUser(ownerId), inline: true },
+      { name: "Obsługa", value: formatTicketLogUser(claimedById), inline: true },
+      { name: "Ostatnia akcja", value: formatTicketLogUser(actorId), inline: true },
+    );
 
-  if (options.summary) {
-    embed.setDescription(truncateTicketLogValue(options.summary, 4096));
-  }
-
-  const fields = [
-    {
-      name: "Kanał",
-      value: truncateTicketLogValue(formatTicketLogChannel(ticketChannel)),
-      inline: true,
-    },
-    {
-      name: "Status",
-      value: truncateTicketLogValue(options.statusLabel || "brak"),
-      inline: true,
-    },
-    {
-      name: "Typ",
-      value: truncateTicketLogValue(
-        options.ticketTypeLabel || guessTicketTypeLabel(ticketChannel, ticketMeta),
-      ),
-      inline: true,
-    },
-    {
-      name: "Właściciel",
-      value: truncateTicketLogValue(
-        formatTicketLogUser(options.ownerId ?? ticketMeta?.userId ?? null),
-      ),
-      inline: true,
-    },
-    {
-      name: "Wykonał",
-      value: truncateTicketLogValue(formatTicketLogUser(options.actorId)),
-      inline: true,
-    },
-    {
-      name: "Przejęty przez",
-      value: truncateTicketLogValue(
-        formatTicketLogUser(options.claimedById ?? ticketMeta?.claimedBy ?? null),
-      ),
-      inline: true,
-    },
-    {
-      name: "Kategoria",
-      value: truncateTicketLogValue(formatTicketLogCategory(ticketChannel)),
-      inline: true,
-    },
-    {
-      name: "Utworzony",
-      value: truncateTicketLogValue(
-        formatTicketLogTimestamp(
-          options.openedAt ?? ticketMeta?.openedAt ?? ticketChannel?.createdTimestamp,
-        ),
-      ),
-      inline: true,
-    },
-  ];
-
-  if (typeof options.messageCount === "number") {
-    fields.push({
-      name: "Wiadomości",
-      value: `\`${options.messageCount}\``,
-      inline: true,
+  if (info.length) {
+    embed.addFields({
+      name: "Informacje",
+      value: truncateTicketLogValue(info.join("\n"), 1024),
+      inline: false,
     });
   }
-
-  if (options.participantsText) {
-    fields.push({
-      name: "Uczestnicy",
-      value: truncateTicketLogValue(options.participantsText, 1024),
+  if (timeline.length) {
+    embed.addFields({
+      name: "Historia",
+      value: truncateTicketLogValue(timeline.join("\n"), 1024),
       inline: false,
     });
   }
 
-  if (options.reason) {
-    fields.push({
-      name: "Powód",
-      value: truncateTicketLogValue(options.reason, 1024),
-      inline: false,
-    });
-  }
-
-  if (detailsValue !== "brak") {
-    fields.push({
-      name: "Szczegóły",
-      value: detailsValue,
-      inline: false,
-    });
-  }
-
-  embed.addFields(fields.slice(0, 25));
+  embed
+    .setFooter({
+      text: `Ticket ID: ${ticketId || "brak"}` +
+        (openedAt ? ` • utworzony ${new Date(openedAt).toLocaleDateString("pl-PL")}` : ""),
+    })
+    .setTimestamp(now);
 
   const payload = { embeds: [embed] };
   if (options.files?.length) payload.files = options.files;
-  await logCh.send(payload);
-  return logCh;
+
+  let logMessage = existingMessage;
+  if (logMessage) {
+    const edited = await logMessage.edit(payload).catch(() => null);
+    if (!edited) logMessage = null;
+  }
+  if (!logMessage) {
+    logMessage = await logCh.send(payload);
+  }
+
+  if (ticketId && logMessage?.id) ticketLogCards.set(ticketId, logMessage.id);
+  return logMessage;
 }
 
 async function logTicketCreation(guild, ticketChannel, details) {
