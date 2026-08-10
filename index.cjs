@@ -9926,7 +9926,7 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
   lines.push("> `💳` × **Dane do płatności**");
 
   if (method === "kod_blik" || method === "kod blik") {
-    lines.push("> `💬` × Proszę podać **KOD BLIK** (to nie jest płatność na numer telefonu).");
+    return;
   } else if (method.includes("blik") || method.includes("przelew")) {
     addLine("`📱`", "Telefon", profile.phone);
     addLine("`🧾`", "Tytuł przelewu", profile.transferTitle);
@@ -9937,8 +9937,8 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
     addLine("`👝`", "Portfel LTC", profile.ltcWallet);
   } else if (method === "mypsc") {
     addLine("`🌐`", "MyPSC", profile.mypscEmail);
-  } else if (method === "psc" || method === "psc_bez_paragonu") {
-    // PSC - brak danych bankowych do pokazania, embed z instrukcią PSC jest osobno
+  } else if (method === "psc" || method === "psc_bez_paragonu" || method === "kod_blik" || method === "kod blik") {
+    // PSC / KOD BLIK - brak danych bankowych, instrukcja osobno
     return;
   } else {
     addLine("`📱`", "Telefon", profile.phone);
@@ -16783,15 +16783,18 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
         await sendSellerPaymentProfileToTicket(ch, interaction.guildId, claimerId, ticketData);
 
         const method = String(ticketData?.paymentMethod || "").toLowerCase();
-        if (method === "psc" || method === "psc_bez_paragonu") {
+        if (method === "psc" || method === "psc_bez_paragonu" || method === "kod_blik" || method === "kod blik") {
+          let desc = "> `ℹ️` × **Informacje**\\n";
+          if (method === "psc") {
+            desc += "> `🛒` × Wyślij **zdjęcie paragonu** oraz **kod psc**.";
+          } else if (method === "psc_bez_paragonu") {
+            desc += "> `🛒` × Wyślij **kod psc**.";
+          } else {
+            desc += "> `🛒` × Wyślij **KOD BLIK** (nie wysyłaj przelewu na telefon).";
+          }
           const pscEmbed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
-            .setDescription(
-              "> `ℹ️` × **Informacje**\n" +
-              (method === "psc"
-                ? "> `🛒` × Wyślij **zdjęcie paragonu** oraz **kod psc**."
-                : "> `🛒` × Wyślij **kod psc**.")
-            );
+            .setDescription(desc);
           await ch.send({ embeds: [pscEmbed] }).catch(() => null);
         }
       }
