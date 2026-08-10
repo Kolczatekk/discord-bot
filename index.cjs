@@ -16790,7 +16790,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
           } else if (method === "psc_bez_paragonu") {
             desc += "> `🛒` × Wyślij **kod psc**.";
           } else {
-            desc += "> `🛒` × Wyślij **KOD BLIK** (nie wysyłaj przelewu na telefon).";
+            desc += "> `🛒` × Wyślij **KOD BLIK**.";
           }
           const pscEmbed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
