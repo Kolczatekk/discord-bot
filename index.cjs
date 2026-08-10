@@ -9925,7 +9925,9 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
 
   lines.push("> `💳` × **Dane do płatności**");
 
-  if (method.includes("blik") || method.includes("przelew")) {
+  if (method === "kod_blik" || method === "kod blik") {
+    lines.push("> `💬` × Proszę podać **KOD BLIK** (to nie jest płatność na numer telefonu).");
+  } else if (method.includes("blik") || method.includes("przelew")) {
     addLine("`📱`", "Telefon", profile.phone);
     addLine("`🧾`", "Tytuł przelewu", profile.transferTitle);
     addLine("`👤`", "Odbiorca", profile.recipient);
