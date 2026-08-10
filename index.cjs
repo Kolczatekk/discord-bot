@@ -19688,6 +19688,8 @@ async function handleModalSubmit(interaction) {
         }).catch(() => null);
       }
     } catch (_) {}
+  } finally {
+    creatingTicketUsers.delete(user.id);
   }
 }
 
