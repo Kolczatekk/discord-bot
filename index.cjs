@@ -16690,7 +16690,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     const przejetaKategoria = await client.channels.fetch(przejetaKategoriaId).catch(() => null);
 
     if (przejetaKategoria) {
-      await ch.setParent(przejetaKategoriaId).catch((err) => {
+      await ch.setParent(przejetaKategoriaId, { lockPermissions: false }).catch((err) => {
         console.error("Błąd przenoszenia do kategorii TICKETY PRZEJĘTE:", err);
       });
       console.log(`Przeniesiono ticket ${channelId} do kategorii TICKETY PRZEJĘTE`);
@@ -16784,7 +16784,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
 
         const method = String(ticketData?.paymentMethod || "").toLowerCase();
         if (method === "psc" || method === "psc_bez_paragonu" || method === "kod_blik" || method === "kod blik") {
-          let desc = "> `ℹ️` × **Informacje**\\n";
+          let desc = "> `ℹ️` × **Informacje**\n";
           if (method === "psc") {
             desc += "> `🛒` × Wyślij **zdjęcie paragonu** oraz **kod psc**.";
           } else if (method === "psc_bez_paragonu") {
@@ -16909,7 +16909,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       const originalCategory = await client.channels.fetch(ticketData.originalCategoryId).catch(() => null);
 
       if (originalCategory) {
-        await ch.setParent(ticketData.originalCategoryId).catch((err) => {
+        await ch.setParent(ticketData.originalCategoryId, { lockPermissions: false }).catch((err) => {
           console.error("Błąd przywracania oryginalnej kategorii:", err);
         });
         console.log(`Przywrócono ticket ${channelId} do oryginalnej kategorii ${ticketData.originalCategoryId}`);
