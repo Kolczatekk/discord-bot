@@ -488,7 +488,7 @@ let pendingRename = false;
 let latestRepRenameCount = null;
 
 function isLegitRepMessage(message) {
-  return /^\+rep(?:\s|$)/i.test(String(message?.content || "").trim());
+  return /^\+rep(?:\s|$)/.test(String(message?.content || "").trim());
 }
 
 const LEGIT_REP_SERVERS = [
@@ -512,6 +512,7 @@ function normalizeLegitRepVerb(value) {
 
 function parseLegitRepContent(content) {
   const normalized = String(content || "").trim().replace(/\s+/g, " ");
+  if (!normalized.startsWith("+rep ")) return null;
   const serverPattern = LEGIT_REP_SERVERS.join("|").replace(/\s+/g, "\\s+");
   const pattern = new RegExp(
     `^\\+rep\\s+(<@!?\\d+>|@[^\\s]+)\\s+` +
