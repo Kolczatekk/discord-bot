@@ -5004,7 +5004,7 @@ const commands = [
         .setName("kwota")
         .setDescription("Kwota do dodania/odejmowania/ustawienia")
         .setRequired(true)
-        .setMinValue(1)
+        .setMinValue(0)
         .setMaxValue(999999)
     )
     .toJSON(),
@@ -8698,7 +8698,8 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID).catch(() => null);
     if (!logsChannel) return;
 
-    if (weeklySales.size === 0) {
+    const activeSalesCount = Array.from(weeklySales.values()).filter((data) => data.amount > 0).length;
+    if (activeSalesCount === 0) {
       const nextSundayTS = getNextSundayTimestamp();
       const emptyReportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
         "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n" +
@@ -8771,7 +8772,9 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     }
     const isSundayMode = (new Date().getDay() === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales);
 
-    const sortedSales = Array.from(weeklySales.entries()).sort((a, b) => b[1].amount - a[1].amount);
+    const sortedSales = Array.from(weeklySales.entries())
+      .filter(([_, data]) => data.amount > 0)
+      .sort((a, b) => b[1].amount - a[1].amount);
 
     if (isSundayMode) {
       reportText = "# `📊` ROZLICZENIA TYGODNIOWE\n" +
@@ -9269,19 +9272,24 @@ async function handleRozliczenieUstawCommand(interaction) {
     userData.amount = kwota;
   }
 
-  userData.lastUpdate = Date.now();
-  userData.guildId = interaction.guild.id;
-  weeklySales.set(userId, userData);
+  if (userData.amount <= 0) {
+    userData.amount = 0;
+    weeklySales.delete(userId);
+    await db.deleteWeeklySale(userId, interaction.guild.id).catch(() => null);
+  } else {
+    userData.lastUpdate = Date.now();
+    userData.guildId = interaction.guild.id;
+    weeklySales.set(userId, userData);
 
-  // Zapisz do Supabase
-  await db.saveWeeklySale(
-    userId,
-    userData.amount,
-    interaction.guild.id,
-    userData.paid || false,
-    userData.paidAt || null,
-    userData.lastUpdate,
-  );
+    await db.saveWeeklySale(
+      userId,
+      userData.amount,
+      interaction.guild.id,
+      userData.paid || false,
+      userData.paidAt || null,
+      userData.lastUpdate,
+    );
+  }
 
   // Zapisz stan po zmianie rozliczenia
   scheduleSavePersistentState(true);
