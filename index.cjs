@@ -9886,15 +9886,15 @@ function buildSellerPaymentDataModalMain(interaction) {
   const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
   const modal = new ModalBuilder()
     .setCustomId("seller_data_modal")
-    .setTitle("Dane: BLIK / Przelew");
+    .setTitle("Ustaw dane");
 
   const phoneInput = new TextInputBuilder()
     .setCustomId("phone")
-    .setLabel("Nr. telefonu / BLIK")
+    .setLabel("Numer telefonu")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(80)
-    .setPlaceholder("np. 123 456 789");
+    .setPlaceholder("Przykład: 123 456 789");
 
   const transferTitleInput = new TextInputBuilder()
     .setCustomId("transfer_title")
@@ -9902,7 +9902,7 @@ function buildSellerPaymentDataModalMain(interaction) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
-    .setPlaceholder("np. Zamówienie DC");
+    .setPlaceholder("Przykład: Zakup itemów mc");
 
   const recipientInput = new TextInputBuilder()
     .setCustomId("recipient")
@@ -9910,7 +9910,7 @@ function buildSellerPaymentDataModalMain(interaction) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
-    .setPlaceholder("np. Jan Kowalski");
+    .setPlaceholder("Przykład: Imię Nazwisko");
 
   setTextInputValueIfPresent(phoneInput, current.phone || "");
   setTextInputValueIfPresent(transferTitleInput, current.transferTitle || "");
@@ -9929,7 +9929,7 @@ function buildSellerPaymentDataModalExtra(interaction) {
   const current = getSellerPaymentProfile(interaction.guildId, interaction.user.id) || {};
   const modal = new ModalBuilder()
     .setCustomId("seller_data_modal")
-    .setTitle("Dane: PP / LTC / MyPSC");
+    .setTitle("Ustaw dane");
 
   const paypalEmailInput = new TextInputBuilder()
     .setCustomId("paypal_email")
@@ -9937,7 +9937,7 @@ function buildSellerPaymentDataModalExtra(interaction) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
-    .setPlaceholder("np. paypal@example.com");
+    .setPlaceholder("Przykład: paypal@example.com");
 
   const ltcWalletInput = new TextInputBuilder()
     .setCustomId("ltc_wallet")
@@ -9945,7 +9945,7 @@ function buildSellerPaymentDataModalExtra(interaction) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(180)
-    .setPlaceholder("np. Lhq9...");
+    .setPlaceholder("Przykład: Lhq9...");
 
   const mypscEmailInput = new TextInputBuilder()
     .setCustomId("mypsc_email")
@@ -9953,7 +9953,7 @@ function buildSellerPaymentDataModalExtra(interaction) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(120)
-    .setPlaceholder("np. mypsc@example.com");
+    .setPlaceholder("Przykład: mypsc@example.com");
 
   setTextInputValueIfPresent(paypalEmailInput, current.paypalEmail || "");
   setTextInputValueIfPresent(ltcWalletInput, current.ltcWallet || "");
