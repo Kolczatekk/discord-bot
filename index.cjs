@@ -447,6 +447,7 @@ function buildTicketContainerPayload({ headerText, bodyText, buttonRow, guildId 
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addActionRowComponents(buttonRow);
   appendBrandFooterToContainer(container, guildId);
 
