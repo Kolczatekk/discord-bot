@@ -18171,7 +18171,7 @@ async function handleModalSubmit(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("💱 Rozliczenie dodane")
+      .setTitle("`💱` Rozliczenie dodane")
       .setDescription(
         `> 👤 **Użytkownik:** <@${userId}>\n` +
         `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
@@ -18181,7 +18181,6 @@ async function handleModalSubmit(interaction) {
       .setTimestamp();
 
     await interaction.channel.send({
-      content: `<@${userId}>`,
       embeds: [embed],
     }).catch(() => null);
 
