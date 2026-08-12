@@ -6998,6 +6998,7 @@ async function handleModalSubmit(interaction) {
     const channel = await interaction.guild.channels.create(createOptions);
 
     const embedText =
+      `@everyone\n\n` +
       `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -7037,7 +7038,6 @@ async function handleModalSubmit(interaction) {
     container.addActionRowComponents(buttonRow);
 
     const sentMsg = await channel.send({
-      content: `@everyone`,
       components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
@@ -18415,6 +18415,7 @@ async function openRewardClaimTicket(interaction) {
   const channel = await guild.channels.create(createOptions);
 
   const embedText =
+    `@everyone\n\n` +
     `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
     `### ・ \`👤\` × **Informacje o kliencie:**\n` +
     `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -18454,7 +18455,6 @@ async function openRewardClaimTicket(interaction) {
   container.addActionRowComponents(buttonRow);
 
   const sentMsg = await channel.send({
-    content: `@everyone`,
     components: [container],
     flags: MessageFlags.IsComponentsV2,
   });
@@ -20424,6 +20424,7 @@ async function handleModalSubmit(interaction) {
         const channel = await interaction.guild.channels.create(createOptions);
 
         const embedText =
+          `@everyone\n\n` +
           `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
           `### ・ \`👤\` × **Informacje o kliencie:**\n` +
           `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -20463,7 +20464,6 @@ async function handleModalSubmit(interaction) {
         container.addActionRowComponents(buttonRow);
 
         const sentMsg = await channel.send({
-          content: `@everyone`,
           components: [container],
           flags: MessageFlags.IsComponentsV2,
         });
@@ -20740,6 +20740,7 @@ async function handleModalSubmit(interaction) {
     }
 
     const embedText =
+      `@everyone\n\n` +
       `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -20792,7 +20793,6 @@ async function handleModalSubmit(interaction) {
 
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
-      content: `@everyone`,
       components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
