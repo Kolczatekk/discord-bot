@@ -4844,7 +4844,7 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczeniazaplacil")
-    .setDescription("Oznacz rozliczenie jako zapłacone (tylko właściciel)")
+    .setDescription("Oznacz rozliczenie jako zapłacone, usuń zawieszenie i przywróć limity")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addUserOption((option) =>
       option
@@ -4852,6 +4852,27 @@ const commands = [
         .setDescription("Użytkownik do oznaczenia")
         .setRequired(true)
     )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("rozliczeniezaplacil")
+    .setDescription("Oznacz rozliczenie jako zapłacone, usuń zawieszenie i przywróć limity")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addUserOption((option) =>
+      option
+        .setName("uzytkownik")
+        .setDescription("Użytkownik do oznaczenia")
+        .setRequired(true)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("test-rozliczenia-reset00")
+    .setDescription("Testowo wykonaj akcję z niedzieli 00:00 (zabranie limitów)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("test-rozliczenia-deadline20")
+    .setDescription("Testowo wykonaj akcję z niedzieli 20:00 (nadanie roli ZAWIESZONY)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczeniezakoncz")
@@ -8468,7 +8489,14 @@ async function handleSlashCommand(interaction) {
       await handleRozliczenieCommand(interaction);
       break;
     case "rozliczeniazaplacil":
+    case "rozliczeniezaplacil":
       await handleRozliczenieZaplacilCommand(interaction);
+      break;
+    case "test-rozliczenia-reset00":
+      await handleTestRozliczeniaReset00Command(interaction);
+      break;
+    case "test-rozliczenia-deadline20":
+      await handleTestRozliczeniaDeadline20Command(interaction);
       break;
     case "rozliczeniezakoncz":
       await handleRozliczenieZakonczCommand(interaction);
@@ -8568,10 +8596,66 @@ async function handleRozliczenieCommand(interaction) {
   setTimeout(sendRozliczeniaMessage, 1000);
 }
 
-// Handler dla komendy /rozliczeniazaplacil
+// Pomocnicze funkcje do cyklu rozliczeń
+async function executeSundayReset00(guild) {
+  if (!guild) return 0;
+  const LIMIT_ROLE_IDS = [
+    "1449448860517798061", // limit 200
+    "1449448686156255333", // limit 100
+    "1449448702925209651", // limit 50
+    "1449448705563557918", // limit 20
+  ];
+  let count = 0;
+
+  for (const [userId, data] of weeklySales) {
+    if (data.amount > 0 && !data.paid) {
+      const member = await guild.members.fetch(userId).catch(() => null);
+      if (member) {
+        const key = `${guild.id}:${userId}`;
+        const userLimitRoles = LIMIT_ROLE_IDS.filter((roleId) => member.roles.cache.has(roleId));
+        if (userLimitRoles.length > 0) {
+          sellerSavedLimitRoles.set(key, userLimitRoles);
+        }
+        for (const roleId of LIMIT_ROLE_IDS) {
+          if (member.roles.cache.has(roleId)) {
+            await member.roles.remove(roleId, "Cotygodniowe rozliczenia 00:00 - zabranie limitów do czasu zapłaty").catch(() => null);
+          }
+        }
+        count++;
+      }
+    }
+  }
+  scheduleSavePersistentState(true);
+  return count;
+}
+
+async function executeSundayDeadline20(guild) {
+  if (!guild) return 0;
+  const SUSPENDED_ROLE_ID = "1537090439239442483";
+  let count = 0;
+
+  for (const [userId, data] of weeklySales) {
+    if (data.amount > 0 && !data.paid) {
+      const member = await guild.members.fetch(userId).catch(() => null);
+      if (member) {
+        if (!member.roles.cache.has(SUSPENDED_ROLE_ID)) {
+          await member.roles.add(SUSPENDED_ROLE_ID, "Przekroczenie terminu rozliczeń 20:00 - zawieszenie").catch(() => null);
+        }
+        count++;
+      }
+    }
+  }
+  scheduleSavePersistentState(true);
+  return count;
+}
+
+// Handler dla komendy /rozliczeniazaplacil oraz /rozliczeniezaplacil
 async function handleRozliczenieZaplacilCommand(interaction) {
-  // Sprawdź czy właściciel
-  if (interaction.user.id !== interaction.guild.ownerId) {
+  const isOwner = interaction.user.id === interaction.guild?.ownerId;
+  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+                  interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+
+  if (!isAdmin && !isOwner) {
     await interaction.reply({
       content: "> `❗` × Brak wymaganych uprawnień.",
       flags: [MessageFlags.Ephemeral]
@@ -8582,26 +8666,23 @@ async function handleRozliczenieZaplacilCommand(interaction) {
   const targetUser = interaction.options.getUser("uzytkownik");
   const userId = targetUser.id;
 
-  // Sprawdź czy użytkownik ma rozliczenie
   if (!weeklySales.has(userId)) {
     await interaction.reply({
-      content: `❌ Użytkownik <@${userId}> nie ma żadnych rozliczeń!`,
+      content: `> \`❌\` × Użytkownik <@${userId}> nie posiada rozliczeń w tym tygodniu!`,
       flags: [MessageFlags.Ephemeral]
     });
     return;
   }
 
   const userData = weeklySales.get(userId);
-  const prowizja = userData.amount * ROZLICZENIA_PROWIZJA;
+  const prowizja = (userData.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
 
-  // Zaktualizuj status zapłaty
   userData.paid = true;
   userData.paidAt = Date.now();
   userData.lastUpdate = Date.now();
   userData.guildId = interaction.guild.id;
   weeklySales.set(userId, userData);
 
-  // Zapisz do Supabase
   await db.saveWeeklySale(
     userId,
     userData.amount,
@@ -8610,22 +8691,91 @@ async function handleRozliczenieZaplacilCommand(interaction) {
     userData.paidAt,
     userData.lastUpdate,
   );
+
+  // Odzyskaj rangi limitów i usuń rolę zawieszony
+  const key = `${interaction.guild.id}:${userId}`;
+  const member = await interaction.guild.members.fetch(userId).catch(() => null);
+  const SUSPENDED_ROLE_ID = "1537090439239442483";
+  const DEFAULT_LIMIT_ROLE_ID = "1449448705563557918";
+
+  if (member) {
+    if (member.roles.cache.has(SUSPENDED_ROLE_ID)) {
+      await member.roles.remove(SUSPENDED_ROLE_ID, "Rozliczenie zapłacone - usunięcie zawieszenia").catch(() => null);
+    }
+    const savedRoles = sellerSavedLimitRoles.get(key);
+    if (Array.isArray(savedRoles) && savedRoles.length > 0) {
+      for (const roleId of savedRoles) {
+        if (!member.roles.cache.has(roleId)) {
+          await member.roles.add(roleId, "Rozliczenie zapłacone - przywrócenie limity").catch(() => null);
+        }
+      }
+      sellerSavedLimitRoles.delete(key);
+    } else {
+      if (!member.roles.cache.has(DEFAULT_LIMIT_ROLE_ID)) {
+        await member.roles.add(DEFAULT_LIMIT_ROLE_ID, "Rozliczenie zapłacone - domyślny limit 20").catch(() => null);
+      }
+    }
+  }
+
   scheduleSavePersistentState(true);
 
   const embed = new EmbedBuilder()
-    .setColor(0x00ff00) // zielony
-    .setTitle("✅ Rozliczenie oznaczone jako zapłacone")
+    .setColor(COLOR_BLUE)
+    .setTitle("`✅` Rozliczenie oznaczone jako zapłacone")
     .setDescription(
-      `> \`✅\` × <@${userId}> **Zapłacił** **${prowizja.toLocaleString("pl-PL")} zł**\n` +
+      `> 👤 **Użytkownik:** <@${userId}>\n` +
+      `> \`✅\` × **Status:** Rozliczenie zapłacone (zmieniono na \`✅\`)\n` +
       `> \`📊\` × **Suma sprzedaży:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-      `> \`🕐\` × **Czas zapłaty:** <t:${Math.floor(Date.now() / 1000)}:R>`
-    )
-    .setTimestamp();
+      `> \`💸\` × **Prowizja 10%:** ${prowizja} zł\n` +
+      `> \`🔓\` × **Uprawnienia:** Przywrócono dostęp do limitów i zdjęto ewentualne zawieszenie.`
+    );
 
   await interaction.reply({ embeds: [embed] });
-  console.log(`[rozliczenie] Admin ${interaction.user.id} oznaczył rozliczenie użytkownika ${userId} jako zapłacone (${prowizja} zł)`);
+  console.log(`[rozliczenie] Admin ${interaction.user.id} oznaczył rozliczenie ${userId} jako zapłacone`);
 
-  // Odśwież wiadomość ROZLICZENIA TYGODNIOWE
+  setTimeout(sendRozliczeniaMessage, 1000);
+}
+
+// Handlery komend testowych
+async function handleTestRozliczeniaReset00Command(interaction) {
+  const isOwner = interaction.user.id === interaction.guild?.ownerId;
+  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+                  interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+
+  if (!isAdmin && !isOwner) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral]
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const count = await executeSundayReset00(interaction.guild);
+  await interaction.editReply({
+    content: `> \`⏰\` × **[TEST 00:00]** Wykonano testowy reset z niedzieli 00:00.\n> \`🔒\` × **Odebrano rangi limitów:** dla ${count} osób posiadających niezapłacone rozliczenia.`
+  });
+  setTimeout(sendRozliczeniaMessage, 1000);
+}
+
+async function handleTestRozliczeniaDeadline20Command(interaction) {
+  const isOwner = interaction.user.id === interaction.guild?.ownerId;
+  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+                  interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+
+  if (!isAdmin && !isOwner) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral]
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const count = await executeSundayDeadline20(interaction.guild);
+  await interaction.editReply({
+    content: `> \`🔴\` × **[TEST 20:00]** Wykonano testowy deadline z niedzieli 20:00.\n> \`⛔\` × **Nadano rolę ZAWIESZONY:** dla ${count} osób, które nie zapłaciły rozliczenia.`
+  });
   setTimeout(sendRozliczeniaMessage, 1000);
 }
 
@@ -24095,6 +24245,22 @@ async function sendRozliczeniaMessage() {
       )
     );
 
+    // Wyświetl listę rozliczeń ze statusem ❌ / ✅ jeśli istnieją wpisy
+    if (weeklySales.size > 0) {
+      const klientEmoji = findGuildEmojiByName(channel.guild?.id, "klient");
+      const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
+      let salesListText = "### 📊 Status rozliczeń w tym tygodniu:\n";
+      for (const [userId, data] of weeklySales) {
+        const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
+        const statusEmoji = data.paid ? "`✅`" : "`❌`";
+        salesListText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Prowizja 10%: **${prowizja} zł**)\n`;
+      }
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(salesListText)
+      );
+    }
+
     container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
     const kasaEmoji = findGuildEmojiByName(channel.guild?.id, "kasa_3");
@@ -24126,44 +24292,44 @@ async function sendRozliczeniaMessage() {
   }
 }
 
+let lastReset00Trigger = "";
+let lastDeadline20Trigger = "";
+
 // Funkcja do sprawdzania i resetowania cotygodniowych rozliczeń
 async function checkWeeklyReset() {
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0 = niedziela
   const hour = now.getHours();
+  const minute = now.getMinutes();
+  const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 
-  // Reset w niedzielę o 20:01
-  if (dayOfWeek === 0 && hour === 20 && now.getMinutes() === 1) {
-    try {
-      const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID);
-      if (logsChannel && weeklySales.size > 0) {
-        let totalSales = 0;
-        let report = "📊 **RAPORT TYGODNIOWY**\n\n";
-
-        for (const [userId, data] of weeklySales) {
-          const prowizja = data.amount * ROZLICZENIA_PROWIZJA;
-          report += `> 👤 <@${userId}>: Sprzedał: ${data.amount.toLocaleString("pl-PL")} zł | Do zapałaty: ${prowizja.toFixed(2)} zł\n`;
-          totalSales += data.amount;
-        }
-
-        const totalProwizja = (totalSales * ROZLICZENIA_PROWIZJA).toFixed(2);
-        report += `\n> 💰 **Łączna sprzedaż:** ${totalSales.toLocaleString("pl-PL")} zł\n`;
-        report += `> 💸 **Łączna prowizja (10%):** ${totalProwizja} zł\n`;
-        report += `> 📱 **Przelew na numer:** 880 260 392\n`;
-        report += `> ⏳ **Termin płatności:** do 20:00 dnia dzisiejszego\n`;
-        report += `> 🚫 **Brak płatności = brak dostępu do ticketów**`;
-
-        await logsChannel.send(report);
-      }
-
-      // Reset mapy
-      weeklySales.clear();
-      await db.resetWeeklySales();
-      scheduleSavePersistentState(true);
-      console.log("Zresetowano cotygodniowe rozliczenia");
-    } catch (err) {
-      console.error("Błąd resetowania rozliczeń:", err);
+  // Niedziela 00:00 - odebranie limitów dla osób z niezapłaconym rozliczeniem
+  if (dayOfWeek === 0 && hour === 0 && minute === 0 && lastReset00Trigger !== dateKey) {
+    lastReset00Trigger = dateKey;
+    console.log("[rozliczenia-timer] Niedziela 00:00 - zabieranie limitów dla osób bez zapłaty...");
+    for (const guild of client.guilds.cache.values()) {
+      await executeSundayReset00(guild).catch((e) => console.error("Błąd executeSundayReset00:", e));
     }
+    setTimeout(sendRozliczeniaMessage, 1000);
+  }
+
+  // Niedziela 20:00 - nadanie roli ZAWIESZONY osobom które nie zapłaciły do 20:00
+  if (dayOfWeek === 0 && hour === 20 && minute === 0 && lastDeadline20Trigger !== dateKey) {
+    lastDeadline20Trigger = dateKey;
+    console.log("[rozliczenia-timer] Niedziela 20:00 - nadawanie roli ZAWIESZONY dla osób bez zapłaty...");
+    for (const guild of client.guilds.cache.values()) {
+      await executeSundayDeadline20(guild).catch((e) => console.error("Błąd executeSundayDeadline20:", e));
+    }
+    setTimeout(sendRozliczeniaMessage, 1000);
+  }
+
+  // Niedziela 23:59 - czyszczenie danych na nowy tydzień
+  if (dayOfWeek === 0 && hour === 23 && minute === 59 && weeklySales.size > 0) {
+    console.log("[rozliczenia-timer] Koniec tygodnia - reset danych rozliczeń na nowy tydzień...");
+    weeklySales.clear();
+    await db.resetWeeklySales().catch((e) => console.error("Błąd resetWeeklySales:", e));
+    scheduleSavePersistentState(true);
+    setTimeout(sendRozliczeniaMessage, 1000);
   }
 }
 
