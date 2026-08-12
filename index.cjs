@@ -7033,8 +7033,8 @@ async function handleModalSubmit(interaction) {
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-    container.addActionRowComponents(buttonRow);
     appendBrandFooterToContainer(container, interaction.guild?.id);
+    container.addActionRowComponents(buttonRow);
 
     const sentMsg = await channel.send({
       content: `@everyone`,
@@ -18450,8 +18450,8 @@ async function openRewardClaimTicket(interaction) {
 
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-  container.addActionRowComponents(buttonRow);
   appendBrandFooterToContainer(container, interaction.guild?.id);
+  container.addActionRowComponents(buttonRow);
 
   const sentMsg = await channel.send({
     content: `@everyone`,
@@ -20459,8 +20459,8 @@ async function handleModalSubmit(interaction) {
 
         const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
         container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-        container.addActionRowComponents(buttonRow);
         appendBrandFooterToContainer(container, interaction.guild?.id);
+        container.addActionRowComponents(buttonRow);
 
         const sentMsg = await channel.send({
           content: `@everyone`,
@@ -20787,8 +20787,8 @@ async function handleModalSubmit(interaction) {
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-    container.addActionRowComponents(buttonRow);
     appendBrandFooterToContainer(container, interaction.guild?.id);
+    container.addActionRowComponents(buttonRow);
 
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
