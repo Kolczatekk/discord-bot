@@ -17808,16 +17808,38 @@ async function handleModalSubmit(interaction) {
     if (sellerPaymentProfileHasData(profile)) {
       sellerPaymentProfiles.set(key, profile);
       scheduleSavePersistentState(true);
+
+      const container = new ContainerBuilder()
+        .setAccentColor(COLOR_BLUE)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "> `✅` × Pomyślnie zapisano dane płatności."
+          )
+        );
+
+      appendBrandFooterToContainer(container, interaction.guildId);
+
       await interaction.reply({
-        content: "> `✅` × Zapisałem Twoje dane. Od teraz bot pokaże je po przejęciu ticketa.",
-        flags: [MessageFlags.Ephemeral],
+        components: [container],
+        flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
       });
     } else {
       sellerPaymentProfiles.delete(key);
       scheduleSavePersistentState(true);
+
+      const container = new ContainerBuilder()
+        .setAccentColor(COLOR_BLUE)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "> `🧹` × Formularz był pusty – pomyślnie wyczyszczono dane płatności."
+          )
+        );
+
+      appendBrandFooterToContainer(container, interaction.guildId);
+
       await interaction.reply({
-        content: "> `🗑️` × Formularz był pusty, więc wyczyściłem Twoje dane płatności.",
-        flags: [MessageFlags.Ephemeral],
+        components: [container],
+        flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
       });
     }
     return;
