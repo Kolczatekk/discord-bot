@@ -10134,13 +10134,15 @@ async function handlePanelDaneCommand(interaction) {
 
 async function handleOstrzezenieCommand(interaction) {
   try {
+    // Defer natychmiast – Discord ma 3s limit, a my robimy wiele async operacji
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
     const SELLER_ROLE_ID = "1350786945944391733";
     const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
     const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
     if (!isAdmin && !isSeller) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "> `❌` × Nie masz uprawnień do wystawiania ostrzeżeń.",
-        flags: [MessageFlags.Ephemeral],
       });
       return;
     }
@@ -10149,9 +10151,8 @@ async function handleOstrzezenieCommand(interaction) {
     const powod = interaction.options.getString("powod");
 
     if (!targetUser) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "> `❌` × Nie wybrano sprzedawcy.",
-        flags: [MessageFlags.Ephemeral],
       });
       return;
     }
@@ -10208,13 +10209,16 @@ async function handleOstrzezenieCommand(interaction) {
       }
     }
 
-    await interaction.reply({
+    await interaction.editReply({
       content: `> \`✅\` × Pomyślnie wystawiono ostrzeżenie **${currentCount}/3** dla użytkownika <@${targetUser.id}> na kanale <#${warnChannel.id}>.`,
-      flags: [MessageFlags.Ephemeral],
     });
   } catch (err) {
     console.error("Błąd w handleOstrzezenieCommand:", err);
-    if (!interaction.replied && !interaction.deferred) {
+    if (interaction.deferred) {
+      await interaction.editReply({
+        content: "> `❌` × Wystąpił błąd podczas wystawiania ostrzeżenia.",
+      }).catch(() => null);
+    } else if (!interaction.replied) {
       await interaction.reply({
         content: "> `❌` × Wystąpił błąd podczas wystawiania ostrzeżenia.",
         flags: [MessageFlags.Ephemeral],
