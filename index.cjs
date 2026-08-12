@@ -9857,12 +9857,12 @@ function buildSellerPaymentPanelPayload(guildId) {
     new ButtonBuilder()
       .setCustomId("seller_data_add_choice")
       .setLabel("Dodaj dane")
-      .setEmoji("📝")
+      .setEmoji({ id: "1469107179234525184", name: "BLIK" })
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_view")
       .setLabel("Moje Dane")
-      .setEmoji("🔍")
+      .setEmoji({ id: "1491446746239336448", name: "question" })
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_clear")
