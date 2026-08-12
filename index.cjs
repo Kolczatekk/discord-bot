@@ -8616,7 +8616,7 @@ async function handleRozliczenieCommand(interaction) {
 let rozliczeniaReportMessageId = null;
 let isSundayResetTriggered = false;
 
-async function sendRozliczeniaStatusReport(guild) {
+async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
   try {
     const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID).catch(() => null);
     if (!logsChannel) return;
@@ -8663,18 +8663,30 @@ async function sendRozliczeniaStatusReport(guild) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(reportText));
     appendBrandFooterToContainer(container, guild?.id);
 
-    if (rozliczeniaReportMessageId) {
+    if (forceNewMessage && rozliczeniaReportMessageId) {
       await logsChannel.messages.delete(rozliczeniaReportMessageId).catch(() => null);
       rozliczeniaReportMessageId = null;
     }
 
-    const sentMsg = await logsChannel.send({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
-    });
-    if (sentMsg) rozliczeniaReportMessageId = sentMsg.id;
+    let existingMsg = null;
+    if (rozliczeniaReportMessageId) {
+      existingMsg = await logsChannel.messages.fetch(rozliczeniaReportMessageId).catch(() => null);
+    }
+
+    if (existingMsg) {
+      await existingMsg.edit({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      }).catch(() => null);
+    } else {
+      const sentMsg = await logsChannel.send({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      if (sentMsg) rozliczeniaReportMessageId = sentMsg.id;
+    }
   } catch (err) {
-    console.error("Błąd wysyłania raportu rozliczeń:", err);
+    console.error("Błąd wysyłania/edycji raportu rozliczeń:", err);
   }
 }
 
@@ -8708,7 +8720,7 @@ async function executeSundayReset00(guild) {
     }
   }
   scheduleSavePersistentState(true);
-  await sendRozliczeniaStatusReport(guild);
+  await sendRozliczeniaStatusReport(guild, true);
   return count;
 }
 
@@ -8839,7 +8851,7 @@ async function handleTestRozliczeniaReset00Command(interaction) {
 
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
   const count = await executeSundayReset00(interaction.guild);
-  await sendRozliczeniaStatusReport(interaction.guild);
+  await sendRozliczeniaStatusReport(interaction.guild, true);
   await interaction.editReply({
     content: `> \`⏰\` × **[TEST 00:00]** Wykonano testowy reset z niedzieli 00:00.\n> \`🔒\` × **Odebrano rangi limitów:** dla ${count} osób posiadających niezapłacone rozliczenia.\n> \`📊\` × **Wysłano raport statusu na kanał rozliczeń.**`
   });
