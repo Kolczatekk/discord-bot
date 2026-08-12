@@ -7881,12 +7881,12 @@ async function handleButtonInteraction(interaction) {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("seller_data_edit_main")
-        .setLabel("BLIK/PRZELEW")
+        .setLabel("︲BLIK/PRZELEW")
         .setEmoji("💳")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("seller_data_edit_extra")
-        .setLabel("PAYPAL/LTC/MYPSC")
+        .setLabel("︲PAYPAL/LTC/MYPSC")
         .setEmoji("🌐")
         .setStyle(ButtonStyle.Secondary)
     );
@@ -8920,7 +8920,12 @@ async function handlePanelKalkulatorCommand(interaction) {
     new TextDisplayBuilder().setContent(
       "```\n" +
       "🧮 New Shop × Kalkulator\n" +
-      "```\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
       "> <a:arrowwhite:1491476759290449984> × **Oblicz w szybki i prosty sposób ile otrzymasz lub ile musisz dać aby dostać określoną ilość __waluty__**"
     )
   );
@@ -9845,7 +9850,7 @@ function buildSellerPaymentPanelPayload(guildId) {
         "```"
       )
     )
-    .addSeparatorComponents(new SeparatorBuilder().setDivider(false))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa."
@@ -9856,17 +9861,17 @@ function buildSellerPaymentPanelPayload(guildId) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_add_choice")
-      .setLabel("Dodaj dane")
+      .setLabel("︲Dodaj dane")
       .setEmoji({ id: "1469107179234525184", name: "BLIK" })
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_view")
-      .setLabel("Moje Dane")
+      .setLabel("︲Moje Dane")
       .setEmoji({ id: "1491446746239336448", name: "question" })
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_clear")
-      .setLabel("Wyczyść")
+      .setLabel("︲Wyczyść")
       .setEmoji("🧹")
       .setStyle(ButtonStyle.Secondary)
   );
