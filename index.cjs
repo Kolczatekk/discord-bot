@@ -6215,7 +6215,7 @@ async function handleModalSubmit(interaction) {
   const id = interaction.customId;
 
   if (id.startsWith("modal_odprzejmij")) {
-    const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
+    const reason = getModalTextInputValueSafe(interaction, "powod_odprzejmij");
     const expectedClaimer = id.split("_")[2] || null;
     await ticketUnclaimCommon(interaction, interaction.channelId || interaction.channel?.id, expectedClaimer, reason);
     return;
@@ -8254,7 +8254,7 @@ async function handleButtonInteraction(interaction) {
       .setLabel("Dlaczego chcesz zwolnić ticket?")
       .setStyle(2)
       .setPlaceholder("Przykład: Brak odpowiedzi")
-      .setRequired(true);
+      .setRequired(false);
     modal.addComponents(new ActionRowBuilder().addComponents(powInput));
     await interaction.showModal(modal);
     return;
@@ -10018,7 +10018,7 @@ async function handleAdminOdprzejmij(interaction) {
     .setCustomId("powod_odprzejmij")
     .setLabel("Dlaczego chcesz zwolnić ticket?")
     .setStyle(2)
-    .setRequired(true);
+    .setRequired(false);
   modal.addComponents(new ActionRowBuilder().addComponents(powInput));
   await interaction.showModal(modal);
 }
@@ -18046,6 +18046,14 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
         `> \`📈\` × Wykonał on łącznie: __${sellerCount}__ ticketów!`
       );
 
+    if (ticketData.lastUnclaimMsgId) {
+      const msgToDelete = await ch.messages.fetch(ticketData.lastUnclaimMsgId).catch(() => null);
+      if (msgToDelete) {
+        await msgToDelete.delete().catch(() => null);
+      }
+      ticketData.lastUnclaimMsgId = null;
+    }
+
     try {
       const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
       if (sent && sent.id) {
@@ -18352,10 +18360,19 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       console.error("Nie udało się wyczyścić historii kanału po odprzejęciu:", e);
     }
 
+    let description = `> \`🔓\` × Ticket został zwolniony przez: <@${interaction.user.id}>`;
+    if (reason && reason.trim()) {
+      description += `\n> Powód: **${reason}**`;
+    }
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`🔓\` × Ticket został zwolniony przez: <@${interaction.user.id}>\n> Powód: **${reason}**`);
-    await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+      .setDescription(description);
+    const sentUnclaim = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+    if (sentUnclaim && sentUnclaim.id) {
+      ticketData.lastUnclaimMsgId = sentUnclaim.id;
+      ticketOwners.set(channelId, ticketData);
+      scheduleSavePersistentState();
+    }
     if (!isBtn) {
       await interaction.editReply({ content: "> `✅` × Pomyślnie zwolniono ticket.", flags: [MessageFlags.Ephemeral] }).catch(() => null);
     }
@@ -18790,7 +18807,7 @@ async function handleModalSubmit(interaction) {
   }
 
   if (cid === "modal_odprzejmij") {
-    const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
+    const reason = getModalTextInputValueSafe(interaction, "powod_odprzejmij");
     const expectedClaimer = rawCid.split("_")[2] || null;
     await ticketUnclaimCommon(interaction, interaction.channelId || interaction.channel?.id, expectedClaimer, reason);
     return;
@@ -19021,7 +19038,7 @@ async function handleModalSubmit(interaction) {
 
   // --- ODPRZEJMIJ MODAL ---
   if (cid.startsWith("modal_odprzejmij")) {
-    const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
+    const reason = getModalTextInputValueSafe(interaction, "powod_odprzejmij");
     const expectedClaimer = cid.split("_")[2] || null;
     await ticketUnclaimCommon(interaction, interaction.channelId || interaction.channel?.id, expectedClaimer, reason);
     return;
