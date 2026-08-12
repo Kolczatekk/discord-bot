@@ -10188,15 +10188,22 @@ async function handleOstrzezenieCommand(interaction) {
       flags: MessageFlags.IsComponentsV2,
     });
 
-    // Jeśli sprzedawca osiągnął 3/3 – odbierz mu rolę limitu (zachowuje rolę sprzedawcy)
+    // Jeśli sprzedawca osiągnął 3/3 – odbierz mu wszystkie role limitu zakupu (zachowuje rolę sprzedawcy)
     if (currentCount >= 3 && interaction.guild) {
-      const LIMIT_ROLE_ID = process.env.SELLER_LIMIT_ROLE_ID || null;
-      if (LIMIT_ROLE_ID) {
-        const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-        if (member && member.roles.cache.has(LIMIT_ROLE_ID)) {
-          await member.roles.remove(LIMIT_ROLE_ID).catch((e) =>
-            console.error("Błąd usuwania roli limitu:", e)
-          );
+      const LIMIT_ROLE_IDS = [
+        "1449448860517798061", // dostep.zakup.max.200
+        "1449448686156255333", // dostep.zakup.max.100
+        "1449448702925209651", // dostep.zakup.max.50
+        "1449448705563557918", // dostep.zakup.max.20
+      ];
+      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      if (member) {
+        for (const roleId of LIMIT_ROLE_IDS) {
+          if (member.roles.cache.has(roleId)) {
+            await member.roles.remove(roleId, "3/3 ostrzeżeń – utrata limitu zakupu").catch((e) =>
+              console.error(`Błąd usuwania roli limitu ${roleId}:`, e)
+            );
+          }
         }
       }
     }
