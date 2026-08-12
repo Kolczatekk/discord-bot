@@ -10161,14 +10161,17 @@ async function handleOstrzezenieCommand(interaction) {
     sellerWarnings.set(key, currentCount);
     scheduleSavePersistentState(true);
 
-    // Buduj treść wiadomości w stylu: ## OSTRZEŻENIE X/3 \n> Powód: ...
     let headerTitle = `OSTRZEŻENIE ${currentCount}/3`;
     if (currentCount === 2) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
     else if (currentCount >= 3) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
 
-    const msgContent =
-      `## ${headerTitle}\n` +
-      `> Powód: ${powod}`;
+    const warnEmbed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        `## ${headerTitle}\n` +
+        `> Powód: ${powod}`
+      )
+      .setFooter(getBrandFooterBuilderObject());
 
     let warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID);
     if (!warnChannel && interaction.guild) {
@@ -10177,7 +10180,8 @@ async function handleOstrzezenieCommand(interaction) {
     if (!warnChannel) warnChannel = interaction.channel;
 
     await warnChannel.send({
-      content: `<@${targetUser.id}>\n${msgContent}`,
+      content: `<@${targetUser.id}>`,
+      embeds: [warnEmbed],
     });
 
     // Jeśli sprzedawca osiągnął 3/3 – odbierz mu rolę limitu (zachowuje rolę sprzedawcy)
