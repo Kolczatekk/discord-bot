@@ -18339,7 +18339,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       const msgs = await ch.messages.fetch({ limit: 100 }).catch(() => null);
       if (msgs && msgs.size) {
         const toDelete = msgs.filter((m) => {
-          if (claimMsg && m.id === claimMsg.id) return false;
+          if (claimMsg && m.id === claimMsg.id) return true;
           if (m.id === interaction.message?.id) return false;
           if (claimMsg) return m.createdTimestamp >= claimMsg.createdTimestamp;
           return true;
