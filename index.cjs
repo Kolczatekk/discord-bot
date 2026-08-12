@@ -8771,12 +8771,14 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     }
     const isSundayMode = (new Date().getDay() === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales);
 
+    const sortedSales = Array.from(weeklySales.entries()).sort((a, b) => b[1].amount - a[1].amount);
+
     if (isSundayMode) {
       reportText = "# `📊` ROZLICZENIA TYGODNIOWE\n" +
         "> `⏳` × **Termin na zapłacenie do godziny 20:00**\n" +
         "> `📱` × **Przelew na numer:** `880 260 392`\n\n";
 
-      for (const [userId, data] of weeklySales) {
+      for (const [userId, data] of sortedSales) {
         const userRate = getUserCommissionRate(userId);
         const prowizja = (data.amount * userRate).toFixed(2);
         const percentStr = `${Math.round(userRate * 100)}%`;
@@ -8788,7 +8790,7 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
       reportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
         "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n";
 
-      for (const [userId, data] of weeklySales) {
+      for (const [userId, data] of sortedSales) {
         const userRate = getUserCommissionRate(userId);
         const prowizja = (data.amount * userRate).toFixed(2);
         const percentStr = `${Math.round(userRate * 100)}%`;
