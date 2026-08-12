@@ -446,10 +446,11 @@ function buildTicketContainerPayload({ headerText, bodyText, buttonRow, guildId 
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
+
+  const fullBodyText = bodyText + "\n\n" + getBrandFooterCaption(guildId);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(fullBodyText));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addActionRowComponents(buttonRow);
-  appendBrandFooterToContainer(container, guildId);
 
   return {
     components: [container],
@@ -5758,6 +5759,14 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
       const emoji = comp.emoji || null;
       const disabledOrig = !!comp.disabled;
 
+      if (cid.startsWith("ticket_close_")) {
+        return new ButtonBuilder()
+          .setCustomId(cid)
+          .setLabel("︲Zamknij")
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji({ id: "1537166621527908382", name: "NO", animated: true });
+      }
+
       const btn = new ButtonBuilder()
         .setCustomId(cid)
         .setLabel(label)
@@ -7051,8 +7060,9 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
 
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
-      .setLabel("❌︲Zamknij")
-      .setStyle(ButtonStyle.Secondary);
+      .setLabel("︲Zamknij")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji({ id: "1537166621527908382", name: "NO", animated: true });
     const settingsButton = new ButtonBuilder()
       .setCustomId(`ticket_settings_${channel.id}`)
       .setLabel("⚙️︲Ustawienia")
@@ -18522,8 +18532,9 @@ async function openRewardClaimTicket(interaction) {
 
   const closeButton = new ButtonBuilder()
     .setCustomId(`ticket_close_${channel.id}`)
-    .setLabel("❌︲Zamknij")
-    .setStyle(ButtonStyle.Secondary);
+    .setLabel("︲Zamknij")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji({ id: "1537166621527908382", name: "NO", animated: true });
   const settingsButton = new ButtonBuilder()
     .setCustomId(`ticket_settings_${channel.id}`)
     .setLabel("⚙️︲Ustawienia")
@@ -20523,8 +20534,9 @@ async function handleModalSubmit(interaction) {
 
         const closeButton = new ButtonBuilder()
           .setCustomId(`ticket_close_${channel.id}`)
-          .setLabel("❌︲Zamknij")
-          .setStyle(ButtonStyle.Secondary);
+          .setLabel("︲Zamknij")
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji({ id: "1537166621527908382", name: "NO", animated: true });
         const settingsButton = new ButtonBuilder()
           .setCustomId(`ticket_settings_${channel.id}`)
           .setLabel("⚙️︲Ustawienia")
@@ -20829,11 +20841,12 @@ async function handleModalSubmit(interaction) {
       `### ・ \`📋\` × **Informacje z formularza:**\n` +
       `${formInfo}`;
 
-    // Build buttons: Close, Settings, Claim toggle button
+    // Build buttons: Close (animated :NO: emoji), Settings, Claim toggle button
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
-      .setLabel("❌︲Zamknij")
-      .setStyle(ButtonStyle.Secondary);
+      .setLabel("︲Zamknij")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji({ id: "1537166621527908382", name: "NO", animated: true });
 
     const settingsButton = new ButtonBuilder()
       .setCustomId(`ticket_settings_${channel.id}`)
