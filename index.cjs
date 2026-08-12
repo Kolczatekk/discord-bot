@@ -523,6 +523,7 @@ const modsVideoOrderRanks = new Map(
 
 // legit rep counter
 let legitRepCount = 15;
+const sellerTicketCounts = new Map(); // <userId, count>
 const DAILY_LEGIT_CHANNEL_ID = "1532859726033846292";
 const DAILY_LEGIT_TIME_ZONE = "Europe/Warsaw";
 let dailyLegitStats = createEmptyDailyLegitStats();
@@ -631,6 +632,43 @@ async function countExistingLegitRepMessages(channel) {
   legitRepHistoryInitialized = true;
   console.log(`[legit-counter] Policzone wiadomości +rep: ${legitRepMessageIds.size}. Żadna wiadomość nie została usunięta.`);
   return legitRepMessageIds.size;
+}
+
+async function getSellerTicketCount(userId) {
+  if (sellerTicketCounts.has(userId)) {
+    return sellerTicketCounts.get(userId);
+  }
+
+  const channel = await client.channels.fetch(REP_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased?.()) {
+    return 0; // fallback
+  }
+
+  let count = 0;
+  let before;
+  try {
+    while (true) {
+      const options = { limit: 100 };
+      if (before) options.before = before;
+      const batch = await channel.messages.fetch(options);
+      if (!batch.size) break;
+
+      for (const message of batch.values()) {
+        if (message.mentions.users.has(userId)) {
+          count++;
+        }
+      }
+
+      before = batch.last()?.id;
+      if (batch.size < 100 || !before) break;
+    }
+  } catch (error) {
+    console.error("Error fetching rep channel messages for getSellerTicketCount:", error);
+  }
+
+  sellerTicketCounts.set(userId, count);
+  scheduleSavePersistentState();
+  return count;
 }
 
 async function handleDeletedLegitRepMessage(message) {
@@ -2118,6 +2156,7 @@ function buildPersistentStateData() {
       donutSmpRate: DONUT_SMP_RATE,
       minestarSkypvpRate: MINESTAR_SKY_RATE,
     },
+    sellerTicketCounts: Object.fromEntries(sellerTicketCounts),
   };
 
   return data;
@@ -3428,6 +3467,22 @@ async function loadPersistentState() {
 
       if (typeof botStateData.legitRepCount === "number") {
         legitRepCount = botStateData.legitRepCount;
+      }
+
+      if (botStateData.sellerTicketCounts && typeof botStateData.sellerTicketCounts === "object") {
+        for (const [userId, count] of Object.entries(botStateData.sellerTicketCounts)) {
+          if (typeof count === "number") {
+            sellerTicketCounts.set(userId, count);
+          }
+        }
+      }
+
+      if (botStateData.sellerTicketCounts && typeof botStateData.sellerTicketCounts === "object") {
+        for (const [userId, count] of Object.entries(botStateData.sellerTicketCounts)) {
+          if (typeof count === "number") {
+            sellerTicketCounts.set(userId, count);
+          }
+        }
       }
 
       dailyLegitStats = normalizeDailyLegitStats(botStateData.dailyLegitStats);
@@ -17981,9 +18036,15 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     const publicClaimerLabel =
       (typeof opts.publicClaimerLabel === "string" && opts.publicClaimerLabel.trim()) ||
       `<@${claimerId}>`;
+
+    const sellerCount = await getSellerTicketCount(claimerId);
+
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription(`> \`✅\` × Ticket został przejęty przez: ${publicClaimerLabel}`);
+      .setDescription(
+        `> \`✅\` × Ticket został przejęty przez: ${publicClaimerLabel}\n` +
+        `> \`📈\` × Wykonał on łącznie: **${sellerCount}** ticketów`
+      );
 
     try {
       const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
@@ -21322,6 +21383,17 @@ client.on(Events.MessageCreate, async (message) => {
   ) {
     console.log(`[+rep] Otrzymano wiadomość na kanale legit-check: ${message.content} od ${message.author.tag}`);
     try {
+      if (message.mentions.users.size > 0) {
+        let changed = false;
+        for (const user of message.mentions.users.values()) {
+          if (sellerTicketCounts.has(user.id)) {
+            sellerTicketCounts.set(user.id, sellerTicketCounts.get(user.id) + 1);
+            changed = true;
+          }
+        }
+        if (changed) scheduleSavePersistentState();
+      }
+
       // ignore empty messages or slash-like content
       if (!message.content || message.content.trim().length === 0) return;
       if (message.content.trim().startsWith("/")) return;
