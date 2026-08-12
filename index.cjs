@@ -24056,28 +24056,31 @@ const ROZLICZENIA_PROWIZJA = 0.10; // 10%
 // Mapa na sumy sprzedaży w tygodniu
 const weeklySales = new Map(); // userId -> { amount, lastUpdate }
 
+// ID aktualnej wiadomości panelu rozliczeń (do usunięcia przed wysłaniem nowej)
+let rozliczeniaPanelMessageId = null;
+
 // Funkcja do wysyłania wiadomości o rozliczeniach
 async function sendRozliczeniaMessage() {
   try {
     const channel = await client.channels.fetch(ROZLICZENIA_CHANNEL_ID);
     if (!channel) return;
 
-    // Usuń WSZYSTKIE istniejące wiadomości informacyjne bota z przyciskiem
-    const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
-    if (messages && messages.size > 0) {
-      const botMessages = messages.filter(msg =>
-        msg.author.id === client.user.id &&
-        (
-          (msg.embeds.length > 0 && msg.embeds[0].title?.includes("ROZLICZENIA TYGODNIOWE")) ||
-          (msg.components && msg.components.length > 0 && msg.components.some(row => row.components?.some(btn => btn.customId === "rozliczenie_dodaj_btn")))
-        )
-      );
+    // Usuń starą wiadomość panelu po zapisanym ID
+    if (rozliczeniaPanelMessageId) {
+      await channel.messages.delete(rozliczeniaPanelMessageId).catch(() => null);
+      rozliczeniaPanelMessageId = null;
+    }
 
-      for (const [, msg] of botMessages) {
+    // Awaryjnie usuń też wszystkie stare panele bota z kanału (np. po restarcie)
+    const fetched = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    if (fetched && fetched.size > 0) {
+      const oldPanels = fetched.filter(msg =>
+        msg.author.id === client.user.id &&
+        msg.components && msg.components.length > 0 &&
+        JSON.stringify(msg.toJSON()).includes("rozliczenie_dodaj_btn")
+      );
+      for (const [, msg] of oldPanels) {
         await msg.delete().catch(() => null);
-      }
-      if (botMessages.size > 0) {
-        console.log(`Usunięto ${botMessages.size} starych wiadomości ROZLICZENIA TYGODNIOWE`);
       }
     }
 
@@ -24102,10 +24105,11 @@ async function sendRozliczeniaMessage() {
 
     appendBrandFooterToContainer(container, channel.guild.id);
 
-    await channel.send({
+    const sentMsg = await channel.send({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
+    rozliczeniaPanelMessageId = sentMsg.id;
     console.log("Wysłano nową wiadomość ContainerBuilder ROZLICZENIA TYGODNIOWE");
   } catch (err) {
     console.error("Błąd wysyłania wiadomości ROZLICZENIA TYGODNIOWE:", err);
