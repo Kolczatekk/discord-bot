@@ -362,6 +362,26 @@ const regulationPanels = new Map(); // messageId -> persisted regulation panel s
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
 const embedTestEmojiCacheReady = new Map(); // guildId -> timestamp ostatniego fetch emoji
 
+let globalCommissionRate = 0.10;
+const sellerCommissionRates = new Map(); // userId -> number (np. 0.05 dla 5%)
+
+function getUserCommissionRate(userId) {
+  if (userId && sellerCommissionRates.has(userId)) {
+    return sellerCommissionRates.get(userId);
+  }
+  return typeof globalCommissionRate === "number" ? globalCommissionRate : 0.10;
+}
+
+function getNextSundayTimestamp() {
+  const now = new Date();
+  const daysUntilSunday = (7 - now.getDay()) % 7;
+  const addDays = (daysUntilSunday === 0 && (now.getHours() > 0 || now.getMinutes() > 0)) ? 7 : (daysUntilSunday === 0 ? 7 : daysUntilSunday);
+  const nextSunday = new Date(now);
+  nextSunday.setDate(now.getDate() + addDays);
+  nextSunday.setHours(0, 0, 0, 0);
+  return Math.floor(nextSunday.getTime() / 1000);
+}
+
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
 const lastDropInstruction = new Map(); // channelId -> messageId  <-- NEW for drop instructions
@@ -2055,6 +2075,8 @@ function buildPersistentStateData() {
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     sellerWarnings: Object.fromEntries(sellerWarnings),
     sellerSavedLimitRoles: Object.fromEntries(sellerSavedLimitRoles),
+    globalCommissionRate: typeof globalCommissionRate === "number" ? globalCommissionRate : 0.10,
+    sellerCommissionRates: Object.fromEntries(sellerCommissionRates),
     isSundayResetTriggered: Boolean(isSundayResetTriggered),
     rozliczeniaReportMessageId: rozliczeniaReportMessageId || null,
     sellerWarnMessages: Object.fromEntries(sellerWarnMessages),
@@ -3959,6 +3981,19 @@ async function loadPersistentState() {
         );
       }
 
+      if (typeof botStateData.globalCommissionRate === "number") {
+        globalCommissionRate = botStateData.globalCommissionRate;
+      }
+      if (
+        botStateData.sellerCommissionRates &&
+        typeof botStateData.sellerCommissionRates === "object"
+      ) {
+        for (const [key, rate] of Object.entries(botStateData.sellerCommissionRates)) {
+          if (typeof rate === "number") {
+            sellerCommissionRates.set(key, rate);
+          }
+        }
+      }
       if (typeof botStateData.isSundayResetTriggered === "boolean") {
         isSundayResetTriggered = botStateData.isSundayResetTriggered;
       }
@@ -4883,6 +4918,44 @@ const commands = [
     .setName("test-rozliczenia-deadline20")
     .setDescription("Testowo wykonaj akcję z niedzieli 20:00 (nadanie roli ZAWIESZONY)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("rozliczenieprowizja")
+    .setDescription("Ustaw procent prowizji rozliczenia (dla wszystkich lub wybranej osoby)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addIntegerOption((option) =>
+      option
+        .setName("prowizja")
+        .setDescription("Procent prowizji (np. 10 dla 10%, 5 dla 5%)")
+        .setRequired(true)
+        .setMinValue(0)
+        .setMaxValue(100)
+    )
+    .addUserOption((option) =>
+      option
+        .setName("uzytkownik")
+        .setDescription("Użytkownik (opcjonalnie, bez podania zmienia dla wszystkich)")
+        .setRequired(false)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("rozliczenie-prowizja")
+    .setDescription("Ustaw procent prowizji rozliczenia (dla wszystkich lub wybranej osoby)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addIntegerOption((option) =>
+      option
+        .setName("prowizja")
+        .setDescription("Procent prowizji (np. 10 dla 10%, 5 dla 5%)")
+        .setRequired(true)
+        .setMinValue(0)
+        .setMaxValue(100)
+    )
+    .addUserOption((option) =>
+      option
+        .setName("uzytkownik")
+        .setDescription("Użytkownik (opcjonalnie, bez podania zmienia dla wszystkich)")
+        .setRequired(false)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczeniezakoncz")
@@ -8508,6 +8581,10 @@ async function handleSlashCommand(interaction) {
     case "test-rozliczenia-deadline20":
       await handleTestRozliczeniaDeadline20Command(interaction);
       break;
+    case "rozliczenieprowizja":
+    case "rozliczenie-prowizja":
+      await handleRozliczenieProwizjaCommand(interaction);
+      break;
     case "rozliczeniezakoncz":
       await handleRozliczenieZakonczCommand(interaction);
       break;
@@ -8629,6 +8706,24 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
       return;
     }
 
+    // AWARYJNIE/PO RESECIE BOTA: Jeśli brak ID w pamięci, poszukaj wiadomości na kanale
+    if (!rozliczeniaReportMessageId) {
+      const fetchedMsgs = await logsChannel.messages.fetch({ limit: 25 }).catch(() => null);
+      if (fetchedMsgs && fetchedMsgs.size > 0) {
+        const found = fetchedMsgs.find((m) =>
+          m.author.id === client.user.id &&
+          (m.content.includes("STATYSTYKI ROZLICZEŃ") ||
+           m.content.includes("ROZLICZENIA TYGODNIOWE") ||
+           JSON.stringify(m.toJSON()).includes("STATYSTYKI ROZLICZEŃ") ||
+           JSON.stringify(m.toJSON()).includes("ROZLICZENIA TYGODNIOWE"))
+        );
+        if (found) {
+          rozliczeniaReportMessageId = found.id;
+          console.log(`[rozliczenia] Odszukano istniejącą wiadomość raportu (ID: ${found.id}) na kanale rozliczeń.`);
+        }
+      }
+    }
+
     const klientEmoji = findGuildEmojiByName(guild?.id, "klient");
     const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
 
@@ -8645,18 +8740,25 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
         "> `📱` × **Przelew na numer:** `880 260 392`\n\n";
 
       for (const [userId, data] of weeklySales) {
-        const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
+        const userRate = getUserCommissionRate(userId);
+        const prowizja = (data.amount * userRate).toFixed(2);
+        const percentStr = `${Math.round(userRate * 100)}%`;
         const statusEmoji = data.paid ? "`✅`" : "`❌`";
-        reportText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Prowizja 10%: **${prowizja} zł**)\n`;
+        reportText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (prowizja ${percentStr}: **${prowizja} zł**)\n`;
       }
     } else {
+      const nextSundayTS = getNextSundayTimestamp();
       reportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
         "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n";
 
       for (const [userId, data] of weeklySales) {
-        const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
-        reportText += `> ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Przewidywana prowizja 10%: **${prowizja} zł**)\n`;
+        const userRate = getUserCommissionRate(userId);
+        const prowizja = (data.amount * userRate).toFixed(2);
+        const percentStr = `${Math.round(userRate * 100)}%`;
+        reportText += `> ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (prowizja ${percentStr}: **${prowizja} zł**)\n`;
       }
+
+      reportText += `\n> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`;
     }
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
@@ -8835,7 +8937,42 @@ async function handleRozliczenieZaplacilCommand(interaction) {
   setTimeout(sendRozliczeniaMessage, 1000);
 }
 
-// Handlery komend testowych
+// Handler dla komendy /rozliczenieprowizja
+async function handleRozliczenieProwizjaCommand(interaction) {
+  const isOwner = interaction.user.id === interaction.guild?.ownerId;
+  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+                  interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+
+  if (!isAdmin && !isOwner) {
+    await interaction.reply({
+      content: "> `❗` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral]
+    });
+    return;
+  }
+
+  const prowizjaVal = interaction.options.getInteger("prowizja");
+  const targetUser = interaction.options.getUser("uzytkownik");
+  const newRate = prowizjaVal / 100;
+
+  if (targetUser) {
+    sellerCommissionRates.set(targetUser.id, newRate);
+    scheduleSavePersistentState(true);
+    await interaction.reply({
+      content: `> \`✅\` × Ustawiono indywidualną prowizję **${prowizjaVal}%** dla użytkownika <@${targetUser.id}>.`,
+      flags: [MessageFlags.Ephemeral]
+    });
+  } else {
+    globalCommissionRate = newRate;
+    scheduleSavePersistentState(true);
+    await interaction.reply({
+      content: `> \`✅\` × Ustawiono domyślną prowizję globalną **${prowizjaVal}%** dla wszystkich.`,
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  await sendRozliczeniaStatusReport(interaction.guild);
+}
 async function handleTestRozliczeniaReset00Command(interaction) {
   const isOwner = interaction.user.id === interaction.guild?.ownerId;
   const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
