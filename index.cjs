@@ -6997,7 +6997,7 @@ async function handleModalSubmit(interaction) {
 
     const channel = await interaction.guild.channels.create(createOptions);
 
-    const containerText =
+    const embedText =
       `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -7031,15 +7031,15 @@ async function handleModalSubmit(interaction) {
       unclaimButton,
     );
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-    appendBrandFooterToContainer(container, interaction.guild?.id);
-    container.addActionRowComponents(buttonRow);
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(embedText)
+      .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
     const sentMsg = await channel.send({
       content: `@everyone`,
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
+      embeds: [embed],
+      components: [buttonRow],
     });
 
     ticketOwners.set(channel.id, {
@@ -18414,7 +18414,7 @@ async function openRewardClaimTicket(interaction) {
 
   const channel = await guild.channels.create(createOptions);
 
-  const containerText =
+  const embedText =
     `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
     `### ・ \`👤\` × **Informacje o kliencie:**\n` +
     `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -18448,15 +18448,15 @@ async function openRewardClaimTicket(interaction) {
     unclaimButton,
   );
 
-  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-  appendBrandFooterToContainer(container, interaction.guild?.id);
-  container.addActionRowComponents(buttonRow);
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(embedText)
+    .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
   const sentMsg = await channel.send({
     content: `@everyone`,
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
+    embeds: [embed],
+    components: [buttonRow],
   });
 
   ticketOwners.set(channel.id, {
@@ -20423,7 +20423,7 @@ async function handleModalSubmit(interaction) {
 
         const channel = await interaction.guild.channels.create(createOptions);
 
-        const containerText =
+        const embedText =
           `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
           `### ・ \`👤\` × **Informacje o kliencie:**\n` +
           `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -20457,15 +20457,15 @@ async function handleModalSubmit(interaction) {
           unclaimButton,
         );
 
-        const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-        appendBrandFooterToContainer(container, interaction.guild?.id);
-        container.addActionRowComponents(buttonRow);
+        const embed = new EmbedBuilder()
+          .setColor(COLOR_BLUE)
+          .setDescription(embedText)
+          .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
         const sentMsg = await channel.send({
           content: `@everyone`,
-          components: [container],
-          flags: MessageFlags.IsComponentsV2,
+          embeds: [embed],
+          components: [buttonRow],
         });
 
         ticketOwners.set(channel.id, {
@@ -20739,7 +20739,7 @@ async function handleModalSubmit(interaction) {
         .catch(() => null);
     }
 
-    const containerText =
+    const embedText =
       `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -20785,16 +20785,16 @@ async function handleModalSubmit(interaction) {
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
-    appendBrandFooterToContainer(container, interaction.guild?.id);
-    container.addActionRowComponents(buttonRow);
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(embedText)
+      .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
       content: `@everyone`,
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
+      embeds: [embed],
+      components: [buttonRow],
     });
 
     ticketOwners.set(channel.id, {
