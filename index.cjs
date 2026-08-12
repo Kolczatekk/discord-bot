@@ -14943,19 +14943,29 @@ function formatTicketAmountPart(amount) {
   return `${normalized}zl`;
 }
 
-function buildPurchaseTicketChannelName(member, user, paymentValue) {
-  const buyerSlug = getTicketBuyerSlug(member, user);
+function buildPurchaseTicketChannelName(member, user, paymentValue, serverValue) {
   const paymentDef = getShopPaymentOptionDef(paymentValue);
   const paymentSlug =
     paymentDef?.channelSlug || sanitizeTicketChannelNamePart(paymentValue);
+  const serverDef = getShopServerOptionDef(serverValue);
+  const serverSlug =
+    serverDef?.channelSlug || sanitizeTicketChannelNamePart(serverValue || "serwer");
 
-  return `${buyerSlug}-${paymentSlug}`.slice(0, 100);
+  return `zakup-${serverSlug}-${paymentSlug}`.slice(0, 100);
 }
 
-function buildSpecialPurchaseTicketChannelName(member, user, suffix) {
-  const buyerSlug = getTicketBuyerSlug(member, user);
+function buildSpecialPurchaseTicketChannelName(member, user, suffix, modName, paymentValue) {
+  // suffix = "mody" or "mod", modName = actual mod name, paymentValue = payment method
+  if (modName && paymentValue) {
+    const paymentDef = getShopPaymentOptionDef(paymentValue);
+    const paymentSlug =
+      paymentDef?.channelSlug || sanitizeTicketChannelNamePart(paymentValue);
+    const modSlug = sanitizeTicketChannelNamePart(modName);
+    return `${modSlug}-${paymentSlug}`.slice(0, 100);
+  }
+  // fallback for boty etc.
   const normalizedSuffix = sanitizeTicketChannelNamePart(suffix);
-  return `${buyerSlug}-${normalizedSuffix}`.slice(0, 100);
+  return normalizedSuffix.slice(0, 100);
 }
 
 function isModernPurchaseTicketChannelName(name) {
@@ -18066,7 +18076,12 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
     }
 
     try {
-      const sent = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+      const sendPayload = { embeds: [publicEmbed] };
+      if (ticketData && ticketData.userId) {
+        sendPayload.content = `<@${ticketData.userId}>`;
+        sendPayload.allowedMentions = { users: [ticketData.userId] };
+      }
+      const sent = await ch.send(sendPayload).catch(() => null);
       if (sent && sent.id) {
         ticketData.lastClaimMsgId = sent.id;
         ticketOwners.set(channelId, ticketData);
@@ -20267,6 +20282,7 @@ async function handleModalSubmit(interaction) {
         interaction.member,
         user,
         selectedPayment,
+        selectedServer,
       );
 
       paymentMethod = selectedPayment;
@@ -20347,6 +20363,8 @@ async function handleModalSubmit(interaction) {
         interaction.member,
         user,
         modsCount > 1 ? "mody" : "mod",
+        modName,
+        paymentMethodRaw,
       );
       ticketTopic = `Zakup moda: ${modName} (${modsCount} szt.)`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
@@ -20447,6 +20465,14 @@ async function handleModalSubmit(interaction) {
 
       ticketTopic = `Sprzedaż na serwerze: ${serwer}`;
       if (ticketTopic.length > 1024) ticketTopic = ticketTopic.slice(0, 1024);
+
+      {
+        const serwerDef = getShopServerOptionDef(serwerRaw);
+        const serwerSlug = serwerDef?.channelSlug || sanitizeTicketChannelNamePart(serwerRaw);
+        const payoutDef = getShopPaymentOptionDef(payoutRaw);
+        const payoutSlug = payoutDef?.channelSlug || sanitizeTicketChannelNamePart(payoutRaw);
+        preferredChannelName = `sprzedaz-${serwerSlug}-${payoutSlug}`.slice(0, 100);
+      }
 
       formInfo =
         `> <a:arrowwhite:1491476759290449984> × **Co chce sprzedać:** \`${coTrimmed}\`\n` +
@@ -20552,8 +20578,11 @@ async function handleModalSubmit(interaction) {
           else parentToUse = null;
         }
 
+        const rewardSlug = sanitizeTicketChannelNamePart(
+          codeData.rewardText || codeData.reward || "nagroda"
+        );
         const createOptions = {
-          name: `ticket-${user.username}`,
+          name: `nagroda-${rewardSlug}`.slice(0, 100),
           type: ChannelType.GuildText,
           permissionOverwrites: [
             {
@@ -20678,6 +20707,9 @@ async function handleModalSubmit(interaction) {
       ticketType = "inne";
       ticketTypeLabel = "PYTANIE";
       formInfo = `> <a:arrowwhite:1491476759290449984> × **Sprawa:** ${formatInlineCodeText(sprawa)}`;
+      preferredChannelName = `inne-${sanitizeTicketChannelNamePart(
+        interaction.member?.displayName || user?.globalName || user?.username || "nick"
+      )}`.slice(0, 100);
       break;
     }
     default:
