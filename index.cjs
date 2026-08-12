@@ -353,6 +353,8 @@ const autoVerifySettings = new Map(); // guildId -> boolean
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
 const sellerDataBackups = new Map();
+const sellerWarnings = new Map(); // `${guildId}:${userId}` -> number
+const OSTRZEZENIA_CHANNEL_ID = "1457447223452237834";
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const regulationPanels = new Map(); // messageId -> persisted regulation panel state
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
@@ -2048,6 +2050,7 @@ function buildPersistentStateData() {
     autoPrzejmijSettings: Object.fromEntries(autoPrzejmijSettings),
     autoVerifySettings: Object.fromEntries(autoVerifySettings),
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
+    sellerWarnings: Object.fromEntries(sellerWarnings),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
     inviteRewardMilestones: INVITE_REWARD_MILESTONES,
     calculatorRates: {
@@ -3924,6 +3927,18 @@ async function loadPersistentState() {
       }
 
       if (
+        botStateData.sellerWarnings &&
+        typeof botStateData.sellerWarnings === "object"
+      ) {
+        for (const [key, count] of Object.entries(botStateData.sellerWarnings)) {
+          sellerWarnings.set(key, Number(count) || 0);
+        }
+        console.log(
+          `[state] Wczytano sellerWarnings: ${sellerWarnings.size} wpisów`,
+        );
+      }
+
+      if (
         botStateData.ownerInviteCountingSettings &&
         typeof botStateData.ownerInviteCountingSettings === "object"
       ) {
@@ -4868,6 +4883,58 @@ const commands = [
     .setName("end-giveaways")
     .setDescription("Zakończ wszystkie aktywne konkursy (tylko właściciel serwera)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("ostrzezenie")
+    .setDescription("Wystaw ostrzeżenie dla sprzedawcy na kanale ostrzeżeń")
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Wybierz sprzedawcę").setRequired(true)
+    )
+    .addStringOption((o) =>
+      o.setName("powod").setDescription("Powód ostrzeżenia").setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("warn")
+    .setDescription("Wystaw ostrzeżenie dla sprzedawcy na kanale ostrzeżeń")
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Wybierz sprzedawcę").setRequired(true)
+    )
+    .addStringOption((o) =>
+      o.setName("powod").setDescription("Powód ostrzeżenia").setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("ostrzezenie-usun")
+    .setDescription("Usuń 1 ostrzeżenie sprzedawcy")
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Wybierz sprzedawcę").setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("unwarn")
+    .setDescription("Usuń 1 ostrzeżenie sprzedawcy")
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Wybierz sprzedawcę").setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("ostrzezenia")
+    .setDescription("Wyświetla liczbę ostrzeżeń sprzedawcy")
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Wybierz sprzedawcę").setRequired(false)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("warns")
+    .setDescription("Wyświetla liczbę ostrzeżeń sprzedawcy")
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Wybierz sprzedawcę").setRequired(false)
+    )
     .toJSON(),
 ];
 
@@ -8076,9 +8143,9 @@ async function handleSlashCommand(interaction) {
   switch (commandName) {
     default: {
       // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia"]);
+      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia", "ostrzezenia", "warns"]);
       // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
-      const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways"]);
+      const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways", "ostrzezenie", "warn", "ostrzezenie-usun", "unwarn"]);
       const SELLER_ROLE_ID = "1350786945944391733";
       const HELPER_ROLE_ID = "1519069239254974475";
       const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
@@ -8093,6 +8160,18 @@ async function handleSlashCommand(interaction) {
       }
       break;
     }
+    case "ostrzezenie":
+    case "warn":
+      await handleOstrzezenieCommand(interaction);
+      break;
+    case "ostrzezenie-usun":
+    case "unwarn":
+      await handleOstrzezenieUsunCommand(interaction);
+      break;
+    case "ostrzezenia":
+    case "warns":
+      await handleOstrzezeniaListCommand(interaction);
+      break;
     case "drop":
       await interaction.reply({
         content:
@@ -10050,6 +10129,143 @@ async function handlePanelDaneCommand(interaction) {
   await interaction.reply({
     content: "> `✅` × Panel danych sprzedawcy został wysłany.",
     flags: [MessageFlags.Ephemeral],
+  });
+}
+
+async function handleOstrzezenieCommand(interaction) {
+  const SELLER_ROLE_ID = "1350786945944391733";
+  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+  const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+  if (!isAdmin && !isSeller) {
+    await interaction.reply({
+      content: "> `❌` × Nie masz uprawnień do wystawiania ostrzeżeń.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetUser = interaction.options.getUser("sprzedawca");
+  const powod = interaction.options.getString("powod");
+
+  if (!targetUser) {
+    await interaction.reply({
+      content: "> `❌` × Nie wybrano sprzedawcy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const key = `${interaction.guildId}:${targetUser.id}`;
+  const currentCount = (sellerWarnings.get(key) || 0) + 1;
+  sellerWarnings.set(key, currentCount);
+  scheduleSavePersistentState(true);
+
+  let headerTitle = `OSTRZEŻENIE ${currentCount}/3`;
+  if (currentCount === 2) {
+    headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
+  } else if (currentCount >= 3) {
+    headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
+  }
+
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_BLUE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        headerTitle + "\n" +
+        "```"
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `Powód: ${powod}`
+      )
+    );
+
+  appendBrandFooterToContainer(container, interaction.guildId);
+
+  const warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID) ||
+    (await interaction.guild?.channels.fetch(OSTRZEZENIA_CHANNEL_ID).catch(() => null)) ||
+    interaction.channel;
+
+  await warnChannel.send({
+    content: `<@${targetUser.id}>`,
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
+
+  await interaction.reply({
+    content: `> \`✅\` × Pomyślnie wystawiono ostrzeżenie **${currentCount}/3** dla użytkownika <@${targetUser.id}> na kanale <#${warnChannel.id}>.`,
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
+async function handleOstrzezenieUsunCommand(interaction) {
+  const SELLER_ROLE_ID = "1350786945944391733";
+  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+  const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+  if (!isAdmin && !isSeller) {
+    await interaction.reply({
+      content: "> `❌` × Nie masz uprawnień do usuwania ostrzeżeń.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetUser = interaction.options.getUser("sprzedawca");
+  const key = `${interaction.guildId}:${targetUser.id}`;
+  const currentCount = sellerWarnings.get(key) || 0;
+
+  if (currentCount <= 0) {
+    await interaction.reply({
+      content: `> \`❌\` × Użytkownik <@${targetUser.id}> nie posiada żadnych aktywnych ostrzeżeń.`,
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const newCount = currentCount - 1;
+  if (newCount > 0) {
+    sellerWarnings.set(key, newCount);
+  } else {
+    sellerWarnings.delete(key);
+  }
+  scheduleSavePersistentState(true);
+
+  await interaction.reply({
+    content: `> \`✅\` × Usunięto 1 ostrzeżenie użytkownikowi <@${targetUser.id}>. Aktualna liczba: **${newCount}/3**.`,
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
+async function handleOstrzezeniaListCommand(interaction) {
+  const targetUser = interaction.options.getUser("sprzedawca") || interaction.user;
+  const key = `${interaction.guildId}:${targetUser.id}`;
+  const count = sellerWarnings.get(key) || 0;
+
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_BLUE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        "⚠️ New Shop × OSTRZEŻENIA SPRZEDAWCY\n" +
+        "```"
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `> <a:arrowwhite:1491476759290449984> × **Sprzedawca:** <@${targetUser.id}>\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Liczba ostrzeżeń:** **${count}/3**`
+      )
+    );
+
+  appendBrandFooterToContainer(container, interaction.guildId);
+
+  await interaction.reply({
+    components: [container],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
   });
 }
 
