@@ -2055,6 +2055,8 @@ function buildPersistentStateData() {
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     sellerWarnings: Object.fromEntries(sellerWarnings),
     sellerSavedLimitRoles: Object.fromEntries(sellerSavedLimitRoles),
+    isSundayResetTriggered: Boolean(isSundayResetTriggered),
+    rozliczeniaReportMessageId: rozliczeniaReportMessageId || null,
     sellerWarnMessages: Object.fromEntries(sellerWarnMessages),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
     inviteRewardMilestones: INVITE_REWARD_MILESTONES,
@@ -3955,6 +3957,13 @@ async function loadPersistentState() {
         console.log(
           `[state] Wczytano sellerSavedLimitRoles: ${sellerSavedLimitRoles.size} wpisów`,
         );
+      }
+
+      if (typeof botStateData.isSundayResetTriggered === "boolean") {
+        isSundayResetTriggered = botStateData.isSundayResetTriggered;
+      }
+      if (botStateData.rozliczeniaReportMessageId) {
+        rozliczeniaReportMessageId = botStateData.rozliczeniaReportMessageId;
       }
 
       if (
@@ -8624,8 +8633,13 @@ async function sendRozliczeniaStatusReport(guild) {
     const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
 
     let reportText = "";
+    const hasUnpaidSales = Array.from(weeklySales.values()).some((data) => data.amount > 0 && !data.paid);
+    if (!hasUnpaidSales) {
+      isSundayResetTriggered = false;
+    }
+    const isSundayMode = (new Date().getDay() === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales);
 
-    if (isSundayResetTriggered) {
+    if (isSundayMode) {
       reportText = "# `📊` ROZLICZENIA TYGODNIOWE\n" +
         "> `⏳` × **Termin na zapłacenie do godziny 20:00**\n" +
         "> `📱` × **Przelew na numer:** `880 260 392`\n\n";
