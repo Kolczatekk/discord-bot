@@ -352,6 +352,7 @@ const autoPrzejmijSettings = new Map(); // guildId -> { enabled, ownerId, ownerN
 const autoVerifySettings = new Map(); // guildId -> boolean
 const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, ownerId, ownerName, answer }
 const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
+const sellerDataBackups = new Map();
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const regulationPanels = new Map(); // messageId -> persisted regulation panel state
 const pendingEmbedTestPublish = new Map(); // guildId:userId -> { messageId, sourceChannelId, expiresAt }
@@ -7108,14 +7109,70 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
-    sellerPaymentProfiles.delete(
-      getSellerPaymentProfileKey(interaction.guildId, interaction.user.id),
+    const key = getSellerPaymentProfileKey(interaction.guildId, interaction.user.id);
+    const existing = sellerPaymentProfiles.get(key);
+
+    if (existing) {
+      sellerDataBackups.set(key, { ...existing });
+      sellerPaymentProfiles.delete(key);
+      scheduleSavePersistentState(true);
+    }
+
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "> `🧹` × Pomyślnie wyczyszczono dane płatności."
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("seller_data_restore")
+        .setLabel("︲Przywróć")
+        .setEmoji("↩️")
+        .setStyle(ButtonStyle.Secondary)
     );
-    scheduleSavePersistentState(true);
+
+    container.addActionRowComponents(row);
+    appendBrandFooterToContainer(container, interaction.guildId);
 
     await interaction.reply({
-      content: "> `🗑️` × Wyczyściłem Twoje dane płatności.",
-      flags: [MessageFlags.Ephemeral],
+      components: [container],
+      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
+    });
+    return;
+  }
+
+  if (customId === "seller_data_restore") {
+    const key = getSellerPaymentProfileKey(interaction.guildId, interaction.user.id);
+    const backup = sellerDataBackups.get(key);
+    if (!backup) {
+      await interaction.reply({
+        content: "> `❌` × Brak kopii danych do przywrócenia.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    sellerPaymentProfiles.set(key, backup);
+    sellerDataBackups.delete(key);
+    scheduleSavePersistentState(true);
+
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "> `✅` × Pomyślnie przywrócono dane płatności."
+        )
+      );
+
+    appendBrandFooterToContainer(container, interaction.guildId);
+
+    await interaction.reply({
+      components: [container],
+      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
     });
     return;
   }
