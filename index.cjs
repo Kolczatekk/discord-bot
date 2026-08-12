@@ -8772,7 +8772,10 @@ async function handleRozliczenieZaplacilCommand(interaction) {
       `> \`🔓\` × **Uprawnienia:** Przywrócono dostęp do limitów i zdjęto ewentualne zawieszenie.`
     );
 
-  await interaction.reply({ embeds: [embed] });
+  await interaction.reply({
+    embeds: [embed],
+    flags: [MessageFlags.Ephemeral],
+  });
   console.log(`[rozliczenie] Admin ${interaction.user.id} oznaczył rozliczenie ${userId} jako zapłacone`);
 
   await sendRozliczeniaStatusReport(interaction.guild);
