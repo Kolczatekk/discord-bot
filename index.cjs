@@ -7932,7 +7932,7 @@ async function handleButtonInteraction(interaction) {
 
     await interaction.reply({
       components: [container],
-      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2]
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
     });
     return;
   }
@@ -7972,7 +7972,7 @@ async function handleButtonInteraction(interaction) {
 
     await interaction.reply({
       components: [container],
-      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2]
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
     });
     return;
   }
@@ -8053,7 +8053,7 @@ async function handleButtonInteraction(interaction) {
 
     await interaction.reply({
       components: [container],
-      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
     });
     return;
   }
@@ -14485,7 +14485,7 @@ async function handlePanelKlientaSpent(interaction) {
 
     await interaction.editReply({
       components: [container],
-      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     });
   } catch (err) {
     console.error("Błąd w handlePanelKlientaSpent:", err);
@@ -14598,7 +14598,7 @@ async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
 
       const emptyPayload = {
         components: [container],
-        flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral]
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral
       };
       await interaction.editReply(emptyPayload);
       return;
@@ -14660,7 +14660,7 @@ async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
 
     const payload = {
       components: [container],
-      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral]
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral
     };
 
     await interaction.editReply(payload);
@@ -15867,7 +15867,7 @@ async function handleSprawdzBonusyButton(interaction) {
 
     await interaction.editReply({
       components: [container],
-      flags: [MessageFlags.IsComponentsV2, MessageFlags.Ephemeral],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     });
   } catch (err) {
     console.error("Błąd w handleSprawdzBonusyButton:", err);
