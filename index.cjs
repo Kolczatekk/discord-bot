@@ -7118,6 +7118,15 @@ async function handleButtonInteraction(interaction) {
       scheduleSavePersistentState(true);
     }
 
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "> `🧹` × Pomyślnie wyczyszczono dane płatności."
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("seller_data_restore")
@@ -7125,10 +7134,12 @@ async function handleButtonInteraction(interaction) {
         .setStyle(ButtonStyle.Secondary)
     );
 
+    container.addActionRowComponents(row);
+    appendBrandFooterToContainer(container, interaction.guildId);
+
     await interaction.reply({
-      content: "> `🧹` × Pomyślnie wyczyszczono dane płatności.",
-      components: [row],
-      flags: [MessageFlags.Ephemeral],
+      components: [container],
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
     });
     return;
   }
