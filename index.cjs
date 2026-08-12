@@ -8597,6 +8597,53 @@ async function handleRozliczenieCommand(interaction) {
 }
 
 // Pomocnicze funkcje do cyklu rozliczeń
+let rozliczeniaReportMessageId = null;
+
+async function sendRozliczeniaStatusReport(guild) {
+  try {
+    const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID).catch(() => null);
+    if (!logsChannel) return;
+
+    if (weeklySales.size === 0) return;
+
+    const klientEmoji = findGuildEmojiByName(guild?.id, "klient");
+    const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
+
+    let reportText = "## 📊 RAPORT ROZLICZEŃ TYGODNIOWYCH (00:00)\n" +
+      "> ⏳ **Termin płatności prowizji (10%):** dzisiaj do godziny 20:00\n" +
+      "> 🚫 **Brak płatności do 20:00 = nadanie roli ZAWIESZONY**\n\n";
+
+    let totalSales = 0;
+    for (const [userId, data] of weeklySales) {
+      const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
+      const statusEmoji = data.paid ? "`✅`" : "`❌`";
+      reportText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Prowizja 10%: **${prowizja} zł**)\n`;
+      totalSales += data.amount;
+    }
+
+    const totalProwizja = (totalSales * ROZLICZENIA_PROWIZJA).toFixed(2);
+    reportText += `\n> 💰 **Łączna sprzedaż:** **${totalSales.toLocaleString("pl-PL")} zł**\n`;
+    reportText += `> 💸 **Łączna prowizja (10%):** **${totalProwizja} zł**`;
+
+    const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(reportText));
+    appendBrandFooterToContainer(container, guild?.id);
+
+    if (rozliczeniaReportMessageId) {
+      await logsChannel.messages.delete(rozliczeniaReportMessageId).catch(() => null);
+      rozliczeniaReportMessageId = null;
+    }
+
+    const sentMsg = await logsChannel.send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    if (sentMsg) rozliczeniaReportMessageId = sentMsg.id;
+  } catch (err) {
+    console.error("Błąd wysyłania raportu rozliczeń:", err);
+  }
+}
+
 async function executeSundayReset00(guild) {
   if (!guild) return 0;
   const LIMIT_ROLE_IDS = [
@@ -8626,6 +8673,7 @@ async function executeSundayReset00(guild) {
     }
   }
   scheduleSavePersistentState(true);
+  await sendRozliczeniaStatusReport(guild);
   return count;
 }
 
@@ -8733,6 +8781,7 @@ async function handleRozliczenieZaplacilCommand(interaction) {
   await interaction.reply({ embeds: [embed] });
   console.log(`[rozliczenie] Admin ${interaction.user.id} oznaczył rozliczenie ${userId} jako zapłacone`);
 
+  await sendRozliczeniaStatusReport(interaction.guild);
   setTimeout(sendRozliczeniaMessage, 1000);
 }
 
@@ -8752,8 +8801,9 @@ async function handleTestRozliczeniaReset00Command(interaction) {
 
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
   const count = await executeSundayReset00(interaction.guild);
+  await sendRozliczeniaStatusReport(interaction.guild);
   await interaction.editReply({
-    content: `> \`⏰\` × **[TEST 00:00]** Wykonano testowy reset z niedzieli 00:00.\n> \`🔒\` × **Odebrano rangi limitów:** dla ${count} osób posiadających niezapłacone rozliczenia.`
+    content: `> \`⏰\` × **[TEST 00:00]** Wykonano testowy reset z niedzieli 00:00.\n> \`🔒\` × **Odebrano rangi limitów:** dla ${count} osób posiadających niezapłacone rozliczenia.\n> \`📊\` × **Wysłano raport statusu na kanał rozliczeń.**`
   });
   setTimeout(sendRozliczeniaMessage, 1000);
 }
@@ -8773,8 +8823,9 @@ async function handleTestRozliczeniaDeadline20Command(interaction) {
 
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
   const count = await executeSundayDeadline20(interaction.guild);
+  await sendRozliczeniaStatusReport(interaction.guild);
   await interaction.editReply({
-    content: `> \`🔴\` × **[TEST 20:00]** Wykonano testowy deadline z niedzieli 20:00.\n> \`⛔\` × **Nadano rolę ZAWIESZONY:** dla ${count} osób, które nie zapłaciły rozliczenia.`
+    content: `> \`🔴\` × **[TEST 20:00]** Wykonano testowy deadline z niedzieli 20:00.\n> \`⛔\` × **Nadano rolę ZAWIESZONY:** dla ${count} osób, które nie zapłaciły rozliczenia.\n> \`📊\` × **Zaktualizowano raport statusu na kanale rozliczeń.**`
   });
   setTimeout(sendRozliczeniaMessage, 1000);
 }
@@ -24244,22 +24295,6 @@ async function sendRozliczeniaMessage() {
         "`💱` × Dodaj **każdą sprzedaż** przyciskiem poniżej."
       )
     );
-
-    // Wyświetl listę rozliczeń ze statusem ❌ / ✅ jeśli istnieją wpisy
-    if (weeklySales.size > 0) {
-      const klientEmoji = findGuildEmojiByName(channel.guild?.id, "klient");
-      const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
-      let salesListText = "### 📊 Status rozliczeń w tym tygodniu:\n";
-      for (const [userId, data] of weeklySales) {
-        const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
-        const statusEmoji = data.paid ? "`✅`" : "`❌`";
-        salesListText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Prowizja 10%: **${prowizja} zł**)\n`;
-      }
-      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(salesListText)
-      );
-    }
 
     container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
