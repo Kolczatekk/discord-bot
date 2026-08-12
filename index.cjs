@@ -9850,8 +9850,6 @@ function buildSellerPaymentPanelPayload(guildId) {
       )
     );
 
-  appendBrandFooterToContainer(container, guildId);
-
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_add_choice")
@@ -9871,6 +9869,7 @@ function buildSellerPaymentPanelPayload(guildId) {
   );
 
   container.addActionRowComponents(row);
+  appendBrandFooterToContainer(container, guildId);
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
