@@ -354,6 +354,7 @@ const pendingAutoPrzejmijQuiz = new Map(); // modalId -> { guildId, userId, owne
 const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, transferTitle, receiverName, updatedAt }
 const sellerDataBackups = new Map();
 const sellerWarnings = new Map(); // `${guildId}:${userId}` -> number
+const sellerSavedLimitRoles = new Map(); // `${guildId}:${userId}` -> Array<string> of roleIds
 const OSTRZEZENIA_CHANNEL_ID = "1457447223452237834";
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const regulationPanels = new Map(); // messageId -> persisted regulation panel state
@@ -2051,6 +2052,7 @@ function buildPersistentStateData() {
     autoVerifySettings: Object.fromEntries(autoVerifySettings),
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     sellerWarnings: Object.fromEntries(sellerWarnings),
+    sellerSavedLimitRoles: Object.fromEntries(sellerSavedLimitRoles),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
     inviteRewardMilestones: INVITE_REWARD_MILESTONES,
     calculatorRates: {
@@ -3935,6 +3937,20 @@ async function loadPersistentState() {
         }
         console.log(
           `[state] Wczytano sellerWarnings: ${sellerWarnings.size} wpisów`,
+        );
+      }
+
+      if (
+        botStateData.sellerSavedLimitRoles &&
+        typeof botStateData.sellerSavedLimitRoles === "object"
+      ) {
+        for (const [key, roles] of Object.entries(botStateData.sellerSavedLimitRoles)) {
+          if (Array.isArray(roles)) {
+            sellerSavedLimitRoles.set(key, roles);
+          }
+        }
+        console.log(
+          `[state] Wczytano sellerSavedLimitRoles: ${sellerSavedLimitRoles.size} wpisów`,
         );
       }
 
@@ -10172,7 +10188,16 @@ async function handleOstrzezenieCommand(interaction) {
     }
 
     const key = `${interaction.guildId}:${targetUser.id}`;
-    const currentCount = (sellerWarnings.get(key) || 0) + 1;
+    const previousCount = sellerWarnings.get(key) || 0;
+
+    if (previousCount >= 3) {
+      await interaction.editReply({
+        content: `> \`❌\` × Użytkownik <@${targetUser.id}> posiada już maksymalną liczbę ostrzeżeń (**3/3**).`,
+      });
+      return;
+    }
+
+    const currentCount = Math.min(3, previousCount + 1);
     sellerWarnings.set(key, currentCount);
     scheduleSavePersistentState(true);
 
@@ -10214,6 +10239,12 @@ async function handleOstrzezenieCommand(interaction) {
       const SUSPENDED_ROLE_ID = "1537090439239442483";
       const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
       if (member) {
+        // Zapamiętaj role limitów, które użytkownik aktualnie posiada (zanim je odbierzemy)
+        const userLimitRoles = LIMIT_ROLE_IDS.filter((roleId) => member.roles.cache.has(roleId));
+        if (userLimitRoles.length > 0) {
+          sellerSavedLimitRoles.set(key, userLimitRoles);
+        }
+
         for (const roleId of LIMIT_ROLE_IDS) {
           if (member.roles.cache.has(roleId)) {
             await member.roles.remove(roleId, "3/3 ostrzeżeń – utrata limitu zakupu").catch((e) =>
@@ -10250,44 +10281,86 @@ async function handleOstrzezenieCommand(interaction) {
 
 async function handleOstrzezenieUsunCommand(interaction) {
   try {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
     const SELLER_ROLE_ID = "1350786945944391733";
     const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
     const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
     if (!isAdmin && !isSeller) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "> `❌` × Nie masz uprawnień do usuwania ostrzeżeń.",
-        flags: [MessageFlags.Ephemeral],
       });
       return;
     }
 
     const targetUser = interaction.options.getUser("sprzedawca");
-    const key = `${interaction.guildId}:${targetUser.id}`;
-    const currentCount = sellerWarnings.get(key) || 0;
-
-    if (currentCount <= 0) {
-      await interaction.reply({
-        content: `> \`❌\` × Użytkownik <@${targetUser.id}> nie posiada żadnych aktywnych ostrzeżeń.`,
-        flags: [MessageFlags.Ephemeral],
+    if (!targetUser) {
+      await interaction.editReply({
+        content: "> `❌` × Nie wybrano sprzedawcy.",
       });
       return;
     }
 
-    const newCount = currentCount - 1;
+    const key = `${interaction.guildId}:${targetUser.id}`;
+    const previousCount = sellerWarnings.get(key) || 0;
+
+    if (previousCount <= 0) {
+      await interaction.editReply({
+        content: `> \`❌\` × Użytkownik <@${targetUser.id}> nie posiada żadnych aktywnych ostrzeżeń.`,
+      });
+      return;
+    }
+
+    const currentValidCount = Math.min(3, previousCount);
+    const newCount = currentValidCount - 1;
+
     if (newCount > 0) {
       sellerWarnings.set(key, newCount);
     } else {
       sellerWarnings.delete(key);
     }
+
+    // Jeśli wcześniej miał 3/3 (zawieszony), a teraz spadł poniżej 3 (np. do 2/3):
+    if (previousCount >= 3 && newCount < 3 && interaction.guild) {
+      const SUSPENDED_ROLE_ID = "1537090439239442483";
+      const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+      if (member) {
+        // Usuń rolę zawieszony
+        if (member.roles.cache.has(SUSPENDED_ROLE_ID)) {
+          await member.roles.remove(SUSPENDED_ROLE_ID, "Obniżenie liczby ostrzeżeń poniżej 3/3").catch((e) =>
+            console.error("Błąd usuwania roli zawieszony:", e)
+          );
+        }
+
+        // Przywróć zapamiętane role limitów
+        const savedRoles = sellerSavedLimitRoles.get(key);
+        if (Array.isArray(savedRoles) && savedRoles.length > 0) {
+          for (const roleId of savedRoles) {
+            await member.roles.add(roleId, "Przywrócenie limitu po usunięciu ostrzeżenia").catch((e) =>
+              console.error(`Błąd przywracania roli limitu ${roleId}:`, e)
+            );
+          }
+          sellerSavedLimitRoles.delete(key);
+        } else {
+          // Jeśli z jakiegoś powodu nie było zapisanych ról w pamięci, przywracamy domyślną rolę limitu 20
+          const DEFAULT_LIMIT_ROLE_ID = "1449448705563557918";
+          await member.roles.add(DEFAULT_LIMIT_ROLE_ID, "Domyślne przywrócenie limitu po usunięciu ostrzeżenia").catch(() => null);
+        }
+      }
+    }
+
     scheduleSavePersistentState(true);
 
-    await interaction.reply({
+    await interaction.editReply({
       content: `> \`✅\` × Usunięto 1 ostrzeżenie użytkownikowi <@${targetUser.id}>. Aktualna liczba: **${newCount}/3**.`,
-      flags: [MessageFlags.Ephemeral],
     });
   } catch (err) {
     console.error("Błąd w handleOstrzezenieUsunCommand:", err);
-    if (!interaction.replied && !interaction.deferred) {
+    if (interaction.deferred) {
+      await interaction.editReply({
+        content: "> `❌` × Wystąpił błąd podczas usuwania ostrzeżenia.",
+      }).catch(() => null);
+    } else if (!interaction.replied) {
       await interaction.reply({
         content: "> `❌` × Wystąpił błąd podczas usuwania ostrzeżenia.",
         flags: [MessageFlags.Ephemeral],
