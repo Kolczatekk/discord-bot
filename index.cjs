@@ -10165,13 +10165,16 @@ async function handleOstrzezenieCommand(interaction) {
     if (currentCount === 2) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
     else if (currentCount >= 3) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
 
-    const warnEmbed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        `## ${headerTitle}\n` +
-        `> Powód: ${powod}`
-      )
-      .setFooter(getBrandFooterBuilderObject());
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `## ${headerTitle}\n` +
+          `> Powód: ${powod}`
+        )
+      );
+
+    appendBrandFooterToContainer(container, interaction.guildId);
 
     let warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID);
     if (!warnChannel && interaction.guild) {
@@ -10181,7 +10184,8 @@ async function handleOstrzezenieCommand(interaction) {
 
     await warnChannel.send({
       content: `<@${targetUser.id}>`,
-      embeds: [warnEmbed],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     // Jeśli sprzedawca osiągnął 3/3 – odbierz mu rolę limitu (zachowuje rolę sprzedawcy)
