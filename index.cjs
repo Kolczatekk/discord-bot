@@ -447,10 +447,11 @@ function buildTicketContainerPayload({ headerText, bodyText, buttonRow, guildId 
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
-  const fullBodyText = bodyText + "\n\n" + getBrandFooterCaption(guildId);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(fullBodyText));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
   container.addActionRowComponents(buttonRow);
+  appendBrandFooterToContainer(container, guildId);
 
   return {
     components: [container],
@@ -5797,11 +5798,14 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
           }
           container.addActionRowComponents(newRow);
         } else if (child.type === 10 || child.type === "TextDisplay" || typeof child.content === "string") {
-          if (child.content && child.content.startsWith("-#")) {
-            // brand footer will be added at end
-          } else if (child.content) {
+          const contentStr = String(child.content || "");
+          if (contentStr.startsWith("-#") || contentStr.includes("© 2026")) {
+            // ignore existing footer, appendBrandFooterToContainer will add it at the end
+            continue;
+          }
+          if (contentStr) {
             container.addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(child.content)
+              new TextDisplayBuilder().setContent(contentStr)
             );
           }
         } else if (child.type === 9 || child.type === "Separator") {
