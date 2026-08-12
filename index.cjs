@@ -14352,7 +14352,7 @@ function buildPanelKlientaPayload(guildId) {
       {
         label: toPanelFont("Sprawdź ile wydałeś"),
         value: "panel_klienta_spent",
-        description: "Wyświetla sumę Twoich pieniędzy wydanych w naszym sklepie oraz rangę",
+        description: "Wyświetla sumę Twoich pieniędzy oraz rangę",
         emoji: spentEmoji
           ? { id: spentEmoji.id, name: spentEmoji.name, animated: spentEmoji.animated }
           : "💵"
