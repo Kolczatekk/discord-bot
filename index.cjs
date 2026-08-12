@@ -7874,9 +7874,12 @@ async function handleButtonInteraction(interaction) {
 
   // Seller choice for adding data
   if (customId === "seller_data_add_choice") {
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription("> `📝` × Wybierz jakie dane chcesz skonfigurować:");
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("> `📝` × Wybierz jakie dane chcesz skonfigurować:")
+      )
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -7891,10 +7894,12 @@ async function handleButtonInteraction(interaction) {
         .setStyle(ButtonStyle.Secondary)
     );
 
+    container.addActionRowComponents(row);
+    appendBrandFooterToContainer(container, interaction.guildId);
+
     await interaction.reply({
-      embeds: [embed],
-      components: [row],
-      flags: [MessageFlags.Ephemeral]
+      components: [container],
+      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2]
     });
     return;
   }
@@ -7909,20 +7914,33 @@ async function handleButtonInteraction(interaction) {
       return;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setTitle("Twoje Dane Płatności")
-      .setDescription(
-        `> \`👤\` **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
-        `> \`📱\` **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
-        `> \`🧾\` **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
-        `> \`✉️\` **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
-        `> \`👝\` **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
-        `> \`🌐\` **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "```\n" +
+          "💳 New Shop × TWOJE DANE PŁATNOŚCI\n" +
+          "```"
+        )
       )
-      .setBrandFooter();
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `> \`👤\` **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
+          `> \`📱\` **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
+          `> \`🧾\` **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
+          `> \`✉️\` **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
+          `> \`👝\` **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
+          `> \`🌐\` **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
+        )
+      );
 
-    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+    appendBrandFooterToContainer(container, interaction.guildId);
+
+    await interaction.reply({
+      components: [container],
+      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2]
+    });
     return;
   }
 
@@ -7942,10 +7960,6 @@ async function handleButtonInteraction(interaction) {
     const ticketId = interaction.channelId;
     const ticketData = ticketOwners.get(ticketId);
     const method = String(ticketData?.paymentMethod || "").toLowerCase();
-
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription("```\n💳 New Shop × DANE DO PŁATNOŚCI\n```");
 
     const lines = [];
     const addLine = (emoji, label, value) => {
@@ -7978,29 +7992,35 @@ async function handleButtonInteraction(interaction) {
       addLine("`🌐`", "MyPSC", formatSellerPaymentValue(profile.mypscEmail));
     }
 
-    embed.setDescription(embed.data.description + "\n" + lines.join("\n"));
-    embed.setBrandFooter();
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("```\n💳 New Shop × DANE DO PŁATNOŚCI\n```")
+      )
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(lines.join("\n"))
+      );
 
-    const components = [];
-    // Jeśli klikający to sprzedawca lub admin, pokaż przyciski zarządzania (te 2 przyciski o których pisał user)
     if (interaction.user.id === sellerId || isAdminOrSeller(interaction.member)) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("seller_data_edit_main")
-          .setLabel("Zmień (BLIK)")
+          .setLabel("︲Zmień (BLIK)")
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("seller_data_edit_extra")
-          .setLabel("Zmień (PP/LTC)")
+          .setLabel("︲Zmień (PP/LTC)")
           .setStyle(ButtonStyle.Secondary)
       );
-      components.push(row);
+      container.addActionRowComponents(row);
     }
 
+    appendBrandFooterToContainer(container, interaction.guildId);
+
     await interaction.reply({
-      embeds: [embed],
-      components,
-      flags: [MessageFlags.Ephemeral],
+      components: [container],
+      flags: [MessageFlags.Ephemeral, MessageFlags.IsComponentsV2],
     });
     return;
   }
