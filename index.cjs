@@ -8609,10 +8609,9 @@ async function sendRozliczeniaStatusReport(guild) {
     const klientEmoji = findGuildEmojiByName(guild?.id, "klient");
     const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
 
-    let reportText = "# ROZLICZENIA TYGODNIOWE\n" +
+    let reportText = "# `📊` ROZLICZENIA TYGODNIOWE\n" +
       "> `⏳` × **Termin na zapłacenie do godziny 20:00**\n" +
-      "> 📱 × **Przelew na numer:** `880 260 392`\n\n" +
-      "### 📊 Status rozliczeń:\n";
+      "> `📱` × **Przelew na numer:** `880 260 392`\n\n";
 
     for (const [userId, data] of weeklySales) {
       const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
