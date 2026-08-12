@@ -355,6 +355,7 @@ const sellerPaymentProfiles = new Map(); // `${guildId}:${userId}` -> { phone, t
 const sellerDataBackups = new Map();
 const sellerWarnings = new Map(); // `${guildId}:${userId}` -> number
 const sellerSavedLimitRoles = new Map(); // `${guildId}:${userId}` -> Array<string> of roleIds
+const sellerWarnMessages = new Map(); // `${guildId}:${userId}` -> Array<{ pingMessageId, embedMessageId, channelId }>
 const OSTRZEZENIA_CHANNEL_ID = "1457447223452237834";
 const embedTestStates = new Map(); // messageId -> editable preview state for /embedtest
 const regulationPanels = new Map(); // messageId -> persisted regulation panel state
@@ -2053,6 +2054,7 @@ function buildPersistentStateData() {
     sellerPaymentProfiles: Object.fromEntries(sellerPaymentProfiles),
     sellerWarnings: Object.fromEntries(sellerWarnings),
     sellerSavedLimitRoles: Object.fromEntries(sellerSavedLimitRoles),
+    sellerWarnMessages: Object.fromEntries(sellerWarnMessages),
     ownerInviteCountingSettings: Object.fromEntries(ownerInviteCountingSettings),
     inviteRewardMilestones: INVITE_REWARD_MILESTONES,
     calculatorRates: {
@@ -3951,6 +3953,20 @@ async function loadPersistentState() {
         }
         console.log(
           `[state] Wczytano sellerSavedLimitRoles: ${sellerSavedLimitRoles.size} wpisów`,
+        );
+      }
+
+      if (
+        botStateData.sellerWarnMessages &&
+        typeof botStateData.sellerWarnMessages === "object"
+      ) {
+        for (const [key, msgs] of Object.entries(botStateData.sellerWarnMessages)) {
+          if (Array.isArray(msgs)) {
+            sellerWarnMessages.set(key, msgs);
+          }
+        }
+        console.log(
+          `[state] Wczytano sellerWarnMessages: ${sellerWarnMessages.size} wpisów`,
         );
       }
 
@@ -10222,11 +10238,19 @@ async function handleOstrzezenieCommand(interaction) {
     if (!warnChannel) warnChannel = interaction.channel;
 
     // Ping osobno (poza embedem), potem container
-    await warnChannel.send({ content: `<@${targetUser.id}>` });
-    await warnChannel.send({
+    const pingMsg = await warnChannel.send({ content: `<@${targetUser.id}>` }).catch(() => null);
+    const embedMsg = await warnChannel.send({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
+    }).catch(() => null);
+
+    const warnMsgs = sellerWarnMessages.get(key) || [];
+    warnMsgs.push({
+      pingMessageId: pingMsg?.id,
+      embedMessageId: embedMsg?.id,
+      channelId: warnChannel.id,
     });
+    sellerWarnMessages.set(key, warnMsgs);
 
     // Jeśli sprzedawca osiągnął 3/3 – odbierz mu wszystkie role limitu zakupu i nadaj rolę zawieszony
     if (currentCount >= 3 && interaction.guild) {
@@ -10350,6 +10374,47 @@ async function handleOstrzezenieUsunCommand(interaction) {
     }
 
     scheduleSavePersistentState(true);
+
+    // Usuń wiadomość z ostrzeżeniem z kanału #ostrzeżenia
+    let warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID);
+    if (!warnChannel && interaction.guild) {
+      warnChannel = await interaction.guild.channels.fetch(OSTRZEZENIA_CHANNEL_ID).catch(() => null);
+    }
+
+    if (warnChannel) {
+      const warnMsgs = sellerWarnMessages.get(key) || [];
+      if (warnMsgs.length > 0) {
+        const lastWarn = warnMsgs.pop();
+        if (warnMsgs.length > 0) {
+          sellerWarnMessages.set(key, warnMsgs);
+        } else {
+          sellerWarnMessages.delete(key);
+        }
+        if (lastWarn.pingMessageId) {
+          await warnChannel.messages.delete(lastWarn.pingMessageId).catch(() => null);
+        }
+        if (lastWarn.embedMessageId) {
+          await warnChannel.messages.delete(lastWarn.embedMessageId).catch(() => null);
+        }
+      } else {
+        // Fallback: szukamy w ostatnich 50 wiadomościach kanału warnChannel jeśli wiadomość wysłana przed dodaniem shiptrackingu
+        const recentMsgs = await warnChannel.messages.fetch({ limit: 50 }).catch(() => null);
+        if (recentMsgs && recentMsgs.size > 0) {
+          const sorted = Array.from(recentMsgs.values()).sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+          for (let i = 0; i < sorted.length; i++) {
+            const msg = sorted[i];
+            if (msg.content.includes(targetUser.id)) {
+              await msg.delete().catch(() => null);
+              const adjacentMsg = sorted[i - 1] || sorted[i + 1];
+              if (adjacentMsg && adjacentMsg.author?.id === interaction.client.user.id) {
+                await adjacentMsg.delete().catch(() => null);
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
 
     await interaction.editReply({
       content: `> \`✅\` × Usunięto 1 ostrzeżenie użytkownikowi <@${targetUser.id}>. Aktualna liczba: **${newCount}/3**.`,
