@@ -20379,7 +20379,7 @@ async function handleModalSubmit(interaction) {
 
       try {
         let parentToUse = categoryId;
-        if (!parentToUse) {
+        if (!parentToUse || !interaction.guild.channels.cache.has(parentToUse)) {
           const foundCat = interaction.guild.channels.cache.find(
             (c) =>
               c.type === ChannelType.GuildCategory &&
@@ -20387,6 +20387,7 @@ async function handleModalSubmit(interaction) {
               c.name.toLowerCase().includes("odbior"),
           );
           if (foundCat) parentToUse = foundCat.id;
+          else parentToUse = null;
         }
 
         const createOptions = {
@@ -20561,20 +20562,21 @@ async function handleModalSubmit(interaction) {
 
     // find a fallback category when categoryId undefined — attempt some heuristics
     let parentToUse = null;
-    if (categoryId) {
+    if (categoryId && interaction.guild.channels.cache.has(categoryId)) {
       parentToUse = categoryId;
     } else {
-      // heuristics based on ticketType
       const preferNames = {
         "zakup-0-20": "zakup",
         "zakup-20-50": "zakup",
         "zakup-50-100": "zakup",
         "zakup-100-200": "zakup",
+        "zakup-mody": "zakup",
+        "zakup-autorynku": "zakup",
         sprzedaz: "sprzedaz",
         "odbior-nagrody": "odbior",
         inne: "inne",
       };
-      const prefer = preferNames[ticketType] || ticketType;
+      const prefer = preferNames[ticketType] || "zakup";
       const foundCat = interaction.guild.channels.cache.find(
         (c) =>
           c.type === ChannelType.GuildCategory &&
@@ -20719,7 +20721,9 @@ async function handleModalSubmit(interaction) {
       }
     }
     if (ticketTopic) createOptions.topic = ticketTopic;
-    if (parentToUse) createOptions.parent = parentToUse;
+    if (parentToUse && interaction.guild.channels.cache.has(parentToUse)) {
+      createOptions.parent = parentToUse;
+    }
 
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
 
