@@ -8130,7 +8130,7 @@ async function handleButtonInteraction(interaction) {
       .setCustomId("kwota_sprzedazy")
       .setLabel("Kwota sprzedaży w PLN")
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder("np. 50")
+      .setPlaceholder("Przykład: 50")
       .setRequired(true)
       .setMinLength(1)
       .setMaxLength(10);
@@ -24014,7 +24014,7 @@ async function sendRozliczeniaMessage() {
     const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `> \`ℹ️\` × **Jeżeli sprzedajecie coś na shopie, kliknijcie przycisk poniżej i wpiszcie kwotę sprzedaży. Na koniec każdego tygodnia w niedzielę rano macie czas do godziny 20:00, aby rozliczyć się i zapłacić 10% od łącznej sumy sprzedaży z __całego tygodnia.__**`
+        `> <a:arrowwhite:1491476759290449984> × **Dodaj każdą sprzedaż przyciskiem poniżej. Co niedzielę do 20:00 płacisz 10% od sumy tygodnia.**`
       )
     );
 
