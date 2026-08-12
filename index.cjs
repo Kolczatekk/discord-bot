@@ -24088,19 +24088,26 @@ async function sendRozliczeniaMessage() {
     const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "`💱` × Dodaj **każdą sprzedaż** przyciskiem poniżej. Co niedzielę do 20:00 płacisz **10% od sumy tygodnia**!"
+        "`💱` × Dodaj **każdą sprzedaż** przyciskiem poniżej."
       )
     );
 
     container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+    const kasaEmoji = findGuildEmojiByName(channel.guild?.id, "kasa_3");
+    const btn = new ButtonBuilder()
+      .setCustomId("rozliczenie_dodaj_btn")
+      .setLabel("︲Dodaj sprzedaż")
+      .setStyle(ButtonStyle.Secondary);
+
+    if (kasaEmoji) {
+      btn.setEmoji({ id: kasaEmoji.id, name: kasaEmoji.name, animated: kasaEmoji.animated });
+    } else {
+      btn.setEmoji("💵");
+    }
+
     container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("rozliczenie_dodaj_btn")
-          .setLabel("︲Dodaj sprzedaż")
-          .setEmoji("💱")
-          .setStyle(ButtonStyle.Secondary)
-      )
+      new ActionRowBuilder().addComponents(btn)
     );
 
     appendBrandFooterToContainer(container, channel.guild.id);
