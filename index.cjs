@@ -7034,7 +7034,7 @@ async function handleModalSubmit(interaction) {
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
     container.addActionRowComponents(buttonRow);
-    appendBrandFooterToContainer(container, guild?.id);
+    appendBrandFooterToContainer(container, interaction.guild?.id);
 
     const sentMsg = await channel.send({
       content: `@everyone`,
@@ -18451,7 +18451,7 @@ async function openRewardClaimTicket(interaction) {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
   container.addActionRowComponents(buttonRow);
-  appendBrandFooterToContainer(container, guild?.id);
+  appendBrandFooterToContainer(container, interaction.guild?.id);
 
   const sentMsg = await channel.send({
     content: `@everyone`,
