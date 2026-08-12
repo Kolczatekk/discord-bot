@@ -9275,7 +9275,14 @@ async function handleRozliczenieUstawCommand(interaction) {
   if (userData.amount <= 0) {
     userData.amount = 0;
     weeklySales.delete(userId);
-    await db.deleteWeeklySale(userId, interaction.guild.id).catch(() => null);
+    await db.saveWeeklySale(
+      userId,
+      0,
+      interaction.guild.id,
+      false,
+      null,
+      Date.now()
+    ).catch(() => null);
   } else {
     userData.lastUpdate = Date.now();
     userData.guildId = interaction.guild.id;
@@ -9288,7 +9295,7 @@ async function handleRozliczenieUstawCommand(interaction) {
       userData.paid || false,
       userData.paidAt || null,
       userData.lastUpdate,
-    );
+    ).catch(() => null);
   }
 
   // Zapisz stan po zmianie rozliczenia
