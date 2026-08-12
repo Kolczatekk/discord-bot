@@ -6997,19 +6997,14 @@ async function handleModalSubmit(interaction) {
 
     const channel = await interaction.guild.channels.create(createOptions);
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-      .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-        `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-        `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-        `### ・ \`📋\` × Informacje z formularza:\n` +
-        `${formInfo}`,
-      )
-      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-      .setFooter(getBrandFooterBuilderObject());
+    const containerText =
+      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+      `### ・ \`👤\` × **Informacje o kliencie:**\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+      `### ・ \`📋\` × **Informacje z formularza:**\n` +
+      `${formInfo}`;
 
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
@@ -7036,10 +7031,15 @@ async function handleModalSubmit(interaction) {
       unclaimButton,
     );
 
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
+    container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, guild?.id);
+
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: [embed],
-      components: [buttonRow],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     ticketOwners.set(channel.id, {
@@ -18414,19 +18414,14 @@ async function openRewardClaimTicket(interaction) {
 
   const channel = await guild.channels.create(createOptions);
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-      `### ・ \`👤\` × Informacje o kliencie:\n` +
-      `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-      `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-      `### ・ \`📋\` × Informacje z formularza:\n` +
-      `${formInfo}`,
-    )
-    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-    .setFooter(getBrandFooterBuilderObject());
+  const containerText =
+    `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+    `### ・ \`👤\` × **Informacje o kliencie:**\n` +
+    `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+    `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+    `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+    `### ・ \`📋\` × **Informacje z formularza:**\n` +
+    `${formInfo}`;
 
   const closeButton = new ButtonBuilder()
     .setCustomId(`ticket_close_${channel.id}`)
@@ -18453,10 +18448,15 @@ async function openRewardClaimTicket(interaction) {
     unclaimButton,
   );
 
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
+  container.addActionRowComponents(buttonRow);
+  appendBrandFooterToContainer(container, guild?.id);
+
   const sentMsg = await channel.send({
     content: `@everyone`,
-    embeds: [embed],
-    components: [buttonRow],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   ticketOwners.set(channel.id, {
@@ -20420,19 +20420,14 @@ async function handleModalSubmit(interaction) {
 
         const channel = await interaction.guild.channels.create(createOptions);
 
-        const embed = new EmbedBuilder()
-          .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-          .setDescription(
-            `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-            `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-            `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-            `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-            `### ・ \`📋\` × Informacje z formularza:\n` +
-            `${formInfo}`,
-          )
-          .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-          .setFooter(getBrandFooterBuilderObject());
+        const containerText =
+          `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+          `### ・ \`👤\` × **Informacje o kliencie:**\n` +
+          `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+          `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+          `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+          `### ・ \`📋\` × **Informacje z formularza:**\n` +
+          `${formInfo}`;
 
         const closeButton = new ButtonBuilder()
           .setCustomId(`ticket_close_${channel.id}`)
@@ -20459,10 +20454,15 @@ async function handleModalSubmit(interaction) {
           unclaimButton,
         );
 
+        const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
+        container.addActionRowComponents(buttonRow);
+        appendBrandFooterToContainer(container, interaction.guild?.id);
+
         const sentMsg = await channel.send({
           content: `@everyone`,
-          embeds: [embed],
-          components: [buttonRow],
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
 
         ticketOwners.set(channel.id, {
@@ -20733,19 +20733,14 @@ async function handleModalSubmit(interaction) {
         .catch(() => null);
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-      .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-        `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-        `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-        `### ・ \`📋\` × Informacje z formularza:\n` +
-        `${formInfo}`,
-      )
-      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-      .setFooter(getBrandFooterBuilderObject());
+    const containerText =
+      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+      `### ・ \`👤\` × **Informacje o kliencie:**\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+      `### ・ \`📋\` × **Informacje z formularza:**\n` +
+      `${formInfo}`;
 
     // Build buttons: Close (disabled for non-admin in interaction), Settings, Code (if zakup), Claim + Unclaim (disabled)
     const closeButton = new ButtonBuilder()
@@ -20784,11 +20779,16 @@ async function handleModalSubmit(interaction) {
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(containerText));
+    container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, interaction.guild?.id);
+
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: [embed],
-      components: [buttonRow],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     ticketOwners.set(channel.id, {
