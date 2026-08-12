@@ -1528,6 +1528,7 @@ const FREE_KASA_TOTAL_WEIGHT = FREE_KASA_REWARD_POOL.reduce(
 
 // New maps for ticket close confirmation
 const pendingTicketClose = new Map(); // channelId -> { userId, ts }
+const closingTickets = new Set(); // channelId - currently being deleted, block re-close
 
 // ------------------ Invite tracking & protections ------------------
 const guildInvites = new Map(); // guildId -> Map<code, uses>
@@ -8067,12 +8068,20 @@ async function handleButtonInteraction(interaction) {
     return;
   }
 
-  // Ticket close - double confirmation logic BUT restricted to admins/sellers
   if (customId.startsWith("ticket_close_")) {
     const channel = interaction.channel;
     if (!isTicketChannel(channel)) {
       await interaction.reply({
         content: "> `❌` × Ta **komenda** działa jedynie na **ticketach**!",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    // Block if already being deleted
+    if (closingTickets.has(channel.id)) {
+      await interaction.reply({
+        content: "> `⏳` × Ten ticket jest właśnie zamykany, poczekaj chwilę.",
         flags: [MessageFlags.Ephemeral],
       });
       return;
@@ -8097,6 +8106,7 @@ async function handleButtonInteraction(interaction) {
       now - pending.ts < 30_000
     ) {
       pendingTicketClose.delete(chId);
+      closingTickets.add(chId);
       // remove ticketOwners entry immediately
       const ticketMeta = ticketOwners.get(chId) || null;
       await commitRewardTicketClaim(chId).catch(() => null);
@@ -8129,6 +8139,8 @@ async function handleButtonInteraction(interaction) {
           console.log(`Zamknięto ticket ${channel.name}`);
         } catch (error) {
           console.error("Błąd zamykania ticketu:", error);
+        } finally {
+          closingTickets.delete(chId);
         }
       }, 2000);
     } else {
