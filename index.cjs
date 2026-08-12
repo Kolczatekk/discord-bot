@@ -24063,10 +24063,10 @@ async function sendRozliczeniaMessage() {
     const channel = await client.channels.fetch(ROZLICZENIA_CHANNEL_ID);
     if (!channel) return;
 
-    // Sprawdź czy istnieje wiadomość informacyjna bota do usunięcia
+    // Usuń WSZYSTKIE istniejące wiadomości informacyjne bota z przyciskiem
     const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
     if (messages && messages.size > 0) {
-      const botMessage = messages.find(msg =>
+      const botMessages = messages.filter(msg =>
         msg.author.id === client.user.id &&
         (
           (msg.embeds.length > 0 && msg.embeds[0].title?.includes("ROZLICZENIA TYGODNIOWE")) ||
@@ -24074,9 +24074,11 @@ async function sendRozliczeniaMessage() {
         )
       );
 
-      if (botMessage) {
-        await botMessage.delete().catch(() => null);
-        console.log("Usunięto istniejącą wiadomość informacyjną ROZLICZENIA TYGODNIOWE");
+      for (const [, msg] of botMessages) {
+        await msg.delete().catch(() => null);
+      }
+      if (botMessages.size > 0) {
+        console.log(`Usunięto ${botMessages.size} starych wiadomości ROZLICZENIA TYGODNIOWE`);
       }
     }
 
