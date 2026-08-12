@@ -3770,6 +3770,28 @@ async function loadPersistentState() {
         console.error("[Supabase] Błąd wczytywania activeCodes:", error);
       }
 
+      // Ensure test discount codes exist for testing /znizka
+      const defaultTestCodes = [
+        { code: "TEST10", discount: 10 },
+        { code: "TEST20", discount: 20 },
+        { code: "TEST50", discount: 50 },
+        { code: "NEWSHOP15", discount: 15 },
+      ];
+      const futureExpiry = Date.now() + 30 * 86400 * 1000;
+      for (const tCode of defaultTestCodes) {
+        if (!activeCodes.has(tCode.code)) {
+          const payload = {
+            discount: tCode.discount,
+            expiresAt: futureExpiry,
+            created: Date.now(),
+            type: "discount",
+            used: false,
+          };
+          activeCodes.set(tCode.code, payload);
+          db.saveActiveCode(tCode.code, payload).catch(() => null);
+        }
+      }
+
       // Load ticket owners from Supabase
       try {
         const ticketOwnersData = await db.getTicketOwners();
@@ -5071,6 +5093,31 @@ const commands = [
     .setName("statusbota")
     .setDescription("Pokaż szczegółowy status bota")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("stworz-kod")
+    .setDescription("Wygeneruj nowy kod zniżkowy (Tylko Sprzedawca/Admin)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addIntegerOption((option) =>
+      option
+        .setName("znizka")
+        .setDescription("Procent zniżki (np. 10 dla 10%, 20 dla 20%)")
+        .setRequired(true)
+        .setMinValue(1)
+        .setMaxValue(100)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("kod")
+        .setDescription("Twój własny kod (opcjonalnie, np. ZNIZKA10)")
+        .setRequired(false)
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("dni")
+        .setDescription("Liczba dni ważności (domyślnie 30)")
+        .setRequired(false)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczenieustaw")
@@ -8509,6 +8556,59 @@ async function handleSlashCommand(interaction) {
       }
       const rawCode = interaction.options.getString("kod") || "";
       await processDiscountCodeRedemption(interaction, rawCode);
+      break;
+    }
+    case "stworz-kod": {
+      if (!isAdminOrSeller(interaction.member)) {
+        await interaction.reply({
+          content: "> `❗` × Brak wymaganych uprawnień.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      const znizka = interaction.options.getInteger("znizka");
+      const customCodeRaw = interaction.options.getString("kod");
+      const days = interaction.options.getInteger("dni") || 30;
+
+      let code = customCodeRaw
+        ? normalizeCodeInput(customCodeRaw)
+        : generateCode();
+
+      if (!code || code.length < 3) {
+        await interaction.reply({
+          content: "> `❌` × Kod jest za krótki. Podaj co najmniej 3 znaki.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      const expiresAt = Date.now() + (days * 86400 * 1000);
+
+      const payload = {
+        oderId: interaction.user.id,
+        discount: znizka,
+        expiresAt: expiresAt,
+        created: Date.now(),
+        type: "discount",
+        used: false,
+      };
+
+      activeCodes.set(code, payload);
+      await db.saveActiveCode(code, payload).catch(() => null);
+      scheduleSavePersistentState(true);
+
+      const expiryTs = Math.floor(expiresAt / 1000);
+      const embed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setTitle("`🎟️` Stworzono kod zniżkowy")
+        .setDescription(
+          "```\n" + code + "\n```\n" +
+          `> 💸 × **Zniżka:** \`-${znizka}%\`\n` +
+          `> ⏳ × **Ważny do:** <t:${expiryTs}:F> (<t:${expiryTs}:R>)`
+        );
+
+      await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
       break;
     }
     case "ustawienia": {
