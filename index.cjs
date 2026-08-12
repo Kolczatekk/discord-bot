@@ -8561,6 +8561,11 @@ async function handleRozliczenieCommand(interaction) {
   }
 
   const userData = weeklySales.get(userId);
+  if (userData.paid) {
+    userData.amount = 0;
+    userData.paid = false;
+    userData.paidAt = null;
+  }
   userData.amount += kwota;
   userData.lastUpdate = Date.now();
   userData.guildId = interaction.guild.id;
@@ -18353,6 +18358,11 @@ async function handleModalSubmit(interaction) {
     }
 
     const userData = weeklySales.get(userId);
+    if (userData.paid) {
+      userData.amount = 0;
+      userData.paid = false;
+      userData.paidAt = null;
+    }
     userData.amount += kwota;
     userData.lastUpdate = Date.now();
     userData.guildId = interaction.guild.id;
