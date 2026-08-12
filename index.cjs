@@ -7970,12 +7970,12 @@ async function handleButtonInteraction(interaction) {
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `> \`👤\` <a:arrowwhite:1491476759290449984> × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
-          `> \`📱\` <a:arrowwhite:1491476759290449984> × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
-          `> \`🧾\` <a:arrowwhite:1491476759290449984> × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
-          `> \`✉️\` <a:arrowwhite:1491476759290449984> × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
-          `> \`👝\` <a:arrowwhite:1491476759290449984> × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
-          `> \`🌐\` <a:arrowwhite:1491476759290449984> × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
+          `> <a:arrowwhite:1491476759290449984> × \`👤\` **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × \`📱\` **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × \`🧾\` **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × \`✉️\` **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × \`👝\` **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × \`🌐\` **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
         )
       );
 
@@ -8008,7 +8008,7 @@ async function handleButtonInteraction(interaction) {
     const lines = [];
     const addLine = (emoji, label, value) => {
       if (value && value !== "`Brak`" && value !== "Brak") {
-        lines.push(`> ${emoji} <a:arrowwhite:1491476759290449984> × **${label}:** ${value}`);
+        lines.push(`> <a:arrowwhite:1491476759290449984> × ${emoji} **${label}:** ${value}`);
       }
     };
 
