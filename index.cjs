@@ -7130,8 +7130,7 @@ async function handleButtonInteraction(interaction) {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("seller_data_restore")
-        .setLabel("︲Przywróć")
-        .setEmoji("↩️")
+        .setLabel("↩️︲Przywróć")
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -7941,13 +7940,11 @@ async function handleButtonInteraction(interaction) {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("seller_data_edit_main")
-        .setLabel("︲BLIK/PRZELEW")
-        .setEmoji("💳")
+        .setLabel("💳︲BLIK/PRZELEW")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("seller_data_edit_extra")
-        .setLabel("︲PAYPAL/LTC/MYPSC")
-        .setEmoji("🌐")
+        .setLabel("🌐︲PAYPAL/LTC/MYPSC")
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -8063,11 +8060,11 @@ async function handleButtonInteraction(interaction) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("seller_data_edit_main")
-          .setLabel("︲Zmień (BLIK)")
+          .setLabel("💳︲Zmień (BLIK)")
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("seller_data_edit_extra")
-          .setLabel("︲Zmień (PP/LTC)")
+          .setLabel("🌐︲Zmień (PP/LTC)")
           .setStyle(ButtonStyle.Secondary)
       );
       container.addActionRowComponents(row);
@@ -9938,18 +9935,15 @@ function buildSellerPaymentPanelPayload(guildId) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_add_choice")
-      .setLabel("︲Dodaj dane")
-      .setEmoji({ id: "1469107179234525184", name: "BLIK" })
+      .setLabel("📝︲Dodaj dane")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_view")
-      .setLabel("︲Moje Dane")
-      .setEmoji({ id: "1491446746239336448", name: "question" })
+      .setLabel("🔍︲Moje Dane")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_clear")
-      .setLabel("︲Wyczyść")
-      .setEmoji("🧹")
+      .setLabel("🧹︲Wyczyść")
       .setStyle(ButtonStyle.Secondary)
   );
 
