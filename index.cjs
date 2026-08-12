@@ -18647,11 +18647,13 @@ async function handleModalSubmit(interaction) {
         `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`
       );
 
-    await interaction.deferUpdate().catch(() => null);
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
 
     await interaction.channel.send({
       embeds: [embed],
     }).catch(() => null);
+
+    await interaction.deleteReply().catch(() => null);
 
     setTimeout(sendRozliczeniaMessage, 1000);
     setTimeout(() => sendRozliczeniaStatusReport(interaction.guild), 1000);
