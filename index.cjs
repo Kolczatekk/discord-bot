@@ -7018,7 +7018,7 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
     const channel = await interaction.guild.channels.create(createOptions);
 
     const embedText =
-      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
       `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
@@ -18490,7 +18490,7 @@ async function openRewardClaimTicket(interaction) {
   const channel = await guild.channels.create(createOptions);
 
   const embedText =
-    `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+    `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
     `### ・ \`👤\` × **Informacje o kliencie:**\n` +
     `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
     `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
@@ -20492,7 +20492,7 @@ async function handleModalSubmit(interaction) {
         const channel = await interaction.guild.channels.create(createOptions);
 
         const embedText =
-          `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+          `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
           `### ・ \`👤\` × **Informacje o kliencie:**\n` +
           `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
           `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
@@ -20801,7 +20801,7 @@ async function handleModalSubmit(interaction) {
     }
 
     const embedText =
-      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
+      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
       `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
