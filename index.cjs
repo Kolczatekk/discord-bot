@@ -5774,6 +5774,11 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
           }
         } else if (child.type === 9 || child.type === "Separator") {
           container.addSeparatorComponents(new SeparatorBuilder().setDivider(child.divider ?? true));
+        } else if (child.type === 11 || child.type === "MediaGallery" || child.items) {
+          const items = (child.items || []).map((item) => new MediaGalleryItemBuilder().setURL(item.url || item.item?.url || REP_EMBED_BANNER_URL));
+          if (items.length) {
+            container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(...items));
+          }
         }
       }
 
@@ -7017,8 +7022,8 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
 
     const channel = await interaction.guild.channels.create(createOptions);
 
-    const embedText =
-      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
+    const headerText = `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\``;
+    const bodyText =
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
       `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
@@ -7046,9 +7051,16 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
     );
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-    appendBrandFooterToContainer(container, interaction.guild?.id);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
+      ),
+    );
     container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, interaction.guild?.id);
 
     const sentMsg = await channel.send({
       components: [container],
@@ -18489,8 +18501,8 @@ async function openRewardClaimTicket(interaction) {
 
   const channel = await guild.channels.create(createOptions);
 
-  const embedText =
-    `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
+  const headerText = `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\``;
+  const bodyText =
     `### ・ \`👤\` × **Informacje o kliencie:**\n` +
     `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
     `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
@@ -18518,9 +18530,16 @@ async function openRewardClaimTicket(interaction) {
   );
 
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-  appendBrandFooterToContainer(container, interaction.guild?.id);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
+  container.addMediaGalleryComponents(
+    new MediaGalleryBuilder().addItems(
+      new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
+    ),
+  );
   container.addActionRowComponents(buttonRow);
+  appendBrandFooterToContainer(container, interaction.guild?.id);
 
   const sentMsg = await channel.send({
     components: [container],
@@ -20491,8 +20510,8 @@ async function handleModalSubmit(interaction) {
 
         const channel = await interaction.guild.channels.create(createOptions);
 
-        const embedText =
-          `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
+        const headerText = `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\``;
+        const bodyText =
           `### ・ \`👤\` × **Informacje o kliencie:**\n` +
           `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
           `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
@@ -20520,9 +20539,16 @@ async function handleModalSubmit(interaction) {
         );
 
         const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-        appendBrandFooterToContainer(container, interaction.guild?.id);
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
+        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
+        container.addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(
+            new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
+          ),
+        );
         container.addActionRowComponents(buttonRow);
+        appendBrandFooterToContainer(container, interaction.guild?.id);
 
         const sentMsg = await channel.send({
           components: [container],
@@ -20800,8 +20826,8 @@ async function handleModalSubmit(interaction) {
         .catch(() => null);
     }
 
-    const embedText =
-      `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n` +
+    const headerText = `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\``;
+    const bodyText =
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
       `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
@@ -20830,9 +20856,16 @@ async function handleModalSubmit(interaction) {
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-    appendBrandFooterToContainer(container, interaction.guild?.id);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
+      ),
+    );
     container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, interaction.guild?.id);
 
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
