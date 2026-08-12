@@ -10163,13 +10163,11 @@ async function handleOstrzezenieCommand(interaction) {
 
     let headerTitle = `OSTRZEŻENIE ${currentCount}/3`;
     if (currentCount === 2) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
-    else if (currentCount >= 3) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
 
     const container = new ContainerBuilder()
       .setAccentColor(COLOR_BLUE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `<@${targetUser.id}>\n` +
           `## ${headerTitle}\n` +
           `> Powód: ${powod}`
         )
@@ -10183,6 +10181,8 @@ async function handleOstrzezenieCommand(interaction) {
     }
     if (!warnChannel) warnChannel = interaction.channel;
 
+    // Ping osobno (poza embedem), potem container
+    await warnChannel.send({ content: `<@${targetUser.id}>` });
     await warnChannel.send({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
