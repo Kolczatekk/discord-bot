@@ -8699,9 +8699,46 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     if (!logsChannel) return;
 
     if (weeklySales.size === 0) {
+      const nextSundayTS = getNextSundayTimestamp();
+      const emptyReportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
+        "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n" +
+        "> `ℹ️` × **Brak zarejestrowanych sprzedaży w tym tygodniu.**\n\n" +
+        `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`;
+
+      const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(emptyReportText));
+      appendBrandFooterToContainer(container, guild?.id);
+
+      if (!rozliczeniaReportMessageId) {
+        const fetchedMsgs = await logsChannel.messages.fetch({ limit: 25 }).catch(() => null);
+        if (fetchedMsgs && fetchedMsgs.size > 0) {
+          const found = fetchedMsgs.find((m) =>
+            m.author.id === client.user.id &&
+            (m.content.includes("STATYSTYKI ROZLICZEŃ") ||
+             m.content.includes("ROZLICZENIA TYGODNIOWE") ||
+             JSON.stringify(m.toJSON()).includes("STATYSTYKI ROZLICZEŃ") ||
+             JSON.stringify(m.toJSON()).includes("ROZLICZENIA TYGODNIOWE"))
+          );
+          if (found) rozliczeniaReportMessageId = found.id;
+        }
+      }
+
+      let existingMsg = null;
       if (rozliczeniaReportMessageId) {
-        await logsChannel.messages.delete(rozliczeniaReportMessageId).catch(() => null);
-        rozliczeniaReportMessageId = null;
+        existingMsg = await logsChannel.messages.fetch(rozliczeniaReportMessageId).catch(() => null);
+      }
+
+      if (existingMsg) {
+        await existingMsg.edit({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        }).catch(() => null);
+      } else {
+        const sentMsg = await logsChannel.send({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
+        if (sentMsg) rozliczeniaReportMessageId = sentMsg.id;
       }
       return;
     }
@@ -8912,6 +8949,15 @@ async function handleRozliczenieZaplacilCommand(interaction) {
         await member.roles.add(DEFAULT_LIMIT_ROLE_ID, "Rozliczenie zapłacone - domyślny limit 20").catch(() => null);
       }
     }
+  }
+
+  // Sprawdź czy wszyscy użytkownicy zapłacili Swoje rozliczenia
+  const allPaid = Array.from(weeklySales.values()).every((data) => data.paid || data.amount === 0);
+  if (allPaid) {
+    console.log("[rozliczenie] Wszyscy użytkownicy zapłacili. Czyszczę dane starych rozliczeń na nowy tydzień.");
+    weeklySales.clear();
+    isSundayResetTriggered = false;
+    await db.resetWeeklySales().catch(() => null);
   }
 
   scheduleSavePersistentState(true);
