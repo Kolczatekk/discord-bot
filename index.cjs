@@ -8684,8 +8684,7 @@ async function handleRozliczenieCommand(interaction) {
   await interaction.reply({ embeds: [embed] });
   console.log(`Użytkownik ${userId} dodał rozliczenie: ${kwota} zł`);
 
-  // Odśwież wiadomość ROZLICZENIA TYGODNIOWE oraz raport na kanale rozliczeń
-  setTimeout(sendRozliczeniaMessage, 1000);
+  // Odśwież raport na kanale rozliczeń
   setTimeout(() => sendRozliczeniaStatusReport(interaction.guild), 1000);
 }
 
@@ -18649,7 +18648,6 @@ async function handleModalSubmit(interaction) {
       embeds: [embed],
     });
 
-    setTimeout(sendRozliczeniaMessage, 1000);
     setTimeout(() => sendRozliczeniaStatusReport(interaction.guild), 1000);
     return;
   }
