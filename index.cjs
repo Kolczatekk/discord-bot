@@ -9853,7 +9853,7 @@ function buildSellerPaymentPanelPayload(guildId) {
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa."
+        "> <a:arrowwhite:1491476759290449984> × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa."
       )
     )
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true));
