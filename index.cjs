@@ -5711,7 +5711,7 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
         const channelIdPart = cid.split("_").slice(2).join("_");
         return new ButtonBuilder()
           .setCustomId(`ticket_claim_${channelIdPart}`)
-          .setLabel("Przejmij")
+          .setLabel("🔒︲Przejmij")
           .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
           .setDisabled(Boolean(claimerId));
       } else if (cid.startsWith("ticket_unclaim_")) {
@@ -5719,13 +5719,13 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
         if (claimerId) {
           return new ButtonBuilder()
             .setCustomId(`ticket_unclaim_${channelIdPart}_${claimerId}`)
-            .setLabel("Odprzejmij")
+            .setLabel("🔓︲Odprzejmij")
             .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Danger)
             .setDisabled(false);
         } else {
           return new ButtonBuilder()
             .setCustomId(`ticket_unclaim_${channelIdPart}`)
-            .setLabel("Odprzejmij")
+            .setLabel("🔓︲Odprzejmij")
             .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
             .setDisabled(true);
         }
@@ -6998,7 +6998,6 @@ async function handleModalSubmit(interaction) {
     const channel = await interaction.guild.channels.create(createOptions);
 
     const embedText =
-      `@everyone\n\n` +
       `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -7009,19 +7008,19 @@ async function handleModalSubmit(interaction) {
 
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
-      .setLabel("Zamknij")
+      .setLabel("❌︲Zamknij")
       .setStyle(ButtonStyle.Secondary);
     const settingsButton = new ButtonBuilder()
       .setCustomId(`ticket_settings_${channel.id}`)
-      .setLabel("Ustawienia")
+      .setLabel("⚙️︲Ustawienia")
       .setStyle(ButtonStyle.Secondary);
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
-      .setLabel("Przejmij")
+      .setLabel("🔒︲Przejmij")
       .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
     const unclaimButton = new ButtonBuilder()
       .setCustomId(`ticket_unclaim_${channel.id}`)
-      .setLabel("Odprzejmij")
+      .setLabel("🔓︲Odprzejmij")
       .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
       .setDisabled(true);
 
@@ -18415,7 +18414,6 @@ async function openRewardClaimTicket(interaction) {
   const channel = await guild.channels.create(createOptions);
 
   const embedText =
-    `@everyone\n\n` +
     `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
     `### ・ \`👤\` × **Informacje o kliencie:**\n` +
     `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -18426,19 +18424,19 @@ async function openRewardClaimTicket(interaction) {
 
   const closeButton = new ButtonBuilder()
     .setCustomId(`ticket_close_${channel.id}`)
-    .setLabel("Zamknij")
+    .setLabel("❌︲Zamknij")
     .setStyle(ButtonStyle.Secondary);
   const settingsButton = new ButtonBuilder()
     .setCustomId(`ticket_settings_${channel.id}`)
-    .setLabel("Ustawienia")
+    .setLabel("⚙️︲Ustawienia")
     .setStyle(ButtonStyle.Secondary);
   const claimButton = new ButtonBuilder()
     .setCustomId(`ticket_claim_${channel.id}`)
-    .setLabel("Przejmij")
+    .setLabel("🔒︲Przejmij")
     .setStyle(ButtonStyle.Secondary);
   const unclaimButton = new ButtonBuilder()
     .setCustomId(`ticket_unclaim_${channel.id}`)
-    .setLabel("Odprzejmij")
+    .setLabel("🔓︲Odprzejmij")
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(true);
 
@@ -20424,7 +20422,6 @@ async function handleModalSubmit(interaction) {
         const channel = await interaction.guild.channels.create(createOptions);
 
         const embedText =
-          `@everyone\n\n` +
           `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
           `### ・ \`👤\` × **Informacje o kliencie:**\n` +
           `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -20435,19 +20432,19 @@ async function handleModalSubmit(interaction) {
 
         const closeButton = new ButtonBuilder()
           .setCustomId(`ticket_close_${channel.id}`)
-          .setLabel("Zamknij")
+          .setLabel("❌︲Zamknij")
           .setStyle(ButtonStyle.Secondary);
         const settingsButton = new ButtonBuilder()
           .setCustomId(`ticket_settings_${channel.id}`)
-          .setLabel("Ustawienia")
+          .setLabel("⚙️︲Ustawienia")
           .setStyle(ButtonStyle.Secondary);
         const claimButton = new ButtonBuilder()
           .setCustomId(`ticket_claim_${channel.id}`)
-          .setLabel("Przejmij")
+          .setLabel("🔒︲Przejmij")
           .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
         const unclaimButton = new ButtonBuilder()
           .setCustomId(`ticket_unclaim_${channel.id}`)
-          .setLabel("Odprzejmij")
+          .setLabel("🔓︲Odprzejmij")
           .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
           .setDisabled(true);
 
@@ -20740,7 +20737,6 @@ async function handleModalSubmit(interaction) {
     }
 
     const embedText =
-      `@everyone\n\n` +
       `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\`\n\n` +
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
@@ -20752,12 +20748,12 @@ async function handleModalSubmit(interaction) {
     // Build buttons: Close (disabled for non-admin in interaction), Settings, Code (if zakup), Claim + Unclaim (disabled)
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
-      .setLabel("Zamknij")
+      .setLabel("❌︲Zamknij")
       .setStyle(ButtonStyle.Secondary);
 
     const settingsButton = new ButtonBuilder()
       .setCustomId(`ticket_settings_${channel.id}`)
-      .setLabel("Ustawienia")
+      .setLabel("⚙️︲Ustawienia")
       .setStyle(ButtonStyle.Secondary);
 
     const buttons = [closeButton, settingsButton];
@@ -20766,19 +20762,19 @@ async function handleModalSubmit(interaction) {
       buttons.push(
         new ButtonBuilder()
           .setCustomId(`ticket_code_${channel.id}_${user.id}`)
-          .setLabel("Kod rabatowy")
+          .setLabel("🔥︲Kod rabatowy")
           .setStyle(ButtonStyle.Secondary),
       );
     }
 
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
-      .setLabel("Przejmij")
+      .setLabel("🔒︲Przejmij")
       .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary);
 
     const unclaimButton = new ButtonBuilder()
       .setCustomId(`ticket_unclaim_${channel.id}`)
-      .setLabel("Odprzejmij")
+      .setLabel("🔓︲Odprzejmij")
       .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary)
       .setDisabled(true);
 
