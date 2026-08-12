@@ -8702,7 +8702,7 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
       const nextSundayTS = getNextSundayTimestamp();
       const emptyReportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
         "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n" +
-        "> `ℹ️` × **Brak zarejestrowanych sprzedaży w tym tygodniu.**\n\n" +
+        "> `ℹ️` × Brak zarejestrowanych sprzedaży w tym tygodniu.\n\n" +
         `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`;
 
       const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
