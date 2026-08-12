@@ -18624,13 +18624,8 @@ async function handleModalSubmit(interaction) {
         `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`
       );
 
-    await interaction.channel.send({
-      embeds: [embed],
-    }).catch(() => null);
-
     await interaction.reply({
-      content: `> \`✅\` × Pomyślnie dodano **${kwota} PLN** do Twojego rozliczenia.`,
-      flags: [MessageFlags.Ephemeral],
+      embeds: [embed],
     });
 
     setTimeout(sendRozliczeniaMessage, 1000);
