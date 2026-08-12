@@ -8681,10 +8681,13 @@ async function handleRozliczenieCommand(interaction) {
       `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`,
     );
 
-  await interaction.reply({ embeds: [embed] });
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+
+  await interaction.channel.send({ embeds: [embed] }).catch(() => null);
+  await interaction.deleteReply().catch(() => null);
   console.log(`Użytkownik ${userId} dodał rozliczenie: ${kwota} zł`);
 
-  // Odśwież raport na kanale rozliczeń
+  setTimeout(sendRozliczeniaMessage, 1000);
   setTimeout(() => sendRozliczeniaStatusReport(interaction.guild), 1000);
 }
 
@@ -18644,10 +18647,13 @@ async function handleModalSubmit(interaction) {
         `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`
       );
 
-    await interaction.reply({
-      embeds: [embed],
-    });
+    await interaction.deferUpdate().catch(() => null);
 
+    await interaction.channel.send({
+      embeds: [embed],
+    }).catch(() => null);
+
+    setTimeout(sendRozliczeniaMessage, 1000);
     setTimeout(() => sendRozliczeniaStatusReport(interaction.guild), 1000);
     return;
   }
