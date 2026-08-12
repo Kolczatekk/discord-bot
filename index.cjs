@@ -6731,6 +6731,10 @@ async function handleModalSubmit(interaction) {
           deny: [PermissionsBitField.Flags.ViewChannel], // @everyone nie widzi ticketów
         },
         {
+          id: "1537090439239442483", // zawieszony – nie widzi żadnych ticketów
+          deny: [PermissionsBitField.Flags.ViewChannel],
+        },
+        {
           id: interaction.user.id,
           allow: [
             PermissionsBitField.Flags.ViewChannel,
@@ -8148,9 +8152,19 @@ async function handleSlashCommand(interaction) {
       const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways", "ostrzezenie", "warn", "ostrzezenie-usun", "unwarn"]);
       const SELLER_ROLE_ID = "1350786945944391733";
       const HELPER_ROLE_ID = "1519069239254974475";
+      const SUSPENDED_ROLE_ID = "1537090439239442483";
       const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
       const isHelper = interaction.member?.roles?.cache?.has(HELPER_ROLE_ID);
       const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+      const isSuspended = interaction.member?.roles?.cache?.has(SUSPENDED_ROLE_ID);
+      // Zawieszony sprzedawca nie może używać komend sprzedawcy (admini bez ograniczeń)
+      if (!isAdmin && isSuspended && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
+        await interaction.reply({
+          content: "> `🔴` × Twoje konto sprzedawcy jest zawieszone i nie możesz używać tej komendy.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
       if (!isAdmin && !isSeller && !isHelper && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
         await interaction.reply({
           content: "> `❌` × Nie masz uprawnień do tej komendy.",
@@ -10189,7 +10203,7 @@ async function handleOstrzezenieCommand(interaction) {
       flags: MessageFlags.IsComponentsV2,
     });
 
-    // Jeśli sprzedawca osiągnął 3/3 – odbierz mu wszystkie role limitu zakupu (zachowuje rolę sprzedawcy)
+    // Jeśli sprzedawca osiągnął 3/3 – odbierz mu wszystkie role limitu zakupu i nadaj rolę zawieszony
     if (currentCount >= 3 && interaction.guild) {
       const LIMIT_ROLE_IDS = [
         "1449448860517798061", // dostep.zakup.max.200
@@ -10197,6 +10211,7 @@ async function handleOstrzezenieCommand(interaction) {
         "1449448702925209651", // dostep.zakup.max.50
         "1449448705563557918", // dostep.zakup.max.20
       ];
+      const SUSPENDED_ROLE_ID = "1537090439239442483";
       const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
       if (member) {
         for (const roleId of LIMIT_ROLE_IDS) {
@@ -10205,6 +10220,12 @@ async function handleOstrzezenieCommand(interaction) {
               console.error(`Błąd usuwania roli limitu ${roleId}:`, e)
             );
           }
+        }
+        // Nadaj rolę zawieszony
+        if (!member.roles.cache.has(SUSPENDED_ROLE_ID)) {
+          await member.roles.add(SUSPENDED_ROLE_ID, "3/3 ostrzeżeń – zawieszenie").catch((e) =>
+            console.error("Błąd nadawania roli zawieszony:", e)
+          );
         }
       }
     }
