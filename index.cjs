@@ -8825,16 +8825,18 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID).catch(() => null);
     if (!logsChannel) return;
 
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+
     const activeSalesCount = Array.from(weeklySales.values()).filter((data) => data.amount > 0).length;
     if (activeSalesCount === 0) {
       const nextSundayTS = getNextSundayTimestamp();
-      const emptyReportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
-        "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n" +
-        "> `ℹ️` × Brak zarejestrowanych sprzedaży w tym tygodniu.\n\n" +
-        `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`;
-
-      const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(emptyReportText));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**"));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("> `ℹ️` × Brak zarejestrowanych sprzedaży w tym tygodniu."));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`));
       appendBrandFooterToContainer(container, guild?.id);
 
       if (!rozliczeniaReportMessageId) {
@@ -8892,7 +8894,6 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     const klientEmoji = findGuildEmojiByName(guild?.id, "klient");
     const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
 
-    let reportText = "";
     const hasUnpaidSales = Array.from(weeklySales.values()).some((data) => data.amount > 0 && !data.paid);
     if (!hasUnpaidSales) {
       isSundayResetTriggered = false;
@@ -8904,34 +8905,44 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
       .sort((a, b) => b[1].amount - a[1].amount);
 
     if (isSundayMode) {
-      reportText = "# `📊` ROZLICZENIA TYGODNIOWE\n" +
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` ROZLICZENIA TYGODNIOWE"));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(
         "> `⏳` × **Termin na zapłacenie do godziny 20:00**\n" +
-        "> `📱` × **Przelew na numer:** `880 260 392`\n\n";
+        "> `📱` × **Przelew na numer:** `880 260 392`"
+      ));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
-      for (const [userId, data] of sortedSales) {
+      const salesListText = sortedSales.map(([userId, data]) => {
         const userRate = getUserCommissionRate(userId);
         const prowizja = (data.amount * userRate).toFixed(2);
         const percentStr = `${Math.round(userRate * 100)}%`;
         const statusEmoji = data.paid ? "`✅`" : "`❌`";
-        reportText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (prowizja ${percentStr}: **${prowizja} zł**)\n`;
-      }
+        return `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (prowizja ${percentStr}: **${prowizja} zł**)`;
+      }).join("\n");
+
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(salesListText));
     } else {
       const nextSundayTS = getNextSundayTimestamp();
-      reportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
-        "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n";
 
-      for (const [userId, data] of sortedSales) {
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**"));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+      const salesListText = sortedSales.map(([userId, data]) => {
         const userRate = getUserCommissionRate(userId);
         const prowizja = (data.amount * userRate).toFixed(2);
         const percentStr = `${Math.round(userRate * 100)}%`;
-        reportText += `> ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (prowizja ${percentStr}: **${prowizja} zł**)\n`;
-      }
+        return `> ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (prowizja ${percentStr}: **${prowizja} zł**)`;
+      }).join("\n");
 
-      reportText += `\n> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`;
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(salesListText));
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`));
     }
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(reportText));
     appendBrandFooterToContainer(container, guild?.id);
 
     if (forceNewMessage && rozliczeniaReportMessageId) {
