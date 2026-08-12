@@ -447,27 +447,13 @@ function buildTicketContainerPayload({ headerText, bodyText, buttonRow, guildId 
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
-
-  const bannerAttachment = getTicketBannerAttachment();
-  if (bannerAttachment) {
-    container.addMediaGalleryComponents(
-      new MediaGalleryBuilder().addItems(
-        new MediaGalleryItemBuilder().setURL("attachment://standard_1.gif"),
-      ),
-    );
-  }
-
   container.addActionRowComponents(buttonRow);
   appendBrandFooterToContainer(container, guildId);
 
-  const payload = {
+  return {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
   };
-  if (bannerAttachment) {
-    payload.files = [bannerAttachment];
-  }
-  return payload;
 }
 
 // track last info message posted by the bot per channel so we can delete it before posting a new one
@@ -5810,11 +5796,6 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
           }
         } else if (child.type === 9 || child.type === "Separator") {
           container.addSeparatorComponents(new SeparatorBuilder().setDivider(child.divider ?? true));
-        } else if (child.type === 11 || child.type === "MediaGallery" || child.items) {
-          const items = (child.items || []).map((item) => new MediaGalleryItemBuilder().setURL(item.url || item.item?.url || "attachment://standard_1.gif"));
-          if (items.length) {
-            container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(...items));
-          }
         }
       }
 
