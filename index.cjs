@@ -8355,12 +8355,12 @@ async function handleButtonInteraction(interaction) {
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `> 👤 × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
-          `> 📱 × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
-          `> 🧾 × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
-          `> ✉️ × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
-          `> 👝 × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
-          `> 🌐 × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
+          `> \`👤\` × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
+          `> \`📱\` × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
+          `> \`🧾\` × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
+          `> \`✉️\` × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
+          `> \`👝\` × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
+          `> \`🌐\` × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
         )
       );
 
@@ -11188,7 +11188,7 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
     }
   };
 
-  lines.push("> `💳` × **Dane do płatności**");
+  lines.push("> <a:jump_dirt:1480590181944791122> × **Dane do płatności**");
 
   if (method === "kod_blik" || method === "kod blik") {
     return;
@@ -14644,7 +14644,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     calcValue: "BLIK",
     description: "Szybki przelew BLIK (0% prowizji)",
     channelSlug: "blik",
-    emoji: { id: "1469107179234525184", name: "BLIK" },
+    emoji: { id: "1537186968222433361", name: "blik_2" },
   },
   {
     label: "Kod BLIK",
@@ -14652,7 +14652,7 @@ const SHOP_PAYMENT_OPTION_DEFS = [
     calcValue: "Kod BLIK",
     description: "Kod BLIK (10% prowizji)",
     channelSlug: "kod-blik",
-    emoji: { id: "1469107179234525184", name: "BLIK" },
+    emoji: { id: "1537186968222433361", name: "blik_2" },
   },
   {
     label: "PSC",
@@ -18043,7 +18043,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setColor(COLOR_BLUE)
       .setDescription(
         `> \`✅\` × Ticket został przejęty przez: ${publicClaimerLabel}\n` +
-        `> \`📈\` × Wykonał on łącznie: **__${sellerCount}__** ticketów`
+        `> <a:card:1537186328867770488> × Wykonał on łącznie: **__${sellerCount}__** ticketów`
       );
 
     if (ticketData.lastUnclaimMsgId) {
