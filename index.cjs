@@ -8582,7 +8582,7 @@ async function handleRozliczenieCommand(interaction) {
   const userEmojiStrCmd = klientEmojiCmd ? toGuildEmojiMarkup(klientEmojiCmd) : "👤";
 
   const embed = new EmbedBuilder()
-    .setColor(COLOR_GREEN)
+    .setColor(COLOR_BLUE)
     .setTitle("\`💱\` Rozliczenie dodane")
     .setDescription(
       `> ${userEmojiStrCmd} **Użytkownik:** <@${userId}>\n` +
@@ -18374,7 +18374,7 @@ async function handleModalSubmit(interaction) {
     const userEmojiStrModal = klientEmojiModal ? toGuildEmojiMarkup(klientEmojiModal) : "👤";
 
     const embed = new EmbedBuilder()
-      .setColor(COLOR_GREEN)
+      .setColor(COLOR_BLUE)
       .setTitle("`💱` Rozliczenie dodane")
       .setDescription(
         `> ${userEmojiStrModal} **Użytkownik:** <@${userId}>\n` +
