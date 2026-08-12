@@ -633,47 +633,6 @@ async function countExistingLegitRepMessages(channel) {
   return legitRepMessageIds.size;
 }
 
-async function countSellerLegitReps(guild, sellerId) {
-  if (!guild || !sellerId) return 0;
-  try {
-    const channel = guild.channels.cache.get(REP_CHANNEL_ID) || await guild.channels.fetch(REP_CHANNEL_ID).catch(() => null);
-    if (!channel || !channel.isTextBased()) return 0;
-
-    let count = 0;
-    let before = undefined;
-
-    while (true) {
-      const options = { limit: 100 };
-      if (before) options.before = before;
-      const batch = await channel.messages.fetch(options).catch(() => null);
-      if (!batch || !batch.size) break;
-
-      for (const msg of batch.values()) {
-        if (!msg.content) continue;
-        const content = msg.content.trim();
-        if (!content.startsWith("+rep")) continue;
-
-        const mentionsSeller =
-          msg.mentions.users.has(sellerId) ||
-          content.includes(`<@${sellerId}>`) ||
-          content.includes(`<@!${sellerId}>`);
-
-        if (mentionsSeller) {
-          count++;
-        }
-      }
-
-      before = batch.last()?.id;
-      if (batch.size < 100 || !before) break;
-    }
-
-    return count;
-  } catch (err) {
-    console.error("countSellerLegitReps error:", err);
-    return 0;
-  }
-}
-
 async function handleDeletedLegitRepMessage(message) {
   if (!legitRepHistoryInitialized || message?.channelId !== REP_CHANNEL_ID) return;
   if (!legitRepMessageIds.delete(message.id)) return;
@@ -5804,18 +5763,7 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
     }
 
     const headerText = textDisplays[0] || `\`\`\`text\n🛒 NEW SHOP × TICKET\n\`\`\``;
-    const rawBodyText = textDisplays.slice(1).join("\n") || "";
-    const cleanBodyText = rawBodyText.replace(/\n*### ・ `🔒` × \*\*Przejęcie ticketu:\*\*[\s\S]*$/, "").trim();
-
-    let finalBodyText = cleanBodyText;
-    if (claimerId) {
-      const legitCount = await countSellerLegitReps(ch.guild, claimerId);
-      const claimSection =
-        `\n\n### ・ \`🔒\` × **Przejęcie ticketu:**\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Przejęty przez:** <@${claimerId}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Wystawione legit-checki:** \`${legitCount}\``;
-      finalBodyText += claimSection;
-    }
+    const bodyText = textDisplays.slice(1).join("\n") || "";
 
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${ch.id}`)
@@ -5838,7 +5786,7 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
 
     const payload = buildTicketContainerPayload({
       headerText,
-      bodyText: finalBodyText,
+      bodyText,
       buttonRow,
       guildId: ch.guildId,
     });
