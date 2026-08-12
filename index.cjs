@@ -7045,7 +7045,7 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
       `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
       `### ・ \`📋\` × **Informacje z formularza:**\n` +
       `${formInfo}`;
 
@@ -18516,7 +18516,7 @@ async function openRewardClaimTicket(interaction) {
     `### ・ \`👤\` × **Informacje o kliencie:**\n` +
     `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
     `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-    `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+    `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
     `### ・ \`📋\` × **Informacje z formularza:**\n` +
     `${formInfo}`;
 
@@ -20517,7 +20517,7 @@ async function handleModalSubmit(interaction) {
           `### ・ \`👤\` × **Informacje o kliencie:**\n` +
           `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
           `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-          `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+          `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
           `### ・ \`📋\` × **Informacje z formularza:**\n` +
           `${formInfo}`;
 
@@ -20825,7 +20825,7 @@ async function handleModalSubmit(interaction) {
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
       `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n\n` +
+      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
       `### ・ \`📋\` × **Informacje z formularza:**\n` +
       `${formInfo}`;
 
