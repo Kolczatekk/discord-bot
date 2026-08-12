@@ -10133,140 +10133,174 @@ async function handlePanelDaneCommand(interaction) {
 }
 
 async function handleOstrzezenieCommand(interaction) {
-  const SELLER_ROLE_ID = "1350786945944391733";
-  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
-  const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
-  if (!isAdmin && !isSeller) {
+  try {
+    const SELLER_ROLE_ID = "1350786945944391733";
+    const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+    const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+    if (!isAdmin && !isSeller) {
+      await interaction.reply({
+        content: "> `❌` × Nie masz uprawnień do wystawiania ostrzeżeń.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const targetUser = interaction.options.getUser("sprzedawca");
+    const powod = interaction.options.getString("powod");
+
+    if (!targetUser) {
+      await interaction.reply({
+        content: "> `❌` × Nie wybrano sprzedawcy.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const key = `${interaction.guildId}:${targetUser.id}`;
+    const currentCount = (sellerWarnings.get(key) || 0) + 1;
+    sellerWarnings.set(key, currentCount);
+    scheduleSavePersistentState(true);
+
+    let headerTitle = `OSTRZEŻENIE ${currentCount}/3`;
+    if (currentCount === 2) {
+      headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
+    } else if (currentCount >= 3) {
+      headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
+    }
+
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "```\n" +
+          headerTitle + "\n" +
+          "```"
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `Powód: ${powod}`
+        )
+      );
+
+    appendBrandFooterToContainer(container, interaction.guildId);
+
+    let warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID);
+    if (!warnChannel && interaction.guild) {
+      warnChannel = await interaction.guild.channels.fetch(OSTRZEZENIA_CHANNEL_ID).catch(() => null);
+    }
+    if (!warnChannel) {
+      warnChannel = interaction.channel;
+    }
+
+    await warnChannel.send({
+      content: `<@${targetUser.id}>`,
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
     await interaction.reply({
-      content: "> `❌` × Nie masz uprawnień do wystawiania ostrzeżeń.",
+      content: `> \`✅\` × Pomyślnie wystawiono ostrzeżenie **${currentCount}/3** dla użytkownika <@${targetUser.id}> na kanale <#${warnChannel.id}>.`,
       flags: [MessageFlags.Ephemeral],
     });
-    return;
+  } catch (err) {
+    console.error("Błąd w handleOstrzezenieCommand:", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "> `❌` × Wystąpił błąd podczas wystawiania ostrzeżenia.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
   }
-
-  const targetUser = interaction.options.getUser("sprzedawca");
-  const powod = interaction.options.getString("powod");
-
-  if (!targetUser) {
-    await interaction.reply({
-      content: "> `❌` × Nie wybrano sprzedawcy.",
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const key = `${interaction.guildId}:${targetUser.id}`;
-  const currentCount = (sellerWarnings.get(key) || 0) + 1;
-  sellerWarnings.set(key, currentCount);
-  scheduleSavePersistentState(true);
-
-  let headerTitle = `OSTRZEŻENIE ${currentCount}/3`;
-  if (currentCount === 2) {
-    headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
-  } else if (currentCount >= 3) {
-    headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
-  }
-
-  const container = new ContainerBuilder()
-    .setAccentColor(COLOR_BLUE)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "```\n" +
-        headerTitle + "\n" +
-        "```"
-      )
-    )
-    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `Powód: ${powod}`
-      )
-    );
-
-  appendBrandFooterToContainer(container, interaction.guildId);
-
-  const warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID) ||
-    (await interaction.guild?.channels.fetch(OSTRZEZENIA_CHANNEL_ID).catch(() => null)) ||
-    interaction.channel;
-
-  await warnChannel.send({
-    content: `<@${targetUser.id}>`,
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
-  });
-
-  await interaction.reply({
-    content: `> \`✅\` × Pomyślnie wystawiono ostrzeżenie **${currentCount}/3** dla użytkownika <@${targetUser.id}> na kanale <#${warnChannel.id}>.`,
-    flags: [MessageFlags.Ephemeral],
-  });
 }
 
 async function handleOstrzezenieUsunCommand(interaction) {
-  const SELLER_ROLE_ID = "1350786945944391733";
-  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
-  const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
-  if (!isAdmin && !isSeller) {
+  try {
+    const SELLER_ROLE_ID = "1350786945944391733";
+    const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+    const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+    if (!isAdmin && !isSeller) {
+      await interaction.reply({
+        content: "> `❌` × Nie masz uprawnień do usuwania ostrzeżeń.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const targetUser = interaction.options.getUser("sprzedawca");
+    const key = `${interaction.guildId}:${targetUser.id}`;
+    const currentCount = sellerWarnings.get(key) || 0;
+
+    if (currentCount <= 0) {
+      await interaction.reply({
+        content: `> \`❌\` × Użytkownik <@${targetUser.id}> nie posiada żadnych aktywnych ostrzeżeń.`,
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const newCount = currentCount - 1;
+    if (newCount > 0) {
+      sellerWarnings.set(key, newCount);
+    } else {
+      sellerWarnings.delete(key);
+    }
+    scheduleSavePersistentState(true);
+
     await interaction.reply({
-      content: "> `❌` × Nie masz uprawnień do usuwania ostrzeżeń.",
+      content: `> \`✅\` × Usunięto 1 ostrzeżenie użytkownikowi <@${targetUser.id}>. Aktualna liczba: **${newCount}/3**.`,
       flags: [MessageFlags.Ephemeral],
     });
-    return;
+  } catch (err) {
+    console.error("Błąd w handleOstrzezenieUsunCommand:", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "> `❌` × Wystąpił błąd podczas usuwania ostrzeżenia.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
   }
-
-  const targetUser = interaction.options.getUser("sprzedawca");
-  const key = `${interaction.guildId}:${targetUser.id}`;
-  const currentCount = sellerWarnings.get(key) || 0;
-
-  if (currentCount <= 0) {
-    await interaction.reply({
-      content: `> \`❌\` × Użytkownik <@${targetUser.id}> nie posiada żadnych aktywnych ostrzeżeń.`,
-      flags: [MessageFlags.Ephemeral],
-    });
-    return;
-  }
-
-  const newCount = currentCount - 1;
-  if (newCount > 0) {
-    sellerWarnings.set(key, newCount);
-  } else {
-    sellerWarnings.delete(key);
-  }
-  scheduleSavePersistentState(true);
-
-  await interaction.reply({
-    content: `> \`✅\` × Usunięto 1 ostrzeżenie użytkownikowi <@${targetUser.id}>. Aktualna liczba: **${newCount}/3**.`,
-    flags: [MessageFlags.Ephemeral],
-  });
 }
 
 async function handleOstrzezeniaListCommand(interaction) {
-  const targetUser = interaction.options.getUser("sprzedawca") || interaction.user;
-  const key = `${interaction.guildId}:${targetUser.id}`;
-  const count = sellerWarnings.get(key) || 0;
+  try {
+    const targetUser = interaction.options.getUser("sprzedawca") || interaction.user;
+    const key = `${interaction.guildId}:${targetUser.id}`;
+    const count = sellerWarnings.get(key) || 0;
 
-  const container = new ContainerBuilder()
-    .setAccentColor(COLOR_BLUE)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "```\n" +
-        "⚠️ New Shop × OSTRZEŻENIA SPRZEDAWCY\n" +
-        "```"
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "```\n" +
+          "⚠️ New Shop × OSTRZEŻENIA SPRZEDAWCY\n" +
+          "```"
+        )
       )
-    )
-    .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `> <a:arrowwhite:1491476759290449984> × **Sprzedawca:** <@${targetUser.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Liczba ostrzeżeń:** **${count}/3**`
-      )
-    );
+      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `> <a:arrowwhite:1491476759290449984> × **Sprzedawca:** <@${targetUser.id}>\n` +
+          `> <a:arrowwhite:1491476759290449984> × **Liczba ostrzeżeń:** **${count}/3**`
+        )
+      );
 
-  appendBrandFooterToContainer(container, interaction.guildId);
+    appendBrandFooterToContainer(container, interaction.guildId);
 
-  await interaction.reply({
-    components: [container],
-    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
-  });
+    await interaction.reply({
+      components: [container],
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.error("Błąd w handleOstrzezeniaListCommand:", err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "> `❌` × Wystąpił błąd podczas pobierania listy ostrzeżeń.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
+    }
+  }
 }
 
 async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, ticketData = null) {
