@@ -5490,96 +5490,91 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
     const msg = await ch.messages.fetch(messageId).catch(() => null);
     if (!msg) return;
 
-    // Check if this is a rewards ticket
     const isRewardsTicket = ch.parentId && String(ch.parentId) === String(REWARDS_CATEGORY_ID);
+    const isV2 = Boolean(msg.flags && (msg.flags.bitfield & MessageFlags.IsComponentsV2));
 
-    const newRows = [];
+    const updateButton = (comp) => {
+      const cid = comp.customId || "";
+      const label = comp.label || "";
+      const style = comp.style || ButtonStyle.Secondary;
+      const emoji = comp.emoji || null;
+      const disabledOrig = !!comp.disabled;
 
-    for (const row of msg.components) {
-      const newRow = new ActionRowBuilder();
-      const comps = [];
-
-      for (const comp of row.components) {
-        const cid = comp.customId || "";
-        const label = comp.label || null;
-        const style = comp.style || ButtonStyle.Secondary;
-        const emoji = comp.emoji || null;
-        const disabledOrig = !!comp.disabled;
-
-        // Normalize known ticket button types
-        if (cid.startsWith("ticket_claim_")) {
-          if (claimerId) {
-            // show disabled claim to indicate taken
-            comps.push(
-              new ButtonBuilder()
-                .setCustomId(
-                  `ticket_claim_${cid.split("_").slice(2).join("_")}`,
-                )
-                .setLabel("Przejmij")
-                .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
-                .setDisabled(true),
-            );
-          } else {
-            comps.push(
-              new ButtonBuilder()
-                .setCustomId(cid)
-                .setLabel("Przejmij")
-                .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
-                .setDisabled(false),
-            );
-          }
-        } else if (cid.startsWith("ticket_unclaim_")) {
-          const channelIdPart = cid.split("_")[2] || "";
-          if (claimerId) {
-            // enable unclaim for this claimer (customId includes claimerId)
-            comps.push(
-              new ButtonBuilder()
-                .setCustomId(`ticket_unclaim_${channelIdPart}_${claimerId}`)
-                .setLabel("Odprzejmij")
-                .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Danger)
-                .setDisabled(false),
-            );
-          } else {
-            // disabled unclaim
-            comps.push(
-              new ButtonBuilder()
-                .setCustomId(`ticket_unclaim_${channelIdPart}`)
-                .setLabel("Odprzejmij")
-                .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
-                .setDisabled(true),
-            );
-          }
+      if (cid.startsWith("ticket_claim_")) {
+        const channelIdPart = cid.split("_").slice(2).join("_");
+        return new ButtonBuilder()
+          .setCustomId(`ticket_claim_${channelIdPart}`)
+          .setLabel("Przejmij")
+          .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
+          .setDisabled(Boolean(claimerId));
+      } else if (cid.startsWith("ticket_unclaim_")) {
+        const channelIdPart = cid.split("_")[2] || "";
+        if (claimerId) {
+          return new ButtonBuilder()
+            .setCustomId(`ticket_unclaim_${channelIdPart}_${claimerId}`)
+            .setLabel("Odprzejmij")
+            .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Danger)
+            .setDisabled(false);
         } else {
-          // keep other buttons as-is (close/settings/code). Recreate them to avoid component reuse issues.
-          if (cid) {
-            try {
-              const btn = new ButtonBuilder()
-                .setCustomId(cid)
-                .setLabel(label || "")
-                .setStyle(style)
-                .setDisabled(disabledOrig);
-              if (emoji) btn.setEmoji(emoji);
-              comps.push(btn);
-            } catch (e) {
-              // fallback: skip component if something unexpected
-            }
-          } else {
-            // non-interactive component (unlikely) — skip
+          return new ButtonBuilder()
+            .setCustomId(`ticket_unclaim_${channelIdPart}`)
+            .setLabel("Odprzejmij")
+            .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
+            .setDisabled(true);
+        }
+      } else {
+        const btn = new ButtonBuilder()
+          .setCustomId(cid)
+          .setLabel(label)
+          .setStyle(style)
+          .setDisabled(disabledOrig);
+        if (emoji) btn.setEmoji(emoji);
+        return btn;
+      }
+    };
+
+    if (isV2) {
+      const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+      const rawContainer = msg.components[0];
+      const children = rawContainer?.components || [];
+
+      for (const child of children) {
+        if (child.type === 1 || child.components) {
+          const newRow = new ActionRowBuilder();
+          for (const btnComp of child.components) {
+            newRow.addComponents(updateButton(btnComp));
           }
+          container.addActionRowComponents(newRow);
+        } else if (child.type === 10 || child.type === "TextDisplay" || typeof child.content === "string") {
+          if (child.content && child.content.startsWith("-#")) {
+            // brand footer will be added at end
+          } else if (child.content) {
+            container.addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(child.content)
+            );
+          }
+        } else if (child.type === 9 || child.type === "Separator") {
+          container.addSeparatorComponents(new SeparatorBuilder().setDivider(child.divider ?? true));
         }
       }
 
-      try {
-        newRow.addComponents(...comps);
-        newRows.push(newRow);
-      } catch (e) {
-        // if row overflows, fallback to original row
-        newRows.push(row);
-      }
-    }
+      appendBrandFooterToContainer(container, ch.guildId);
 
-    // Edit message with new rows
-    await msg.edit({ components: newRows }).catch(() => null);
+      await msg.edit({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      }).catch((e) => console.error("Error editing ticket V2 container buttons:", e));
+    } else {
+      const newRows = [];
+      for (const row of msg.components) {
+        const newRow = new ActionRowBuilder();
+        for (const comp of row.components) {
+          newRow.addComponents(updateButton(comp));
+        }
+        newRows.push(newRow);
+      }
+      await msg.edit({ components: newRows }).catch(() => null);
+    }
   } catch (err) {
     console.error("editTicketMessageButtons error:", err);
   }
@@ -6722,20 +6717,6 @@ async function handleModalSubmit(interaction) {
 
     const channel = await interaction.guild.channels.create(createOptions);
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-      .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-        `### ・ 👤 × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-        `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-        `### ・ 📋 × Informacje z formularza:\n` +
-        `${formInfo}`,
-      )
-      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-      .setTimestamp();
-
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
       .setLabel("Zamknij")
@@ -6761,10 +6742,26 @@ async function handleModalSubmit(interaction) {
       unclaimButton,
     );
 
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+        `### ・ \`👤\` × Informacje o kliencie:\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+        `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+        `### ・ \`📋\` × Informacje z formularza:\n` +
+        `${formInfo}`,
+      ),
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, interaction.guildId || interaction.guild?.id || channel.guildId);
+
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: [embed],
-      components: [buttonRow],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     ticketOwners.set(channel.id, {
@@ -17338,20 +17335,6 @@ async function openRewardClaimTicket(interaction) {
 
   const channel = await guild.channels.create(createOptions);
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-      `### ・ \`👤\` × Informacje o kliencie:\n` +
-      `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-      `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-      `### ・ \`📋\` × Informacje z formularza:\n` +
-      `${formInfo}`,
-    )
-    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-    .setTimestamp();
-
   const closeButton = new ButtonBuilder()
     .setCustomId(`ticket_close_${channel.id}`)
     .setLabel("Zamknij")
@@ -17377,10 +17360,26 @@ async function openRewardClaimTicket(interaction) {
     unclaimButton,
   );
 
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+      `### ・ \`👤\` × Informacje o kliencie:\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+      `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+      `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+      `### ・ \`📋\` × Informacje z formularza:\n` +
+      `${formInfo}`,
+    ),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addActionRowComponents(buttonRow);
+  appendBrandFooterToContainer(container, guild.id);
+
   const sentMsg = await channel.send({
     content: `@everyone`,
-    embeds: [embed],
-    components: [buttonRow],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   ticketOwners.set(channel.id, {
@@ -19264,20 +19263,6 @@ async function handleModalSubmit(interaction) {
 
         const channel = await interaction.guild.channels.create(createOptions);
 
-        const embed = new EmbedBuilder()
-          .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-          .setDescription(
-            `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-            `### ・ \`👤\` × Informacje o kliencie:\n` +
-            `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-            `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-            `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-            `### ・ \`📋\` × Informacje z formularza:\n` +
-            `${formInfo}`,
-          )
-          .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-          .setTimestamp();
-
         const closeButton = new ButtonBuilder()
           .setCustomId(`ticket_close_${channel.id}`)
           .setLabel("Zamknij")
@@ -19303,10 +19288,26 @@ async function handleModalSubmit(interaction) {
           unclaimButton,
         );
 
+        const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+            `### ・ \`👤\` × Informacje o kliencie:\n` +
+            `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+            `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+            `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+            `### ・ \`📋\` × Informacje z formularza:\n` +
+            `${formInfo}`,
+          ),
+        );
+        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+        container.addActionRowComponents(buttonRow);
+        appendBrandFooterToContainer(container, interaction.guildId);
+
         const sentMsg = await channel.send({
           content: `@everyone`,
-          embeds: [embed],
-          components: [buttonRow],
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
 
         ticketOwners.set(channel.id, {
@@ -19577,20 +19578,6 @@ async function handleModalSubmit(interaction) {
         .catch(() => null);
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE) // Discord blurple (#5865F2)
-      .setDescription(
-        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
-        `### ・ \`👤\` × Informacje o kliencie:\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
-        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
-        `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
-        `### ・ \`📋\` × Informacje z formularza:\n` +
-        `${formInfo}`,
-      )
-      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 })) // avatar user po prawej
-      .setTimestamp();
-
     // Build buttons: Close (disabled for non-admin in interaction), Settings, Code (if zakup), Claim + Unclaim (disabled)
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
@@ -19628,11 +19615,27 @@ async function handleModalSubmit(interaction) {
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## \`🛒 NEW SHOP × ${ticketTypeLabel}\`\n\n` +
+        `### ・ \`👤\` × Informacje o kliencie:\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
+        `> <a:arrowwhite:1491476759290449984> × **Nick:** ${formatInlineCodeText(getSafeTicketDisplayName(interaction.member, user))}\n` +
+        `> <a:arrowwhite:1491476759290449984> × **ID:** \`${user.id}\`\n` +
+        `### ・ \`📋\` × Informacje z formularza:\n` +
+        `${formInfo}`,
+      ),
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, interaction.guildId);
+
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: [embed],
-      components: [buttonRow],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     ticketOwners.set(channel.id, {
