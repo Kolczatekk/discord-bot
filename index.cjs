@@ -7044,8 +7044,8 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
     });
 
     await channel.send({
-      content: "<@&1537168712988360805>",
-      allowedMentions: { roles: ["1537168712988360805"] },
+      content: "<@&1537170061289201714>",
+      allowedMentions: { roles: ["1537170061289201714"] },
     }).catch(() => null);
 
     const sentMsg = await channel.send(payload);
@@ -18521,8 +18521,8 @@ async function openRewardClaimTicket(interaction) {
   });
 
   await channel.send({
-    content: "<@&1537168712988360805>",
-    allowedMentions: { roles: ["1537168712988360805"] },
+    content: "<@&1537170061289201714>",
+    allowedMentions: { roles: ["1537170061289201714"] },
   }).catch(() => null);
 
   const sentMsg = await channel.send(payload);
@@ -20528,8 +20528,8 @@ async function handleModalSubmit(interaction) {
         });
 
         await channel.send({
-          content: "<@&1537168712988360805>",
-          allowedMentions: { roles: ["1537168712988360805"] },
+          content: "<@&1537170061289201714>",
+          allowedMentions: { roles: ["1537170061289201714"] },
         }).catch(() => null);
 
         const sentMsg = await channel.send(payload);
@@ -20843,8 +20843,8 @@ async function handleModalSubmit(interaction) {
     });
 
     await channel.send({
-      content: "<@&1537168712988360805>",
-      allowedMentions: { roles: ["1537168712988360805"] },
+      content: "<@&1537170061289201714>",
+      allowedMentions: { roles: ["1537170061289201714"] },
     }).catch(() => null);
 
     const sentMsg = await channel.send(payload);
