@@ -18126,6 +18126,81 @@ async function handleModalSubmit(interaction) {
   const rawCid = interaction.customId || "";
   const cid = getBaseCustomId(rawCid);
 
+  // --- DODAJ ROZLICZENIE (PRZYCISK) ---
+  if (rawCid === "modal_rozliczenie_dodaj") {
+    if (interaction.replied || interaction.deferred) return;
+    const kwotaRaw = interaction.fields.getTextInputValue("kwota_sprzedazy");
+    const kwota = parseInt(kwotaRaw.replace(/[^0-9]/g, ""), 10);
+
+    if (isNaN(kwota) || kwota <= 0) {
+      await interaction.reply({
+        content: "> `❌` × Podano nieprawidłową kwotę. Wpisz samą liczbę dodatnią (Przykład: 50).",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const userId = interaction.user.id;
+    if (!weeklySales.has(userId)) {
+      weeklySales.set(userId, {
+        amount: 0,
+        lastUpdate: Date.now(),
+        paid: false,
+        paidAt: null,
+        guildId: interaction.guild.id,
+      });
+    }
+
+    const userData = weeklySales.get(userId);
+    userData.amount += kwota;
+    userData.lastUpdate = Date.now();
+    userData.guildId = interaction.guild.id;
+    weeklySales.set(userId, userData);
+
+    await db.saveWeeklySale(
+      userId,
+      userData.amount,
+      interaction.guild.id,
+      userData.paid || false,
+      userData.paidAt || null,
+      userData.lastUpdate,
+    );
+    scheduleSavePersistentState(true);
+
+    const prowizja = (userData.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
+
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setTitle("💱 Rozliczenie dodane")
+      .setDescription(
+        `> 👤 **Użytkownik:** <@${userId}>\n` +
+        `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
+        `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
+        `> \`💸\` × **Prowizja do zapłaty (10%):** ${prowizja} zł\n`
+      )
+      .setTimestamp();
+
+    await interaction.channel.send({
+      content: `<@${userId}>`,
+      embeds: [embed],
+    }).catch(() => null);
+
+    await interaction.reply({
+      content: `> \`✅\` × Pomyślnie dodano **${kwota} PLN** do Twojego rozliczenia.`,
+      flags: [MessageFlags.Ephemeral],
+    });
+
+    setTimeout(sendRozliczeniaMessage, 1000);
+    return;
+  }
+
+  if (cid === "modal_odprzejmij") {
+    const reason = interaction.fields.getTextInputValue("powod_odprzejmij");
+    const expectedClaimer = rawCid.split("_")[2] || null;
+    await ticketUnclaimCommon(interaction, interaction.channelId || interaction.channel?.id, expectedClaimer, reason);
+    return;
+  }
+
   if (cid === "modal_wystaw_opinie") {
     const czas = getOpinionRatingValue(interaction, "czas_oczekiwania");
     const przebieg = getOpinionRatingValue(interaction, "przebieg_transakcji");
