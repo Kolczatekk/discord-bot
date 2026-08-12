@@ -6681,13 +6681,22 @@ async function handleModalSubmit(interaction) {
   }
 
 async function processDiscountCodeRedemption(interaction, inputCode) {
+  // Defer first to prevent "Aplikacja nie reaguje"
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+  }
+
   const { code: enteredCode, codeData } = await getActiveCodeData(inputCode);
 
+  const replyFn = async (opts) => {
+    if (interaction.deferred) {
+      return interaction.editReply(opts).catch(() => null);
+    }
+    return interaction.reply({ ...opts, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+  };
+
   if (!codeData) {
-    await interaction.reply({
-      content: "❌ **Nieprawidłowy kod!**",
-      flags: [MessageFlags.Ephemeral],
-    });
+    await replyFn({ content: "> `❌` × **Nieprawidłowy kod!**" });
     return;
   }
 
@@ -6696,39 +6705,27 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
     codeData.type === "invite_reward" ||
     codeData.type === "free_kasa_reward"
   ) {
-    await interaction.reply({
-      content: "❌ Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel.",
-      flags: [MessageFlags.Ephemeral],
-    });
+    await replyFn({ content: "> `❌` × Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel." });
     return;
   }
 
   if (codeData.used) {
-    await interaction.reply({
-      content: "> `❌` × **Kod** został już wykorzystany!",
-      flags: [MessageFlags.Ephemeral],
-    });
+    await replyFn({ content: "> `❌` × **Kod** został już wykorzystany!" });
     return;
   }
 
   if (Date.now() > codeData.expiresAt) {
     activeCodes.delete(enteredCode);
-    await db.deleteActiveCode(enteredCode);
+    await db.deleteActiveCode(enteredCode).catch(() => null);
     scheduleSavePersistentState();
-    await interaction.reply({
-      content: "> `❌` × **Kod** wygasł!",
-      flags: [MessageFlags.Ephemeral],
-    });
+    await replyFn({ content: "> `❌` × **Kod** wygasł!" });
     return;
   }
 
   codeData.used = true;
   activeCodes.delete(enteredCode);
-  await db.deleteActiveCode(enteredCode);
-
-  // Aktualizuj w Supabase
-  await db.updateActiveCode(enteredCode, { used: true });
-
+  await db.deleteActiveCode(enteredCode).catch(() => null);
+  await db.updateActiveCode(enteredCode, { used: true }).catch(() => null);
   scheduleSavePersistentState();
 
   const redeemEmbed = new EmbedBuilder()
@@ -6742,7 +6739,11 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
     )
     .setTimestamp();
 
-  await interaction.reply({ embeds: [redeemEmbed] });
+  // Send embed publicly in the ticket channel so the seller sees it
+  await interaction.channel.send({ embeds: [redeemEmbed] }).catch(() => null);
+  // Ephemeral confirmation
+  await replyFn({ content: "> `✅` × **Pomyślnie zrealizowano kod rabatowy!**" });
+
   console.log(
     `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
   );
@@ -8598,17 +8599,36 @@ async function handleSlashCommand(interaction) {
       await db.saveActiveCode(code, payload).catch(() => null);
       scheduleSavePersistentState(true);
 
-      const expiryTs = Math.floor(expiresAt / 1000);
-      const embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setTitle("`🎟️` Stworzono kod zniżkowy")
-        .setDescription(
-          "```\n" + code + "\n```\n" +
-          `> 💸 × **Zniżka:** \`-${znizka}%\`\n` +
-          `> ⏳ × **Ważny do:** <t:${expiryTs}:F> (<t:${expiryTs}:R>)`
-        );
+      const expiryTimestamp = Math.floor(expiresAt / 1000);
 
-      await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+      // 1:1 identyczny embed jak u gracza który wygrał kod na kole fortuny
+      const dmEmbed = buildCodeDeliveryDmEmbed({
+        title: "`🔑` Twój kod rabatowy",
+        code,
+        rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${znizka}%\``,
+        expiryTimestamp,
+        instructionText: PURCHASE_CODE_USAGE_TEXT,
+      });
+
+      let dmSent = true;
+      try {
+        await interaction.user.send({ embeds: [dmEmbed] });
+      } catch (_err) {
+        dmSent = false;
+      }
+
+      if (dmSent) {
+        await interaction.reply({
+          content: "> `✅` × **Kod wygenerowany i wysłany na Twoje PV!**",
+          flags: [MessageFlags.Ephemeral],
+        });
+      } else {
+        await interaction.reply({
+          content: "> `⚠️` × **Stworzono kod, ale nie mogłem wysłać PV** (masz zamknięte DM). Masz kod poniżej:",
+          embeds: [dmEmbed],
+          flags: [MessageFlags.Ephemeral],
+        });
+      }
       break;
     }
     case "ustawienia": {
