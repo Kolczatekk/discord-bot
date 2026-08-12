@@ -7876,7 +7876,7 @@ async function handleButtonInteraction(interaction) {
   if (customId === "seller_data_add_choice") {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setDescription("> `➕` × Wybierz jakie dane chcesz skonfigurować:");
+      .setDescription("> `📝` × Wybierz jakie dane chcesz skonfigurować:");
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -9834,21 +9834,29 @@ function isPurchaseTicketForPaymentData(channel, ticketData = null) {
 }
 
 function buildSellerPaymentPanelPayload(guildId) {
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-      "💳 New Shop × DANE SPRZEDAWCY\n" +
-      "```\n" +
-      "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa."
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_BLUE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        "💳 New Shop × DANE SPRZEDAWCY\n" +
+        "```"
+      )
     )
-    .setBrandFooter();
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(false))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa."
+      )
+    );
+
+  appendBrandFooterToContainer(container, guildId);
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("seller_data_add_choice")
       .setLabel("Dodaj dane")
-      .setEmoji("➕")
+      .setEmoji("📝")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("seller_data_view")
@@ -9862,7 +9870,9 @@ function buildSellerPaymentPanelPayload(guildId) {
       .setStyle(ButtonStyle.Secondary)
   );
 
-  return { embeds: [embed], components: [row] };
+  container.addActionRowComponents(row);
+
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 function buildSellerPaymentDataModalMain(interaction) {
