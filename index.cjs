@@ -5713,6 +5713,21 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
     const isRewardsTicket = ch.parentId && String(ch.parentId) === String(REWARDS_CATEGORY_ID);
     const isV2 = Boolean(msg.flags && (msg.flags.bitfield & MessageFlags.IsComponentsV2));
 
+    const buildClaimToggleButton = (cid) => {
+      const channelIdPart = cid.replace(/^(ticket_claim_|ticket_unclaim_)/, "").split("_")[0];
+      if (claimerId) {
+        return new ButtonBuilder()
+          .setCustomId(`ticket_unclaim_${channelIdPart}_${claimerId}`)
+          .setLabel("🔓︲Odprzejmij")
+          .setStyle(ButtonStyle.Secondary);
+      } else {
+        return new ButtonBuilder()
+          .setCustomId(`ticket_claim_${channelIdPart}`)
+          .setLabel("🔒︲Przejmij")
+          .setStyle(ButtonStyle.Secondary);
+      }
+    };
+
     const updateButton = (comp) => {
       const cid = comp.customId || "";
       const label = comp.label || "";
@@ -5720,37 +5735,13 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
       const emoji = comp.emoji || null;
       const disabledOrig = !!comp.disabled;
 
-      if (cid.startsWith("ticket_claim_")) {
-        const channelIdPart = cid.split("_").slice(2).join("_");
-        return new ButtonBuilder()
-          .setCustomId(`ticket_claim_${channelIdPart}`)
-          .setLabel("🔒︲Przejmij")
-          .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
-          .setDisabled(Boolean(claimerId));
-      } else if (cid.startsWith("ticket_unclaim_")) {
-        const channelIdPart = cid.split("_")[2] || "";
-        if (claimerId) {
-          return new ButtonBuilder()
-            .setCustomId(`ticket_unclaim_${channelIdPart}_${claimerId}`)
-            .setLabel("🔓︲Odprzejmij")
-            .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Danger)
-            .setDisabled(false);
-        } else {
-          return new ButtonBuilder()
-            .setCustomId(`ticket_unclaim_${channelIdPart}`)
-            .setLabel("🔓︲Odprzejmij")
-            .setStyle(isRewardsTicket ? ButtonStyle.Secondary : ButtonStyle.Secondary)
-            .setDisabled(true);
-        }
-      } else {
-        const btn = new ButtonBuilder()
-          .setCustomId(cid)
-          .setLabel(label)
-          .setStyle(style)
-          .setDisabled(disabledOrig);
-        if (emoji) btn.setEmoji(emoji);
-        return btn;
-      }
+      const btn = new ButtonBuilder()
+        .setCustomId(cid)
+        .setLabel(label)
+        .setStyle(style)
+        .setDisabled(disabledOrig);
+      if (emoji) btn.setEmoji(emoji);
+      return btn;
     };
 
     if (isV2) {
@@ -5761,8 +5752,16 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
       for (const child of children) {
         if (child.type === 1 || child.components) {
           const newRow = new ActionRowBuilder();
+          let addedClaimToggle = false;
           for (const btnComp of child.components) {
-            newRow.addComponents(updateButton(btnComp));
+            const cid = btnComp.customId || "";
+            if (cid.startsWith("ticket_claim_") || cid.startsWith("ticket_unclaim_")) {
+              if (addedClaimToggle) continue;
+              addedClaimToggle = true;
+              newRow.addComponents(buildClaimToggleButton(cid));
+            } else {
+              newRow.addComponents(updateButton(btnComp));
+            }
           }
           container.addActionRowComponents(newRow);
         } else if (child.type === 10 || child.type === "TextDisplay" || typeof child.content === "string") {
@@ -5788,8 +5787,16 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
       const newRows = [];
       for (const row of msg.components) {
         const newRow = new ActionRowBuilder();
+        let addedClaimToggle = false;
         for (const comp of row.components) {
-          newRow.addComponents(updateButton(comp));
+          const cid = comp.customId || "";
+          if (cid.startsWith("ticket_claim_") || cid.startsWith("ticket_unclaim_")) {
+            if (addedClaimToggle) continue;
+            addedClaimToggle = true;
+            newRow.addComponents(buildClaimToggleButton(cid));
+          } else {
+            newRow.addComponents(updateButton(comp));
+          }
         }
         newRows.push(newRow);
       }
@@ -7026,17 +7033,11 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("🔒︲Przejmij")
-      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
-    const unclaimButton = new ButtonBuilder()
-      .setCustomId(`ticket_unclaim_${channel.id}`)
-      .setLabel("🔓︲Odprzejmij")
-      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
-      .setDisabled(true);
+      .setStyle(ButtonStyle.Secondary);
 
     const buttonRow = new ActionRowBuilder().addComponents(
       closeButton,
       claimButton,
-      unclaimButton,
     );
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
@@ -18500,16 +18501,10 @@ async function openRewardClaimTicket(interaction) {
     .setCustomId(`ticket_claim_${channel.id}`)
     .setLabel("🔒︲Przejmij")
     .setStyle(ButtonStyle.Secondary);
-  const unclaimButton = new ButtonBuilder()
-    .setCustomId(`ticket_unclaim_${channel.id}`)
-    .setLabel("🔓︲Odprzejmij")
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(true);
 
   const buttonRow = new ActionRowBuilder().addComponents(
     closeButton,
     claimButton,
-    unclaimButton,
   );
 
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
@@ -20502,17 +20497,11 @@ async function handleModalSubmit(interaction) {
         const claimButton = new ButtonBuilder()
           .setCustomId(`ticket_claim_${channel.id}`)
           .setLabel("🔒︲Przejmij")
-          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Primary);
-        const unclaimButton = new ButtonBuilder()
-          .setCustomId(`ticket_unclaim_${channel.id}`)
-          .setLabel("🔓︲Odprzejmij")
-          .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Danger)
-          .setDisabled(true);
+          .setStyle(ButtonStyle.Secondary);
 
         const buttonRow = new ActionRowBuilder().addComponents(
           closeButton,
           claimButton,
-          unclaimButton,
         );
 
         const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
@@ -20805,7 +20794,7 @@ async function handleModalSubmit(interaction) {
       `### ・ \`📋\` × **Informacje z formularza:**\n` +
       `${formInfo}`;
 
-    // Build buttons: Close, Claim + Unclaim (disabled)
+    // Build buttons: Close, Claim toggle button
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
       .setLabel("❌︲Zamknij")
@@ -20814,15 +20803,9 @@ async function handleModalSubmit(interaction) {
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("🔒︲Przejmij")
-      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary);
+      .setStyle(ButtonStyle.Secondary);
 
-    const unclaimButton = new ButtonBuilder()
-      .setCustomId(`ticket_unclaim_${channel.id}`)
-      .setLabel("🔓︲Odprzejmij")
-      .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary)
-      .setDisabled(true);
-
-    const buttons = [closeButton, claimButton, unclaimButton];
+    const buttons = [closeButton, claimButton];
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
