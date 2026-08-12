@@ -10161,35 +10161,37 @@ async function handleOstrzezenieCommand(interaction) {
     sellerWarnings.set(key, currentCount);
     scheduleSavePersistentState(true);
 
+    // Buduj treść wiadomości w stylu: ## OSTRZEŻENIE X/3 \n> Powód: ...
     let headerTitle = `OSTRZEŻENIE ${currentCount}/3`;
-    if (currentCount === 2) {
-      headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
-    } else if (currentCount >= 3) {
-      headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
-    }
+    if (currentCount === 2) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❗️`;
+    else if (currentCount >= 3) headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-        headerTitle + "\n" +
-        "```\n" +
-        `Powód: ${powod}`
-      )
-      .setFooter(getBrandFooterBuilderObject());
+    const msgContent =
+      `## ${headerTitle}\n` +
+      `> Powód: ${powod}`;
 
     let warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID);
     if (!warnChannel && interaction.guild) {
       warnChannel = await interaction.guild.channels.fetch(OSTRZEZENIA_CHANNEL_ID).catch(() => null);
     }
-    if (!warnChannel) {
-      warnChannel = interaction.channel;
-    }
+    if (!warnChannel) warnChannel = interaction.channel;
 
     await warnChannel.send({
-      content: `<@${targetUser.id}>`,
-      embeds: [embed],
+      content: `<@${targetUser.id}>\n${msgContent}`,
     });
+
+    // Jeśli sprzedawca osiągnął 3/3 – odbierz mu rolę limitu (zachowuje rolę sprzedawcy)
+    if (currentCount >= 3 && interaction.guild) {
+      const LIMIT_ROLE_ID = process.env.SELLER_LIMIT_ROLE_ID || null;
+      if (LIMIT_ROLE_ID) {
+        const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+        if (member && member.roles.cache.has(LIMIT_ROLE_ID)) {
+          await member.roles.remove(LIMIT_ROLE_ID).catch((e) =>
+            console.error("Błąd usuwania roli limitu:", e)
+          );
+        }
+      }
+    }
 
     await interaction.reply({
       content: `> \`✅\` × Pomyślnie wystawiono ostrzeżenie **${currentCount}/3** dla użytkownika <@${targetUser.id}> na kanale <#${warnChannel.id}>.`,
