@@ -434,6 +434,42 @@ const infoCooldowns = new Map(); // userId -> timestamp (ms)
 const REP_EMBED_BANNER_URL =
   "https://cdn.discordapp.com/attachments/1449367698374004869/1450192787894046751/standard_1.gif";
 
+function getTicketBannerAttachment() {
+  const gifPath = path.join(__dirname, "attached_assets", "standard_(1)_1766946611653.gif");
+  if (fs.existsSync(gifPath)) {
+    return new AttachmentBuilder(gifPath, { name: "standard_1.gif" });
+  }
+  return null;
+}
+
+function buildTicketContainerPayload({ headerText, bodyText, buttonRow, guildId }) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
+
+  const bannerAttachment = getTicketBannerAttachment();
+  if (bannerAttachment) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL("attachment://standard_1.gif"),
+      ),
+    );
+  }
+
+  container.addActionRowComponents(buttonRow);
+  appendBrandFooterToContainer(container, guildId);
+
+  const payload = {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+  if (bannerAttachment) {
+    payload.files = [bannerAttachment];
+  }
+  return payload;
+}
+
 // track last info message posted by the bot per channel so we can delete it before posting a new one
 const repLastInfoMessage = new Map(); // channelId -> messageId
 
@@ -5775,7 +5811,7 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
         } else if (child.type === 9 || child.type === "Separator") {
           container.addSeparatorComponents(new SeparatorBuilder().setDivider(child.divider ?? true));
         } else if (child.type === 11 || child.type === "MediaGallery" || child.items) {
-          const items = (child.items || []).map((item) => new MediaGalleryItemBuilder().setURL(item.url || item.item?.url || REP_EMBED_BANNER_URL));
+          const items = (child.items || []).map((item) => new MediaGalleryItemBuilder().setURL(item.url || item.item?.url || "attachment://standard_1.gif"));
           if (items.length) {
             container.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(...items));
           }
@@ -7050,22 +7086,14 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
       claimButton,
     );
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
-    container.addMediaGalleryComponents(
-      new MediaGalleryBuilder().addItems(
-        new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
-      ),
-    );
-    container.addActionRowComponents(buttonRow);
-    appendBrandFooterToContainer(container, interaction.guild?.id);
-
-    const sentMsg = await channel.send({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
+    const payload = buildTicketContainerPayload({
+      headerText,
+      bodyText,
+      buttonRow,
+      guildId: interaction.guild?.id,
     });
+
+    const sentMsg = await channel.send(payload);
 
     ticketOwners.set(channel.id, {
       claimedBy: null,
@@ -18529,22 +18557,14 @@ async function openRewardClaimTicket(interaction) {
     claimButton,
   );
 
-  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
-  container.addMediaGalleryComponents(
-    new MediaGalleryBuilder().addItems(
-      new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
-    ),
-  );
-  container.addActionRowComponents(buttonRow);
-  appendBrandFooterToContainer(container, interaction.guild?.id);
-
-  const sentMsg = await channel.send({
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
+  const payload = buildTicketContainerPayload({
+    headerText,
+    bodyText,
+    buttonRow,
+    guildId: interaction.guild?.id,
   });
+
+  const sentMsg = await channel.send(payload);
 
   ticketOwners.set(channel.id, {
     claimedBy: null,
@@ -20538,22 +20558,14 @@ async function handleModalSubmit(interaction) {
           claimButton,
         );
 
-        const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
-        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
-        container.addMediaGalleryComponents(
-          new MediaGalleryBuilder().addItems(
-            new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
-          ),
-        );
-        container.addActionRowComponents(buttonRow);
-        appendBrandFooterToContainer(container, interaction.guild?.id);
-
-        const sentMsg = await channel.send({
-          components: [container],
-          flags: MessageFlags.IsComponentsV2,
+        const payload = buildTicketContainerPayload({
+          headerText,
+          bodyText,
+          buttonRow,
+          guildId: interaction.guild?.id,
         });
+
+        const sentMsg = await channel.send(payload);
 
         ticketOwners.set(channel.id, {
           claimedBy: null,
@@ -20855,23 +20867,14 @@ async function handleModalSubmit(interaction) {
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyText));
-    container.addMediaGalleryComponents(
-      new MediaGalleryBuilder().addItems(
-        new MediaGalleryItemBuilder().setURL(REP_EMBED_BANNER_URL),
-      ),
-    );
-    container.addActionRowComponents(buttonRow);
-    appendBrandFooterToContainer(container, interaction.guild?.id);
-
-    // send message and capture it (so we can edit buttons later)
-    const sentMsg = await channel.send({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
+    const payload = buildTicketContainerPayload({
+      headerText,
+      bodyText,
+      buttonRow,
+      guildId: interaction.guild?.id,
     });
+
+    const sentMsg = await channel.send(payload);
 
     ticketOwners.set(channel.id, {
       claimedBy: null,
