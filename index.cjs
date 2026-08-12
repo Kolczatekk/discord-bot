@@ -5735,9 +5735,6 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
     const msg = await ch.messages.fetch(messageId).catch(() => null);
     if (!msg) return;
 
-    const isRewardsTicket = ch.parentId && String(ch.parentId) === String(REWARDS_CATEGORY_ID);
-    const isV2 = Boolean(msg.flags && (msg.flags.bitfield & MessageFlags.IsComponentsV2));
-
     const buildClaimToggleButton = (cid) => {
       const channelIdPart = cid.replace(/^(ticket_claim_|ticket_unclaim_)/, "").split("_")[0];
       if (claimerId) {
@@ -5753,91 +5750,48 @@ async function editTicketMessageButtons(channel, messageId, claimerId = null) {
       }
     };
 
-    const updateButton = (comp) => {
-      const cid = comp.customId || "";
-      const label = comp.label || "";
-      const style = comp.style || ButtonStyle.Secondary;
-      const emoji = comp.emoji || null;
-      const disabledOrig = !!comp.disabled;
-
-      if (cid.startsWith("ticket_close_")) {
-        return new ButtonBuilder()
-          .setCustomId(cid)
-          .setLabel("︲Zamknij")
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji({ id: "1537166621527908382", name: "NO", animated: true });
-      }
-
-      const btn = new ButtonBuilder()
-        .setCustomId(cid)
-        .setLabel(label)
-        .setStyle(style)
-        .setDisabled(disabledOrig);
-      if (emoji) btn.setEmoji(emoji);
-      return btn;
-    };
-
-    if (isV2) {
-      const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-      const rawContainer = msg.components[0];
-      const children = rawContainer?.components || [];
-
-      for (const child of children) {
-        if (child.type === 1 || child.components) {
-          const newRow = new ActionRowBuilder();
-          let addedClaimToggle = false;
-          for (const btnComp of child.components) {
-            const cid = btnComp.customId || "";
-            if (cid.startsWith("ticket_claim_") || cid.startsWith("ticket_unclaim_")) {
-              if (addedClaimToggle) continue;
-              addedClaimToggle = true;
-              newRow.addComponents(buildClaimToggleButton(cid));
-            } else {
-              newRow.addComponents(updateButton(btnComp));
-            }
-          }
-          container.addActionRowComponents(newRow);
-        } else if (child.type === 10 || child.type === "TextDisplay" || typeof child.content === "string") {
-          const contentStr = String(child.content || "");
-          if (contentStr.startsWith("-#") || contentStr.includes("© 2026")) {
-            // ignore existing footer, appendBrandFooterToContainer will add it at the end
-            continue;
-          }
-          if (contentStr) {
-            container.addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(contentStr)
-            );
-          }
-        } else if (child.type === 9 || child.type === "Separator") {
-          container.addSeparatorComponents(new SeparatorBuilder().setDivider(child.divider ?? true));
-        }
-      }
-
-      appendBrandFooterToContainer(container, ch.guildId);
-
-      await msg.edit({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2,
-      }).catch((e) => console.error("Error editing ticket V2 container buttons:", e));
-    } else {
-      const newRows = [];
-      for (const row of msg.components) {
-        const newRow = new ActionRowBuilder();
-        let addedClaimToggle = false;
-        for (const comp of row.components) {
-          const cid = comp.customId || "";
-          if (cid.startsWith("ticket_claim_") || cid.startsWith("ticket_unclaim_")) {
-            if (addedClaimToggle) continue;
-            addedClaimToggle = true;
-            newRow.addComponents(buildClaimToggleButton(cid));
-          } else {
-            newRow.addComponents(updateButton(comp));
+    const textDisplays = [];
+    if (msg.components && msg.components[0] && msg.components[0].components) {
+      for (const comp of msg.components[0].components) {
+        if (comp.type === 10 || comp.type === "TextDisplay" || typeof comp.content === "string") {
+          const c = String(comp.content || "").trim();
+          if (c && !c.startsWith("-#") && !c.includes("© 2026")) {
+            textDisplays.push(c);
           }
         }
-        newRows.push(newRow);
       }
-      await msg.edit({ components: newRows }).catch(() => null);
     }
+
+    const headerText = textDisplays[0] || `\`\`\`text\n🛒 NEW SHOP × TICKET\n\`\`\``;
+    const bodyText = textDisplays.slice(1).join("\n") || "";
+
+    const closeButton = new ButtonBuilder()
+      .setCustomId(`ticket_close_${ch.id}`)
+      .setLabel("︲Zamknij")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji({ id: "1537166621527908382", name: "NO", animated: true });
+
+    const settingsButton = new ButtonBuilder()
+      .setCustomId(`ticket_settings_${ch.id}`)
+      .setLabel("⚙️︲Ustawienia")
+      .setStyle(ButtonStyle.Secondary);
+
+    const claimButton = buildClaimToggleButton(`ticket_claim_${ch.id}`);
+
+    const buttonRow = new ActionRowBuilder().addComponents(
+      closeButton,
+      settingsButton,
+      claimButton,
+    );
+
+    const payload = buildTicketContainerPayload({
+      headerText,
+      bodyText,
+      buttonRow,
+      guildId: ch.guildId,
+    });
+
+    await msg.edit(payload);
   } catch (err) {
     console.error("editTicketMessageButtons error:", err);
   }
@@ -7088,6 +7042,11 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
       buttonRow,
       guildId: interaction.guild?.id,
     });
+
+    await channel.send({
+      content: "<@&1537168712988360805>",
+      allowedMentions: { roles: ["1537168712988360805"] },
+    }).catch(() => null);
 
     const sentMsg = await channel.send(payload);
 
@@ -18561,6 +18520,11 @@ async function openRewardClaimTicket(interaction) {
     guildId: interaction.guild?.id,
   });
 
+  await channel.send({
+    content: "<@&1537168712988360805>",
+    allowedMentions: { roles: ["1537168712988360805"] },
+  }).catch(() => null);
+
   const sentMsg = await channel.send(payload);
 
   ticketOwners.set(channel.id, {
@@ -20563,6 +20527,11 @@ async function handleModalSubmit(interaction) {
           guildId: interaction.guild?.id,
         });
 
+        await channel.send({
+          content: "<@&1537168712988360805>",
+          allowedMentions: { roles: ["1537168712988360805"] },
+        }).catch(() => null);
+
         const sentMsg = await channel.send(payload);
 
         ticketOwners.set(channel.id, {
@@ -20872,6 +20841,11 @@ async function handleModalSubmit(interaction) {
       buttonRow,
       guildId: interaction.guild?.id,
     });
+
+    await channel.send({
+      content: "<@&1537168712988360805>",
+      allowedMentions: { roles: ["1537168712988360805"] },
+    }).catch(() => null);
 
     const sentMsg = await channel.send(payload);
 
