@@ -1356,6 +1356,7 @@ let freeKasaLossStreak = 0;
 // Colors
 const COLOR_BLUE = 0x00aaff;
 const COLOR_YELLOW = 0xffd700;
+const COLOR_GREEN = 0x57f287;
 const COLOR_GRAY = 0x808080;
 const COLOR_RED = 0x8b0000;
 const COLOR_ORANGE = 0xff7a00;
@@ -8581,7 +8582,7 @@ async function handleRozliczenieCommand(interaction) {
   const userEmojiStrCmd = klientEmojiCmd ? toGuildEmojiMarkup(klientEmojiCmd) : "👤";
 
   const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
+    .setColor(COLOR_GREEN)
     .setTitle("\`💱\` Rozliczenie dodane")
     .setDescription(
       `> ${userEmojiStrCmd} **Użytkownik:** <@${userId}>\n` +
@@ -8619,7 +8620,7 @@ async function sendRozliczeniaStatusReport(guild) {
       reportText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Prowizja 10%: **${prowizja} zł**)\n`;
     }
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(reportText));
     appendBrandFooterToContainer(container, guild?.id);
 
@@ -18373,7 +18374,7 @@ async function handleModalSubmit(interaction) {
     const userEmojiStrModal = klientEmojiModal ? toGuildEmojiMarkup(klientEmojiModal) : "👤";
 
     const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
+      .setColor(COLOR_GREEN)
       .setTitle("`💱` Rozliczenie dodane")
       .setDescription(
         `> ${userEmojiStrModal} **Użytkownik:** <@${userId}>\n` +
@@ -24286,7 +24287,7 @@ async function sendRozliczeniaMessage() {
     }
 
     // Wyślij nową wiadomość w stylu ContainerBuilder
-    const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
+    const container = new ContainerBuilder().setAccentColor(COLOR_GREEN);
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "`💱` × Dodaj **każdą sprzedaż** przyciskiem poniżej."
