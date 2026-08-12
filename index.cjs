@@ -9848,7 +9848,8 @@ function buildSellerPaymentPanelPayload(guildId) {
       new TextDisplayBuilder().setContent(
         "> `📄` × Ustaw swoje dane, aby klient wiedział od razu co ma robić po przejęciu ticketa."
       )
-    );
+    )
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
