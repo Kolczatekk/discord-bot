@@ -6096,14 +6096,12 @@ async function handleModalSubmit(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
-      .setTitle("💱 Rozliczenie dodane")
+      .setTitle("`💱` Rozliczenie dodane")
       .setDescription(
         `> 👤 **Użytkownik:** <@${userId}>\n` +
         `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
-        `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-        `> \`💸\` × **Prowizja do zapłaty (10%):** ${prowizja} zł\n`
-      )
-      .setTimestamp();
+        `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`
+      );
 
     await interaction.channel.send({
       content: `<@${userId}>`,
@@ -8554,10 +8552,8 @@ async function handleRozliczenieCommand(interaction) {
     .setDescription(
       `> 👤 **Użytkownik:** <@${userId}>\n` +
       `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
-      `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-      `> \`💸\` × **Prowizja do zapłaty (10%):** ${(userData.amount * ROZLICZENIA_PROWIZJA).toLocaleString("pl-PL")} zł\n`,
-    )
-    .setTimestamp();
+      `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`,
+    );
 
   await interaction.reply({ embeds: [embed] });
   console.log(`Użytkownik ${userId} dodał rozliczenie: ${kwota} zł`);
@@ -18175,10 +18171,8 @@ async function handleModalSubmit(interaction) {
       .setDescription(
         `> 👤 **Użytkownik:** <@${userId}>\n` +
         `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
-        `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-        `> \`💸\` × **Prowizja do zapłaty (10%):** ${prowizja} zł\n`
-      )
-      .setTimestamp();
+        `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`
+      );
 
     await interaction.channel.send({
       embeds: [embed],
