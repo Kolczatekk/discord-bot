@@ -7970,12 +7970,12 @@ async function handleButtonInteraction(interaction) {
       .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `> <a:arrowwhite:1491476759290449984> × \`👤\` **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
-          `> <a:arrowwhite:1491476759290449984> × \`📱\` **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
-          `> <a:arrowwhite:1491476759290449984> × \`🧾\` **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
-          `> <a:arrowwhite:1491476759290449984> × \`✉️\` **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
-          `> <a:arrowwhite:1491476759290449984> × \`👝\` **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
-          `> <a:arrowwhite:1491476759290449984> × \`🌐\` **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
+          `> <a:arrowwhite:1491476759290449984> × **Odbiorca:** ${formatSellerPaymentValue(profile.recipient)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × **Nr. telefonu:** ${formatSellerPaymentValue(profile.phone)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × **Tytuł przelewu:** ${formatSellerPaymentValue(profile.transferTitle)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × **PayPal:** ${formatSellerPaymentValue(profile.paypalEmail)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × **Portfel LTC:** ${formatSellerPaymentValue(profile.ltcWallet)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × **MyPSC:** ${formatSellerPaymentValue(profile.mypscEmail)}`
         )
       );
 
@@ -8006,34 +8006,34 @@ async function handleButtonInteraction(interaction) {
     const method = String(ticketData?.paymentMethod || "").toLowerCase();
 
     const lines = [];
-    const addLine = (emoji, label, value) => {
+    const addLine = (label, value) => {
       if (value && value !== "`Brak`" && value !== "Brak") {
-        lines.push(`> <a:arrowwhite:1491476759290449984> × ${emoji} **${label}:** ${value}`);
+        lines.push(`> <a:arrowwhite:1491476759290449984> × **${label}:** ${value}`);
       }
     };
 
     if (method.includes("blik") || method.includes("przelew") || !method) {
-      addLine("`👤`", "Odbiorca", formatSellerPaymentValue(profile.recipient));
-      addLine("`📱`", "Nr. telefonu", formatSellerPaymentValue(profile.phone));
-      addLine("`🧾`", "Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
+      addLine("Odbiorca", formatSellerPaymentValue(profile.recipient));
+      addLine("Nr. telefonu", formatSellerPaymentValue(profile.phone));
+      addLine("Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
     }
     if (method === "paypal" || !method) {
-      addLine("`✉️`", "PayPal", formatSellerPaymentValue(profile.paypalEmail));
+      addLine("PayPal", formatSellerPaymentValue(profile.paypalEmail));
     }
     if (method === "ltc" || !method) {
-      addLine("`👝`", "Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
+      addLine("Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
     }
     if (method === "mypsc" || !method) {
-      addLine("`🌐`", "MyPSC", formatSellerPaymentValue(profile.mypscEmail));
+      addLine("MyPSC", formatSellerPaymentValue(profile.mypscEmail));
     }
 
     if (lines.length === 0) {
-      addLine("`👤`", "Odbiorca", formatSellerPaymentValue(profile.recipient));
-      addLine("`📱`", "Nr. telefonu", formatSellerPaymentValue(profile.phone));
-      addLine("`🧾`", "Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
-      addLine("`✉️`", "PayPal", formatSellerPaymentValue(profile.paypalEmail));
-      addLine("`👝`", "Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
-      addLine("`🌐`", "MyPSC", formatSellerPaymentValue(profile.mypscEmail));
+      addLine("Odbiorca", formatSellerPaymentValue(profile.recipient));
+      addLine("Nr. telefonu", formatSellerPaymentValue(profile.phone));
+      addLine("Tytuł przelewu", formatSellerPaymentValue(profile.transferTitle));
+      addLine("PayPal", formatSellerPaymentValue(profile.paypalEmail));
+      addLine("Portfel LTC", formatSellerPaymentValue(profile.ltcWallet));
+      addLine("MyPSC", formatSellerPaymentValue(profile.mypscEmail));
     }
 
     const container = new ContainerBuilder()
