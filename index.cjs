@@ -10169,6 +10169,7 @@ async function handleOstrzezenieCommand(interaction) {
       .setAccentColor(COLOR_BLUE)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
+          `<@${targetUser.id}>\n` +
           `## ${headerTitle}\n` +
           `> Powód: ${powod}`
         )
@@ -10183,7 +10184,6 @@ async function handleOstrzezenieCommand(interaction) {
     if (!warnChannel) warnChannel = interaction.channel;
 
     await warnChannel.send({
-      content: `<@${targetUser.id}>`,
       components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
