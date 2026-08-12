@@ -6052,6 +6052,79 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
+  // --- DODAJ ROZLICZENIE (PRZYCISK) ---
+  if (id === "modal_rozliczenie_dodaj") {
+    const kwotaRaw = interaction.fields.getTextInputValue("kwota_sprzedazy");
+    const kwota = parseInt(kwotaRaw.replace(/[^0-9]/g, ""), 10);
+
+    if (isNaN(kwota) || kwota <= 0) {
+      await interaction.reply({
+        content: "> `❌` × Podano nieprawidłową kwotę. Wpisz samą liczbę dodatnią (np. 50).",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const userId = interaction.user.id;
+    if (!weeklySales.has(userId)) {
+      weeklySales.set(userId, {
+        amount: 0,
+        lastUpdate: Date.now(),
+        paid: false,
+        paidAt: null,
+        guildId: interaction.guild.id,
+      });
+    }
+
+    const userData = weeklySales.get(userId);
+    userData.amount += kwota;
+    userData.lastUpdate = Date.now();
+    userData.guildId = interaction.guild.id;
+    weeklySales.set(userId, userData);
+
+    await db.saveWeeklySale(
+      userId,
+      userData.amount,
+      interaction.guild.id,
+      userData.paid || false,
+      userData.paidAt || null,
+      userData.lastUpdate,
+    );
+    scheduleSavePersistentState(true);
+
+    const prowizja = (userData.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
+
+    const container = new ContainerBuilder()
+      .setAccentColor(COLOR_BLUE)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `## 💱 × Pomyślnie dodano rozliczenie!\n` +
+          `> 👤 **Sprzedawca:** <@${userId}>\n` +
+          `> \`✅\` × **Dodano kwotę:** ${kwota.toLocaleString("pl-PL")} PLN\n` +
+          `> \`📊\` × **Łączna suma sprzedaży w tym tygodniu:** ${userData.amount.toLocaleString("pl-PL")} PLN\n` +
+          `> \`💸\` × **Aktualna prowizja do zapłaty (10%):** ${prowizja} PLN`
+        )
+      );
+
+    appendBrandFooterToContainer(container, interaction.guildId);
+
+    // Wyślij rozliczenie na kanale rozliczeń
+    await interaction.channel.send({
+      content: `<@${userId}>`,
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    }).catch(() => null);
+
+    await interaction.reply({
+      content: `> \`✅\` × Pomyślnie dodano **${kwota} PLN** do Twojego rozliczenia.`,
+      flags: [MessageFlags.Ephemeral],
+    });
+
+    // Odśwież wiadomość z przyciskiem na dole kanału
+    setTimeout(sendRozliczeniaMessage, 1000);
+    return;
+  }
+
   // --- ILE OTRZYMAM ---
   if (id === "modal_ile_otrzymam") {
     const kwotaStr = interaction.fields.getTextInputValue("kwota");
@@ -8020,6 +8093,49 @@ async function handleButtonInteraction(interaction) {
       .setPlaceholder("Przykład: Brak odpowiedzi")
       .setRequired(true);
     modal.addComponents(new ActionRowBuilder().addComponents(powInput));
+    await interaction.showModal(modal);
+    return;
+  }
+
+  // Przycisk dodawania rozliczenia na kanale rozliczeń
+  if (customId === "rozliczenie_dodaj_btn") {
+    const isOwner = interaction.user.id === interaction.guild?.ownerId;
+    const requiredRoleId = "1350786945944391733";
+    const hasRole = interaction.member?.roles?.cache?.has(requiredRoleId);
+    const SUSPENDED_ROLE_ID = "1537090439239442483";
+    const isSuspended = interaction.member?.roles?.cache?.has(SUSPENDED_ROLE_ID);
+    const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+
+    if (!isAdmin && isSuspended) {
+      await interaction.reply({
+        content: "> `🔴` × Twoje konto sprzedawcy jest zawieszone i nie możesz dodawać rozliczeń.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (!isAdmin && !isOwner && !hasRole) {
+      await interaction.reply({
+        content: "> `❗` × Nie posiadasz roli sprzedawcy.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId("modal_rozliczenie_dodaj")
+      .setTitle("Dodaj rozliczenie sprzedaży");
+
+    const kwotaInput = new TextInputBuilder()
+      .setCustomId("kwota_sprzedazy")
+      .setLabel("Kwota sprzedaży w PLN")
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder("np. 50")
+      .setRequired(true)
+      .setMinLength(1)
+      .setMaxLength(10);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(kwotaInput));
     await interaction.showModal(modal);
     return;
   }
@@ -23878,31 +23994,48 @@ async function sendRozliczeniaMessage() {
     if (!channel) return;
 
     // Sprawdź czy istnieje wiadomość informacyjna bota do usunięcia
-    const messages = await channel.messages.fetch({ limit: 50 });
-    const botMessage = messages.find(msg =>
-      msg.author.id === client.user.id &&
-      msg.embeds.length > 0 &&
-      msg.embeds[0].title?.includes("ROZLICZENIA TYGODNIOWE")
-    );
+    const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    if (messages && messages.size > 0) {
+      const botMessage = messages.find(msg =>
+        msg.author.id === client.user.id &&
+        (
+          (msg.embeds.length > 0 && msg.embeds[0].title?.includes("ROZLICZENIA TYGODNIOWE")) ||
+          (msg.components && msg.components.length > 0 && msg.components.some(row => row.components?.some(btn => btn.customId === "rozliczenie_dodaj_btn")))
+        )
+      );
 
-    // Jeśli wiadomość istnieje, usuń ją
-    if (botMessage) {
-      await botMessage.delete();
-      console.log("Usunięto istniejącą wiadomość informacyjną ROZLICZENIA TYGODNIOWE");
+      if (botMessage) {
+        await botMessage.delete().catch(() => null);
+        console.log("Usunięto istniejącą wiadomość informacyjną ROZLICZENIA TYGODNIOWE");
+      }
     }
 
-    // Wyślij nową wiadomość
-    const embed = new EmbedBuilder()
-      .setColor(0xd4af37)
-      .setTitle("\`💱\` ROZLICZENIA TYGODNIOWE")
-      .setDescription(
-        "> \`ℹ️\` **Jeżeli sprzedajecie coś na shopie, wysyłacie tutaj kwotę, za którą dokonaliście sprzedaży. Na koniec każdego tygodnia w niedzielę rano macie czas do godziny 20:00, aby rozliczyć się i zapłacić 10% od łącznej sumy sprzedaży z __całego tygodnia.__**"
+    // Wyślij nową wiadomość w stylu ContainerBuilder
+    const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `> \`ℹ️\` × **Jeżeli sprzedajecie coś na shopie, kliknijcie przycisk poniżej i wpiszcie kwotę sprzedaży. Na koniec każdego tygodnia w niedzielę rano macie czas do godziny 20:00, aby rozliczyć się i zapłacić 10% od łącznej sumy sprzedaży z __całego tygodnia.__**`
       )
-      .setFooter(getBrandFooterBuilderObject())
-      .setTimestamp();
+    );
 
-    await channel.send({ embeds: [embed] });
-    console.log("Wysłano wiadomość informacyjną ROZLICZENIA TYGODNIOWE");
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("rozliczenie_dodaj_btn")
+          .setLabel("︲Dodaj sprzedaż")
+          .setEmoji("💱")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+
+    appendBrandFooterToContainer(container, channel.guild.id);
+
+    await channel.send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    console.log("Wysłano nową wiadomość ContainerBuilder ROZLICZENIA TYGODNIOWE");
   } catch (err) {
     console.error("Błąd wysyłania wiadomości ROZLICZENIA TYGODNIOWE:", err);
   }
@@ -23956,20 +24089,12 @@ client.on('messageCreate', async (message) => {
 
   // Sprawdź czy wiadomość jest na kanale rozliczeń
   if (message.channelId === ROZLICZENIA_CHANNEL_ID) {
-    // Jeśli to nie jest komenda rozliczenia, usuń wiadomość
     if (!message.content.startsWith('/rozliczenie')) {
       try {
-        await message.delete();
+        await message.delete().catch(() => null);
         await message.author.send({
-          embeds: [{
-            color: 0xff0000,
-            title: "❌ Ograniczenie kanału",
-            description: `Na kanale <#${ROZLICZENIA_CHANNEL_ID}> można używać tylko komend rozliczeń!\n\n` +
-              `**Dostępne komendy:**\n` +
-              `• \`/rozliczenie [kwota]\` - dodaj sprzedaż`,
-            footer: getBrandFooterObject()
-          }]
-        });
+          content: `> \`ℹ️\` × Na kanale <#${ROZLICZENIA_CHANNEL_ID}> użyj przycisku **Dodaj sprzedaż**, aby zarejestrować rozliczenie.`,
+        }).catch(() => null);
       } catch (err) {
         console.error("Błąd usuwania wiadomości z kanału rozliczeń:", err);
       }
