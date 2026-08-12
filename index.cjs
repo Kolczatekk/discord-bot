@@ -6094,25 +6094,20 @@ async function handleModalSubmit(interaction) {
 
     const prowizja = (userData.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
 
-    const container = new ContainerBuilder()
-      .setAccentColor(COLOR_BLUE)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `## 💱 × Pomyślnie dodano rozliczenie!\n` +
-          `> 👤 **Sprzedawca:** <@${userId}>\n` +
-          `> \`✅\` × **Dodano kwotę:** ${kwota.toLocaleString("pl-PL")} PLN\n` +
-          `> \`📊\` × **Łączna suma sprzedaży w tym tygodniu:** ${userData.amount.toLocaleString("pl-PL")} PLN\n` +
-          `> \`💸\` × **Aktualna prowizja do zapłaty (10%):** ${prowizja} PLN`
-        )
-      );
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setTitle("💱 Rozliczenie dodane")
+      .setDescription(
+        `> 👤 **Użytkownik:** <@${userId}>\n` +
+        `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
+        `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
+        `> \`💸\` × **Prowizja do zapłaty (10%):** ${prowizja} zł\n`
+      )
+      .setTimestamp();
 
-    appendBrandFooterToContainer(container, interaction.guildId);
-
-    // Wyślij rozliczenie na kanale rozliczeń
     await interaction.channel.send({
       content: `<@${userId}>`,
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
+      embeds: [embed],
     }).catch(() => null);
 
     await interaction.reply({
