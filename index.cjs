@@ -1335,7 +1335,7 @@ const FREE_KASA_PITY_STEP = 0.5;
 const FREE_KASA_PITY_CAP = 15;
 const FREE_KASA_PITY_GUARANTEE_AFTER = 40;
 const PURCHASE_CODE_USAGE_TEXT =
-  "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i kliknij przycisk **Kod rabatowy**.";
+  "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i wpisz komendę `/zniżka <KOD>`.";
 const REWARD_CODE_USAGE_TEXT =
   "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ODBIERZ NAGRODĘ**.";
 let INVITE_REWARD_MILESTONES = [
@@ -4331,12 +4331,25 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("topwydane")
-    .setDescription("Sprawdź listę 10 graczy, którzy wydali najwięcej w sklepie")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setName("znizka")
+    .setDescription("Wpisz kod rabatowy na ticket (np. /znizka ABC123XYZ0Q)")
+    .setDefaultMemberPermissions(null)
+    .addStringOption((option) =>
+      option
+        .setName("kod")
+        .setDescription("Twój kod rabatowy")
+        .setRequired(true)
+        .setMinLength(10)
+        .setMaxLength(12)
+    )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("wydatkishop")
+    .setName("ustawienia")
+    .setDescription("Zarządzaj ticketem (dodaj/usuń użytkownika, zmień nazwę)")
+    .setDefaultMemberPermissions(null)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("wydaneshop")
     .setDescription("Pokaż łączne wydatki i obrót całego sklepu (tylko właściciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
@@ -6567,78 +6580,78 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
-  // redeem code modal handling (used in tickets)
-  if (interaction.customId.startsWith("modal_redeem_code_")) {
-    const { code: enteredCode, codeData } = await getActiveCodeData(
-      interaction.fields.getTextInputValue("discount_code"),
-    );
+async function processDiscountCodeRedemption(interaction, inputCode) {
+  const { code: enteredCode, codeData } = await getActiveCodeData(inputCode);
 
-    if (!codeData) {
-      await interaction.reply({
-        content:
-          "❌ **Nieprawidłowy kod!**",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
+  if (!codeData) {
+    await interaction.reply({
+      content: "❌ **Nieprawidłowy kod!**",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
-    // Sprawdź typ kodu
-    if (
-      codeData.type === "invite_cash" ||
-      codeData.type === "invite_reward" ||
-      codeData.type === "free_kasa_reward"
-    ) {
-      await interaction.reply({
-        content:
-          "❌ Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
+  if (
+    codeData.type === "invite_cash" ||
+    codeData.type === "invite_reward" ||
+    codeData.type === "free_kasa_reward"
+  ) {
+    await interaction.reply({
+      content: "❌ Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
-    if (codeData.used) {
-      await interaction.reply({
-        content: "> `❌` × **Kod** został już wykorzystany!",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
+  if (codeData.used) {
+    await interaction.reply({
+      content: "> `❌` × **Kod** został już wykorzystany!",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
-    if (Date.now() > codeData.expiresAt) {
-      activeCodes.delete(enteredCode);
-      await db.deleteActiveCode(enteredCode);
-      scheduleSavePersistentState();
-      await interaction.reply({
-        content: "> `❌` × **Kod** wygasł!",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    codeData.used = true;
+  if (Date.now() > codeData.expiresAt) {
     activeCodes.delete(enteredCode);
     await db.deleteActiveCode(enteredCode);
-
-    // Aktualizuj w Supabase
-    await db.updateActiveCode(enteredCode, { used: true });
-
     scheduleSavePersistentState();
+    await interaction.reply({
+      content: "> `❌` × **Kod** wygasł!",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
 
-    const redeemEmbed = new EmbedBuilder()
-      .setColor(0xd4af37)
-      .setTitle("`📉` WYKORZYSTAŁEŚ KOD RABATOWY")
-      .setDescription(
-        "```\n" +
-        enteredCode +
-        "\n```\n" +
-        `> 💸 × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
-      )
-      .setTimestamp();
+  codeData.used = true;
+  activeCodes.delete(enteredCode);
+  await db.deleteActiveCode(enteredCode);
 
-    await interaction.reply({ embeds: [redeemEmbed] });
-    console.log(
-      `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
-    );
+  // Aktualizuj w Supabase
+  await db.updateActiveCode(enteredCode, { used: true });
+
+  scheduleSavePersistentState();
+
+  const redeemEmbed = new EmbedBuilder()
+    .setColor(0xd4af37)
+    .setTitle("`📉` WYKORZYSTAŁEŚ KOD RABATOWY")
+    .setDescription(
+      "```\n" +
+      enteredCode +
+      "\n```\n" +
+      `> 💸 × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
+    )
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [redeemEmbed] });
+  console.log(
+    `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
+  );
+}
+
+  // redeem code modal handling (used in tickets)
+  if (interaction.customId.startsWith("modal_redeem_code_")) {
+    const rawCode = interaction.fields.getTextInputValue("discount_code");
+    await processDiscountCodeRedemption(interaction, rawCode);
     return;
   }
 
@@ -7010,10 +7023,6 @@ async function handleModalSubmit(interaction) {
       .setCustomId(`ticket_close_${channel.id}`)
       .setLabel("❌︲Zamknij")
       .setStyle(ButtonStyle.Secondary);
-    const settingsButton = new ButtonBuilder()
-      .setCustomId(`ticket_settings_${channel.id}`)
-      .setLabel("⚙️︲Ustawienia")
-      .setStyle(ButtonStyle.Secondary);
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("🔒︲Przejmij")
@@ -7026,7 +7035,6 @@ async function handleModalSubmit(interaction) {
 
     const buttonRow = new ActionRowBuilder().addComponents(
       closeButton,
-      settingsButton,
       claimButton,
       unclaimButton,
     );
@@ -8395,7 +8403,7 @@ async function handleSlashCommand(interaction) {
   const { commandName } = interaction;
 
   // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-  const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia", "ostrzezenia", "warns"]);
+  const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia", "ostrzezenia", "warns", "znizka", "ustawienia"]);
   // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
   const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways", "ostrzezenie", "warn", "ostrzezenie-usun", "unwarn"]);
   const SELLER_ROLE_ID = "1350786945944391733";
@@ -8423,7 +8431,69 @@ async function handleSlashCommand(interaction) {
   }
 
   switch (commandName) {
-    case "ostrzezenie":
+    case "znizka": {
+      if (!isTicketChannel(interaction.channel)) {
+        await interaction.reply({
+          content: "> `❌` × **Ta komenda** działa jedynie na **ticketach**!",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      const rawCode = interaction.options.getString("kod") || "";
+      await processDiscountCodeRedemption(interaction, rawCode);
+      break;
+    }
+    case "ustawienia": {
+      const channel = interaction.channel;
+      if (!isTicketChannel(channel)) {
+        await interaction.reply({
+          content: "> `❌` × **Ta komenda** działa jedynie na **ticketach**!",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      if (!isAdminOrSeller(interaction.member)) {
+        await interaction.reply({
+          content: "> `❗` × Brak wymaganych uprawnień.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+
+      const settingsEmbed = new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription("⚙️ × **Wybierz akcję z menu poniżej:**");
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(`ticket_settings_select_${channel.id}`)
+        .setPlaceholder(DEFAULT_SELECT_EMPTY_PLACEHOLDER)
+        .addOptions([
+          {
+            label: "Dodaj osobę",
+            value: "add",
+            description: "Dodaj użytkownika do ticketu",
+          },
+          {
+            label: "Usuń osobę",
+            value: "remove",
+            description: "Usuń użytkownika z ticketu",
+          },
+          {
+            label: "Zmień nazwę",
+            value: "rename",
+            description: "Zmień nazwę kanału ticketu",
+          },
+        ]);
+
+      const row = new ActionRowBuilder().addComponents(select);
+      await interaction.reply({
+        embeds: [settingsEmbed],
+        components: [row],
+        flags: [MessageFlags.Ephemeral],
+      });
+      break;
+    }
     case "warn":
       await handleOstrzezenieCommand(interaction);
       break;
@@ -18426,10 +18496,6 @@ async function openRewardClaimTicket(interaction) {
     .setCustomId(`ticket_close_${channel.id}`)
     .setLabel("❌︲Zamknij")
     .setStyle(ButtonStyle.Secondary);
-  const settingsButton = new ButtonBuilder()
-    .setCustomId(`ticket_settings_${channel.id}`)
-    .setLabel("⚙️︲Ustawienia")
-    .setStyle(ButtonStyle.Secondary);
   const claimButton = new ButtonBuilder()
     .setCustomId(`ticket_claim_${channel.id}`)
     .setLabel("🔒︲Przejmij")
@@ -18442,7 +18508,6 @@ async function openRewardClaimTicket(interaction) {
 
   const buttonRow = new ActionRowBuilder().addComponents(
     closeButton,
-    settingsButton,
     claimButton,
     unclaimButton,
   );
@@ -20434,10 +20499,6 @@ async function handleModalSubmit(interaction) {
           .setCustomId(`ticket_close_${channel.id}`)
           .setLabel("❌︲Zamknij")
           .setStyle(ButtonStyle.Secondary);
-        const settingsButton = new ButtonBuilder()
-          .setCustomId(`ticket_settings_${channel.id}`)
-          .setLabel("⚙️︲Ustawienia")
-          .setStyle(ButtonStyle.Secondary);
         const claimButton = new ButtonBuilder()
           .setCustomId(`ticket_claim_${channel.id}`)
           .setLabel("🔒︲Przejmij")
@@ -20450,7 +20511,6 @@ async function handleModalSubmit(interaction) {
 
         const buttonRow = new ActionRowBuilder().addComponents(
           closeButton,
-          settingsButton,
           claimButton,
           unclaimButton,
         );
@@ -20745,27 +20805,11 @@ async function handleModalSubmit(interaction) {
       `### ・ \`📋\` × **Informacje z formularza:**\n` +
       `${formInfo}`;
 
-    // Build buttons: Close (disabled for non-admin in interaction), Settings, Code (if zakup), Claim + Unclaim (disabled)
+    // Build buttons: Close, Claim + Unclaim (disabled)
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
       .setLabel("❌︲Zamknij")
       .setStyle(ButtonStyle.Secondary);
-
-    const settingsButton = new ButtonBuilder()
-      .setCustomId(`ticket_settings_${channel.id}`)
-      .setLabel("⚙️︲Ustawienia")
-      .setStyle(ButtonStyle.Secondary);
-
-    const buttons = [closeButton, settingsButton];
-
-    if (ticketTypeLabel === "ZAKUP" || ticketTypeLabel === "ZAKUP AUTORYNKU") {
-      buttons.push(
-        new ButtonBuilder()
-          .setCustomId(`ticket_code_${channel.id}_${user.id}`)
-          .setLabel("🔥︲Kod rabatowy")
-          .setStyle(ButtonStyle.Secondary),
-      );
-    }
 
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
@@ -20778,7 +20822,7 @@ async function handleModalSubmit(interaction) {
       .setStyle(isRewardTicketLabel(ticketTypeLabel) ? ButtonStyle.Secondary : ButtonStyle.Secondary)
       .setDisabled(true);
 
-    buttons.push(claimButton, unclaimButton);
+    const buttons = [closeButton, claimButton, unclaimButton];
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
