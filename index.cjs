@@ -7882,10 +7882,12 @@ async function handleButtonInteraction(interaction) {
       new ButtonBuilder()
         .setCustomId("seller_data_edit_main")
         .setLabel("BLIK/PRZELEW")
+        .setEmoji("💳")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("seller_data_edit_extra")
         .setLabel("PAYPAL/LTC/MYPSC")
+        .setEmoji("🌐")
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -9865,7 +9867,7 @@ function buildSellerPaymentPanelPayload(guildId) {
     new ButtonBuilder()
       .setCustomId("seller_data_clear")
       .setLabel("Wyczyść")
-      .setEmoji("🗑️")
+      .setEmoji("🧹")
       .setStyle(ButtonStyle.Secondary)
   );
 
