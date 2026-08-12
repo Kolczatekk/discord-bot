@@ -9178,6 +9178,10 @@ async function handleRozliczenieZakonczCommand(interaction) {
       )
       .setTimestamp();
 
+    // Odśwież raport na kanale rozliczeń oraz panel z przyciskiem
+    await sendRozliczeniaStatusReport(interaction.guild);
+    setTimeout(sendRozliczeniaMessage, 1000);
+
     await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
     console.log(`Właściciel ${interaction.user.id} wygenerował podsumowanie rozliczeń`);
   } catch (err) {
@@ -9282,24 +9286,26 @@ async function handleRozliczenieUstawCommand(interaction) {
   // Zapisz stan po zmianie rozliczenia
   scheduleSavePersistentState(true);
 
-  const prowizja = userData.amount * ROZLICZENIA_PROWIZJA;
+  const userRate = getUserCommissionRate(userId);
+  const prowizja = userData.amount * userRate;
+  const percentStr = `${Math.round(userRate * 100)}%`;
   const zmiana = kwota;
   const znakZmiany = akcja === "dodaj" ? "+" : akcja === "odejmij" ? "-" : "";
 
   const embed = new EmbedBuilder()
-    .setColor(0x00ff00)
-    .setTitle("✅ Rozliczenie zaktualizowane")
+    .setColor(COLOR_GREEN)
+    .setTitle("`✅` Rozliczenie zaktualizowane")
     .setDescription(
-      `> \`✅\` × **Zaktualizowano rozliczenie** dla <@${userId}>\n` +
-      `> 👤 **Użytkownik:** ${targetUser.username}\n` +
-      `> 🔄 **Akcja:** ${akcja.charAt(0).toUpperCase() + akcja.slice(1)}\n` +
-      `> 💰 **Kwota zmiany:** ${znakZmiany}${zmiana.toLocaleString("pl-PL")} zł\n` +
-      `> 📈 **Nowa suma:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
-      `> 💸 **Prowizja do zapłaty:** ${prowizja.toLocaleString("pl-PL")} zł`
-    )
-    .setTimestamp();
+      `> 👤 **Użytkownik:** <@${userId}>\n` +
+      `> \`🔄\` × **Akcja:** ${akcja.charAt(0).toUpperCase() + akcja.slice(1)}\n` +
+      `> \`💰\` × **Zmiana:** ${znakZmiany}${zmiana.toLocaleString("pl-PL")} zł\n` +
+      `> \`📊\` × **Nowa suma:** ${userData.amount.toLocaleString("pl-PL")} zł\n` +
+      `> \`💸\` × **Prowizja (${percentStr}):** ${prowizja.toFixed(2)} zł`
+    );
 
   await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+  await sendRozliczeniaStatusReport(interaction.guild);
+  setTimeout(sendRozliczeniaMessage, 1000);
   console.log(`Właściciel zaktualizował rozliczenie dla ${userId}: ${akcja} ${kwota} zł`);
 }
 
