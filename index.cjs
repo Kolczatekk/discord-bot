@@ -14338,7 +14338,12 @@ function buildPanelKlientaPayload(guildId) {
     new TextDisplayBuilder().setContent(
       "```\n" +
       "🛒 New Shop × PANEL KLIENTA\n" +
-      "```\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
       "> `📫` × Wybierz jedną z opcji poniżej."
     )
   );
