@@ -14361,29 +14361,27 @@ async function handleTicketPanelCommand(interaction) {
 async function handlePanelKlientaCommand(interaction) {
   try {
     if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
     }
 
     const SELLER_ROLE_ID = "1350786945944391733";
     const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
     const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
     if (!isAdmin && !isSeller) {
-      await interaction.editReply({ content: "> `❗` × Brak wymaganych uprawnień.", flags: [MessageFlags.Ephemeral] });
+      await interaction.editReply({ content: "> `❗` × Brak wymaganych uprawnień." });
       return;
     }
 
-    await ensureEmbedTestEmojiCache(interaction.guildId);
     await interaction.channel.send(buildPanelKlientaPayload(interaction.guildId));
 
     await interaction.editReply({
-      content: "> `✅` × **Panel klienta** został wysłany na ten **kanał**.",
-      flags: [MessageFlags.Ephemeral]
+      content: "> `✅` × **Panel klienta** został wysłany na ten **kanał**."
     });
   } catch (err) {
     console.error("Błąd w handlePanelKlientaCommand:", err);
-    const payload = { content: "> `❌` × Wystąpił błąd podczas wysyłania panelu klienta.", flags: [MessageFlags.Ephemeral] };
-    if (interaction.deferred || interaction.replied) await interaction.editReply(payload);
-    else await interaction.reply(payload);
+    const payload = { content: "> `❌` × Wystąpił błąd podczas wysyłania panelu klienta." };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(payload).catch(() => null);
+    else await interaction.reply({ ...payload, flags: [MessageFlags.Ephemeral] }).catch(() => null);
   }
 }
 
