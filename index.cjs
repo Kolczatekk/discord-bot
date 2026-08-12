@@ -5329,6 +5329,17 @@ async function resolveModsVideoUrl(guild, videoCfg, options = {}) {
 // Helper: sprawdź czy użytkownik jest admin, sprzedawca lub helper
 function isAdminOrSeller(member) {
   if (!member) return false;
+
+  // Administrator ma pełne uprawnienia bez względu na rolę zawieszony
+  if (member.permissions && member.permissions.has(PermissionFlagsBits.Administrator)) {
+    return true;
+  }
+
+  const SUSPENDED_ROLE_ID = "1537090439239442483";
+  if (member.roles && member.roles.cache && member.roles.cache.has(SUSPENDED_ROLE_ID)) {
+    return false;
+  }
+
   const SELLER_ROLE_ID = "1350786945944391733";
   const HELPER_ROLE_ID = "1519069239254974475";
 
@@ -5337,14 +5348,6 @@ function isAdminOrSeller(member) {
     member.roles &&
     member.roles.cache &&
     (member.roles.cache.has(SELLER_ROLE_ID) || member.roles.cache.has(HELPER_ROLE_ID))
-  ) {
-    return true;
-  }
-
-  // Sprawdź Administrator
-  if (
-    member.permissions &&
-    member.permissions.has(PermissionFlagsBits.Administrator)
   ) {
     return true;
   }
@@ -8176,36 +8179,35 @@ async function handleButtonInteraction(interaction) {
 async function handleSlashCommand(interaction) {
   const { commandName } = interaction;
 
+  // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
+  const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia", "ostrzezenia", "warns"]);
+  // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
+  const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways", "ostrzezenie", "warn", "ostrzezenie-usun", "unwarn"]);
+  const SELLER_ROLE_ID = "1350786945944391733";
+  const HELPER_ROLE_ID = "1519069239254974475";
+  const SUSPENDED_ROLE_ID = "1537090439239442483";
+  const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
+  const isHelper = interaction.member?.roles?.cache?.has(HELPER_ROLE_ID);
+  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
+  const isSuspended = interaction.member?.roles?.cache?.has(SUSPENDED_ROLE_ID);
+
+  // Zawieszony sprzedawca nie może używać komend sprzedawcy (admini bez ograniczeń)
+  if (!isAdmin && isSuspended && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
+    await interaction.reply({
+      content: "> `🔴` × Twoje konto sprzedawcy jest zawieszone i nie możesz używać tej komendy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+  if (!isAdmin && !isSeller && !isHelper && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
+    await interaction.reply({
+      content: "> `❌` × Nie masz uprawnień do tej komendy.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
   switch (commandName) {
-    default: {
-      // Gate: zwykły użytkownik widzi/uruchomi tylko publiczne komendy
-      const publicCommands = new Set(["opinia", "help", "sprawdz-zaproszenia", "ostrzezenia", "warns"]);
-      // Komendy wymagające własnych uprawnień, ale nie blokowane przez seller/admin gate
-      const bypassGate = new Set(["utworz-konkurs", "wyczysckanal", "stworzkonkurs", "end-giveaways", "ostrzezenie", "warn", "ostrzezenie-usun", "unwarn"]);
-      const SELLER_ROLE_ID = "1350786945944391733";
-      const HELPER_ROLE_ID = "1519069239254974475";
-      const SUSPENDED_ROLE_ID = "1537090439239442483";
-      const isSeller = interaction.member?.roles?.cache?.has(SELLER_ROLE_ID);
-      const isHelper = interaction.member?.roles?.cache?.has(HELPER_ROLE_ID);
-      const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator);
-      const isSuspended = interaction.member?.roles?.cache?.has(SUSPENDED_ROLE_ID);
-      // Zawieszony sprzedawca nie może używać komend sprzedawcy (admini bez ograniczeń)
-      if (!isAdmin && isSuspended && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
-        await interaction.reply({
-          content: "> `🔴` × Twoje konto sprzedawcy jest zawieszone i nie możesz używać tej komendy.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-      if (!isAdmin && !isSeller && !isHelper && !publicCommands.has(commandName) && !bypassGate.has(commandName)) {
-        await interaction.reply({
-          content: "> `❌` × Nie masz uprawnień do tej komendy.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-      break;
-    }
     case "ostrzezenie":
     case "warn":
       await handleOstrzezenieCommand(interaction);
