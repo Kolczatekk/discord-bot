@@ -10168,23 +10168,15 @@ async function handleOstrzezenieCommand(interaction) {
       headerTitle = `OSTRZEŻENIE ${currentCount}/3 ❌`;
     }
 
-    const container = new ContainerBuilder()
-      .setAccentColor(COLOR_BLUE)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "```\n" +
-          headerTitle + "\n" +
-          "```"
-        )
+    const embed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+        headerTitle + "\n" +
+        "```\n" +
+        `Powód: ${powod}`
       )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `Powód: ${powod}`
-        )
-      );
-
-    appendBrandFooterToContainer(container, interaction.guildId);
+      .setFooter(getBrandFooterBuilderObject());
 
     let warnChannel = interaction.guild?.channels.cache.get(OSTRZEZENIA_CHANNEL_ID);
     if (!warnChannel && interaction.guild) {
@@ -10196,8 +10188,7 @@ async function handleOstrzezenieCommand(interaction) {
 
     await warnChannel.send({
       content: `<@${targetUser.id}>`,
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
+      embeds: [embed],
     });
 
     await interaction.reply({
