@@ -14188,8 +14188,13 @@ function buildTicketPanelPayload() {
     new TextDisplayBuilder().setContent(
       "```\n" +
       "🛒 New Shop × TICKET\n" +
-      "```\n" +
-      "> `📩` × Wybierz odpowiednią kategorię, aby utworzyć ticketa!"
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "> <a:arrowwhite:1491476759290449984> × Wybierz odpowiednią kategorię, aby utworzyć ticketa!"
     )
   );
 
@@ -14399,7 +14404,7 @@ function buildPanelKlientaPayload(guildId) {
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "> `📫` × Wybierz jedną z opcji poniżej."
+      "> <a:arrowwhite:1491476759290449984> × Wybierz jedną z opcji poniżej."
     )
   );
 
