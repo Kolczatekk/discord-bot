@@ -11188,7 +11188,7 @@ async function sendSellerPaymentProfileToTicket(channel, guildId, sellerId, tick
     }
   };
 
-  lines.push("> <a:jump_dirt:1480590181944791122> × **Dane do płatności**");
+  lines.push("> ### <a:jump_dirt:1480590181944791122> × **Dane do płatności**");
 
   if (method === "kod_blik" || method === "kod blik") {
     return;
@@ -18043,7 +18043,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setColor(COLOR_BLUE)
       .setDescription(
         `> \`✅\` × Ticket został przejęty przez: ${publicClaimerLabel}\n` +
-        `> <a:card:1537186328867770488> × Wykonał on łącznie: **__${sellerCount}__** ticketów`
+        `> <a:card:1537186328867770488> × Wykonał on łącznie: __**${sellerCount}**__ ticketów`
       );
 
     if (ticketData.lastUnclaimMsgId) {
