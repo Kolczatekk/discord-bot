@@ -24088,7 +24088,7 @@ async function sendRozliczeniaMessage() {
     const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `> <a:arrowwhite:1491476759290449984> × **Dodaj każdą sprzedaż przyciskiem poniżej. Co niedzielę do 20:00 płacisz 10% od sumy tygodnia.**`
+        "`💱` × Dodaj **każdą sprzedaż** przyciskiem poniżej. Co niedzielę do 20:00 płacisz **10% od sumy tygodnia**!"
       )
     );
 
