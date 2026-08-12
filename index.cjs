@@ -8598,31 +8598,51 @@ async function handleRozliczenieCommand(interaction) {
   await interaction.reply({ embeds: [embed] });
   console.log(`Użytkownik ${userId} dodał rozliczenie: ${kwota} zł`);
 
-  // Odśwież wiadomość ROZLICZENIA TYGODNIOWE po dodaniu rozliczenia
+  // Odśwież wiadomość ROZLICZENIA TYGODNIOWE oraz raport na kanale rozliczeń
   setTimeout(sendRozliczeniaMessage, 1000);
+  setTimeout(() => sendRozliczeniaStatusReport(interaction.guild), 1000);
 }
 
 // Pomocnicze funkcje do cyklu rozliczeń
 let rozliczeniaReportMessageId = null;
+let isSundayResetTriggered = false;
 
 async function sendRozliczeniaStatusReport(guild) {
   try {
     const logsChannel = await client.channels.fetch(ROZLICZENIA_LOGS_CHANNEL_ID).catch(() => null);
     if (!logsChannel) return;
 
-    if (weeklySales.size === 0) return;
+    if (weeklySales.size === 0) {
+      if (rozliczeniaReportMessageId) {
+        await logsChannel.messages.delete(rozliczeniaReportMessageId).catch(() => null);
+        rozliczeniaReportMessageId = null;
+      }
+      return;
+    }
 
     const klientEmoji = findGuildEmojiByName(guild?.id, "klient");
     const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
 
-    let reportText = "# `📊` ROZLICZENIA TYGODNIOWE\n" +
-      "> `⏳` × **Termin na zapłacenie do godziny 20:00**\n" +
-      "> `📱` × **Przelew na numer:** `880 260 392`\n\n";
+    let reportText = "";
 
-    for (const [userId, data] of weeklySales) {
-      const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
-      const statusEmoji = data.paid ? "`✅`" : "`❌`";
-      reportText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Prowizja 10%: **${prowizja} zł**)\n`;
+    if (isSundayResetTriggered) {
+      reportText = "# `📊` ROZLICZENIA TYGODNIOWE\n" +
+        "> `⏳` × **Termin na zapłacenie do godziny 20:00**\n" +
+        "> `📱` × **Przelew na numer:** `880 260 392`\n\n";
+
+      for (const [userId, data] of weeklySales) {
+        const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
+        const statusEmoji = data.paid ? "`✅`" : "`❌`";
+        reportText += `> ${statusEmoji} ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Prowizja 10%: **${prowizja} zł**)\n`;
+      }
+    } else {
+      reportText = "# `📊` STATYSTYKI ROZLICZEŃ\n" +
+        "> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**\n\n";
+
+      for (const [userId, data] of weeklySales) {
+        const prowizja = (data.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
+        reportText += `> ${userEmojiStr} <@${userId}>: **${data.amount.toLocaleString("pl-PL")} zł** (Przewidywana prowizja 10%: **${prowizja} zł**)\n`;
+      }
     }
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
@@ -8646,6 +8666,7 @@ async function sendRozliczeniaStatusReport(guild) {
 
 async function executeSundayReset00(guild) {
   if (!guild) return 0;
+  isSundayResetTriggered = true;
   const LIMIT_ROLE_IDS = [
     "1449448860517798061", // limit 200
     "1449448686156255333", // limit 100
@@ -18402,6 +18423,7 @@ async function handleModalSubmit(interaction) {
     });
 
     setTimeout(sendRozliczeniaMessage, 1000);
+    setTimeout(() => sendRozliczeniaStatusReport(interaction.guild), 1000);
     return;
   }
 
@@ -24370,6 +24392,7 @@ async function checkWeeklyReset() {
   if (dayOfWeek === 0 && hour === 23 && minute === 59 && weeklySales.size > 0) {
     console.log("[rozliczenia-timer] Koniec tygodnia - reset danych rozliczeń na nowy tydzień...");
     weeklySales.clear();
+    isSundayResetTriggered = false;
     await db.resetWeeklySales().catch((e) => console.error("Błąd resetWeeklySales:", e));
     scheduleSavePersistentState(true);
     setTimeout(sendRozliczeniaMessage, 1000);
