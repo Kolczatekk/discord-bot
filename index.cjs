@@ -7031,16 +7031,18 @@ async function handleModalSubmit(interaction) {
       unclaimButton,
     );
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(embedText)
-      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-      .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
+    if (user && typeof user.displayAvatarURL === "function") {
+      container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
+    }
+    container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, interaction.guild?.id);
 
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: [embed],
-      components: [buttonRow],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     ticketOwners.set(channel.id, {
@@ -18449,16 +18451,18 @@ async function openRewardClaimTicket(interaction) {
     unclaimButton,
   );
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(embedText)
-    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-    .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
+  if (user && typeof user.displayAvatarURL === "function") {
+    container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
+  }
+  container.addActionRowComponents(buttonRow);
+  appendBrandFooterToContainer(container, interaction.guild?.id);
 
   const sentMsg = await channel.send({
     content: `@everyone`,
-    embeds: [embed],
-    components: [buttonRow],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   ticketOwners.set(channel.id, {
@@ -20459,16 +20463,18 @@ async function handleModalSubmit(interaction) {
           unclaimButton,
         );
 
-        const embed = new EmbedBuilder()
-          .setColor(COLOR_BLUE)
-          .setDescription(embedText)
-          .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-          .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
+        const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
+        if (user && typeof user.displayAvatarURL === "function") {
+          container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
+        }
+        container.addActionRowComponents(buttonRow);
+        appendBrandFooterToContainer(container, interaction.guild?.id);
 
         const sentMsg = await channel.send({
           content: `@everyone`,
-          embeds: [embed],
-          components: [buttonRow],
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
 
         ticketOwners.set(channel.id, {
@@ -20788,17 +20794,19 @@ async function handleModalSubmit(interaction) {
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(embedText)
-      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
-      .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
+    if (user && typeof user.displayAvatarURL === "function") {
+      container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
+    }
+    container.addActionRowComponents(buttonRow);
+    appendBrandFooterToContainer(container, interaction.guild?.id);
 
     // send message and capture it (so we can edit buttons later)
     const sentMsg = await channel.send({
       content: `@everyone`,
-      embeds: [embed],
-      components: [buttonRow],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     ticketOwners.set(channel.id, {
