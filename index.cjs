@@ -6256,6 +6256,77 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+
+async function processDiscountCodeRedemption(interaction, inputCode) {
+  // Defer first to prevent "Aplikacja nie reaguje"
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+  }
+
+  const { code: enteredCode, codeData } = await getActiveCodeData(inputCode);
+
+  const replyFn = async (opts) => {
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply(opts).catch(() => null);
+    }
+    return interaction.reply({ ...opts, flags: [MessageFlags.Ephemeral] }).catch(() => null);
+  };
+
+  if (!codeData) {
+    await replyFn({ content: "> `❌` × **Nieprawidłowy kod!**" });
+    return;
+  }
+
+  if (
+    codeData.type === "invite_cash" ||
+    codeData.type === "invite_reward" ||
+    codeData.type === "free_kasa_reward"
+  ) {
+    await replyFn({ content: "> `❌` × Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel." });
+    return;
+  }
+
+  if (codeData.used) {
+    await replyFn({ content: "> `❌` × **Kod** został już wykorzystany!" });
+    return;
+  }
+
+  if (Date.now() > codeData.expiresAt) {
+    activeCodes.delete(enteredCode);
+    await db.deleteActiveCode(enteredCode).catch(() => null);
+    scheduleSavePersistentState();
+    await replyFn({ content: "> `❌` × **Kod** wygasł!" });
+    return;
+  }
+
+  codeData.used = true;
+  activeCodes.delete(enteredCode);
+  await db.deleteActiveCode(enteredCode).catch(() => null);
+  await db.updateActiveCode(enteredCode, { used: true }).catch(() => null);
+  scheduleSavePersistentState();
+
+  const redeemEmbed = new EmbedBuilder()
+    .setColor(0xd4af37)
+    .setTitle("`📉` WYKORZYSTAŁEŚ KOD RABATOWY")
+    .setDescription(
+      "```\n" +
+      enteredCode +
+      "\n```\n" +
+      `> 💸 × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
+    )
+    .setTimestamp();
+
+  // Wyslij embed publiczne w kanale ticketu zeby sprzedawca widzial
+  if (interaction.channel) {
+    await interaction.channel.send({ embeds: [redeemEmbed] }).catch(() => null);
+  }
+  await replyFn({ content: "> `✅` × **Pomyślnie zrealizowano kod rabatowy!**" });
+
+  console.log(
+    `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
+  );
+}
+
 async function handleModalSubmit(interaction) {
   // Sprawdź czy interakcja już została odpowiedziana
   if (interaction.replied || interaction.deferred) return;
@@ -6680,79 +6751,10 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
-async function processDiscountCodeRedemption(interaction, inputCode) {
-  // Defer first to prevent "Aplikacja nie reaguje"
-  if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
-  }
-
-  const { code: enteredCode, codeData } = await getActiveCodeData(inputCode);
-
-  const replyFn = async (opts) => {
-    if (interaction.deferred) {
-      return interaction.editReply(opts).catch(() => null);
-    }
-    return interaction.reply({ ...opts, flags: [MessageFlags.Ephemeral] }).catch(() => null);
-  };
-
-  if (!codeData) {
-    await replyFn({ content: "> `❌` × **Nieprawidłowy kod!**" });
-    return;
-  }
-
-  if (
-    codeData.type === "invite_cash" ||
-    codeData.type === "invite_reward" ||
-    codeData.type === "free_kasa_reward"
-  ) {
-    await replyFn({ content: "> `❌` × Ten kod odbierzesz tylko w kategorii 'Odbierz nagrodę' w TicketPanel." });
-    return;
-  }
-
-  if (codeData.used) {
-    await replyFn({ content: "> `❌` × **Kod** został już wykorzystany!" });
-    return;
-  }
-
-  if (Date.now() > codeData.expiresAt) {
-    activeCodes.delete(enteredCode);
-    await db.deleteActiveCode(enteredCode).catch(() => null);
-    scheduleSavePersistentState();
-    await replyFn({ content: "> `❌` × **Kod** wygasł!" });
-    return;
-  }
-
-  codeData.used = true;
-  activeCodes.delete(enteredCode);
-  await db.deleteActiveCode(enteredCode).catch(() => null);
-  await db.updateActiveCode(enteredCode, { used: true }).catch(() => null);
-  scheduleSavePersistentState();
-
-  const redeemEmbed = new EmbedBuilder()
-    .setColor(0xd4af37)
-    .setTitle("`📉` WYKORZYSTAŁEŚ KOD RABATOWY")
-    .setDescription(
-      "```\n" +
-      enteredCode +
-      "\n```\n" +
-      `> 💸 × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
-    )
-    .setTimestamp();
-
-  // Send embed publicly in the ticket channel so the seller sees it
-  await interaction.channel.send({ embeds: [redeemEmbed] }).catch(() => null);
-  // Ephemeral confirmation
-  await replyFn({ content: "> `✅` × **Pomyślnie zrealizowano kod rabatowy!**" });
-
-  console.log(
-    `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
-  );
-}
-
   // redeem code modal handling (used in tickets)
   if (interaction.customId.startsWith("modal_redeem_code_")) {
-    const rawCode = interaction.fields.getTextInputValue("discount_code");
-    await processDiscountCodeRedemption(interaction, rawCode);
+    const inputCode = getModalTextInputValueSafe(interaction, "discount_code");
+    await processDiscountCodeRedemption(interaction, inputCode);
     return;
   }
 
