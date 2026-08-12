@@ -18367,7 +18367,12 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(description);
-    const sentUnclaim = await ch.send({ embeds: [publicEmbed] }).catch(() => null);
+    const SELLER_ROLE_ID = "1350786945944391733";
+    const sentUnclaim = await ch.send({
+      content: `<@&${SELLER_ROLE_ID}>`,
+      embeds: [publicEmbed],
+      allowedMentions: { roles: [SELLER_ROLE_ID] },
+    }).catch(() => null);
     if (sentUnclaim && sentUnclaim.id) {
       ticketData.lastUnclaimMsgId = sentUnclaim.id;
       ticketOwners.set(channelId, ticketData);
