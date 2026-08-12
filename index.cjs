@@ -7034,6 +7034,7 @@ async function handleModalSubmit(interaction) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(embedText)
+      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
       .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
     const sentMsg = await channel.send({
@@ -18451,6 +18452,7 @@ async function openRewardClaimTicket(interaction) {
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(embedText)
+    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
     .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
   const sentMsg = await channel.send({
@@ -20460,6 +20462,7 @@ async function handleModalSubmit(interaction) {
         const embed = new EmbedBuilder()
           .setColor(COLOR_BLUE)
           .setDescription(embedText)
+          .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
           .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
         const sentMsg = await channel.send({
@@ -20788,6 +20791,7 @@ async function handleModalSubmit(interaction) {
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(embedText)
+      .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }))
       .setFooter(getBrandFooterBuilderObject(interaction.guild?.id));
 
     // send message and capture it (so we can edit buttons later)
