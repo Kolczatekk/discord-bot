@@ -18043,7 +18043,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setColor(COLOR_BLUE)
       .setDescription(
         `> \`✅\` × Ticket został przejęty przez: ${publicClaimerLabel}\n` +
-        `> \`📈\` × Wykonał on łącznie: **__${sellerCount}__** ticketów**!**`
+        `> \`📈\` × Wykonał on łącznie: **__${sellerCount}__** ticketów`
       );
 
     if (ticketData.lastUnclaimMsgId) {
