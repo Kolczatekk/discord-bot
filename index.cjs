@@ -7033,9 +7033,6 @@ async function handleModalSubmit(interaction) {
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-    if (user && typeof user.displayAvatarURL === "function") {
-      container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
-    }
     container.addActionRowComponents(buttonRow);
     appendBrandFooterToContainer(container, interaction.guild?.id);
 
@@ -18453,9 +18450,6 @@ async function openRewardClaimTicket(interaction) {
 
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-  if (user && typeof user.displayAvatarURL === "function") {
-    container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
-  }
   container.addActionRowComponents(buttonRow);
   appendBrandFooterToContainer(container, interaction.guild?.id);
 
@@ -20465,9 +20459,6 @@ async function handleModalSubmit(interaction) {
 
         const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
         container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-        if (user && typeof user.displayAvatarURL === "function") {
-          container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
-        }
         container.addActionRowComponents(buttonRow);
         appendBrandFooterToContainer(container, interaction.guild?.id);
 
@@ -20796,9 +20787,6 @@ async function handleModalSubmit(interaction) {
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embedText));
-    if (user && typeof user.displayAvatarURL === "function") {
-      container.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
-    }
     container.addActionRowComponents(buttonRow);
     appendBrandFooterToContainer(container, interaction.guild?.id);
 
