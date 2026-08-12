@@ -7030,6 +7030,10 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
       .setCustomId(`ticket_close_${channel.id}`)
       .setLabel("❌︲Zamknij")
       .setStyle(ButtonStyle.Secondary);
+    const settingsButton = new ButtonBuilder()
+      .setCustomId(`ticket_settings_${channel.id}`)
+      .setLabel("⚙️︲Ustawienia")
+      .setStyle(ButtonStyle.Secondary);
     const claimButton = new ButtonBuilder()
       .setCustomId(`ticket_claim_${channel.id}`)
       .setLabel("🔒︲Przejmij")
@@ -7037,6 +7041,7 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
 
     const buttonRow = new ActionRowBuilder().addComponents(
       closeButton,
+      settingsButton,
       claimButton,
     );
 
@@ -18497,6 +18502,10 @@ async function openRewardClaimTicket(interaction) {
     .setCustomId(`ticket_close_${channel.id}`)
     .setLabel("❌︲Zamknij")
     .setStyle(ButtonStyle.Secondary);
+  const settingsButton = new ButtonBuilder()
+    .setCustomId(`ticket_settings_${channel.id}`)
+    .setLabel("⚙️︲Ustawienia")
+    .setStyle(ButtonStyle.Secondary);
   const claimButton = new ButtonBuilder()
     .setCustomId(`ticket_claim_${channel.id}`)
     .setLabel("🔒︲Przejmij")
@@ -18504,6 +18513,7 @@ async function openRewardClaimTicket(interaction) {
 
   const buttonRow = new ActionRowBuilder().addComponents(
     closeButton,
+    settingsButton,
     claimButton,
   );
 
@@ -20494,6 +20504,10 @@ async function handleModalSubmit(interaction) {
           .setCustomId(`ticket_close_${channel.id}`)
           .setLabel("❌︲Zamknij")
           .setStyle(ButtonStyle.Secondary);
+        const settingsButton = new ButtonBuilder()
+          .setCustomId(`ticket_settings_${channel.id}`)
+          .setLabel("⚙️︲Ustawienia")
+          .setStyle(ButtonStyle.Secondary);
         const claimButton = new ButtonBuilder()
           .setCustomId(`ticket_claim_${channel.id}`)
           .setLabel("🔒︲Przejmij")
@@ -20501,6 +20515,7 @@ async function handleModalSubmit(interaction) {
 
         const buttonRow = new ActionRowBuilder().addComponents(
           closeButton,
+          settingsButton,
           claimButton,
         );
 
@@ -20794,10 +20809,15 @@ async function handleModalSubmit(interaction) {
       `### ・ \`📋\` × **Informacje z formularza:**\n` +
       `${formInfo}`;
 
-    // Build buttons: Close, Claim toggle button
+    // Build buttons: Close, Settings, Claim toggle button
     const closeButton = new ButtonBuilder()
       .setCustomId(`ticket_close_${channel.id}`)
       .setLabel("❌︲Zamknij")
+      .setStyle(ButtonStyle.Secondary);
+
+    const settingsButton = new ButtonBuilder()
+      .setCustomId(`ticket_settings_${channel.id}`)
+      .setLabel("⚙️︲Ustawienia")
       .setStyle(ButtonStyle.Secondary);
 
     const claimButton = new ButtonBuilder()
@@ -20805,7 +20825,7 @@ async function handleModalSubmit(interaction) {
       .setLabel("🔒︲Przejmij")
       .setStyle(ButtonStyle.Secondary);
 
-    const buttons = [closeButton, claimButton];
+    const buttons = [closeButton, settingsButton, claimButton];
 
     const buttonRow = new ActionRowBuilder().addComponents(...buttons);
 
