@@ -7118,15 +7118,6 @@ async function handleButtonInteraction(interaction) {
       scheduleSavePersistentState(true);
     }
 
-    const container = new ContainerBuilder()
-      .setAccentColor(COLOR_BLUE)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "> `🧹` × Pomyślnie wyczyszczono dane płatności."
-        )
-      )
-      .addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("seller_data_restore")
@@ -7134,12 +7125,10 @@ async function handleButtonInteraction(interaction) {
         .setStyle(ButtonStyle.Secondary)
     );
 
-    container.addActionRowComponents(row);
-    appendBrandFooterToContainer(container, interaction.guildId);
-
     await interaction.reply({
-      components: [container],
-      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+      content: "> `🧹` × Pomyślnie wyczyszczono dane płatności.",
+      components: [row],
+      flags: [MessageFlags.Ephemeral],
     });
     return;
   }
@@ -7159,19 +7148,9 @@ async function handleButtonInteraction(interaction) {
     sellerDataBackups.delete(key);
     scheduleSavePersistentState(true);
 
-    const container = new ContainerBuilder()
-      .setAccentColor(COLOR_BLUE)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "> `✅` × Pomyślnie przywrócono dane płatności."
-        )
-      );
-
-    appendBrandFooterToContainer(container, interaction.guildId);
-
     await interaction.reply({
-      components: [container],
-      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+      content: "> `✅` × Pomyślnie przywrócono dane płatności.",
+      flags: [MessageFlags.Ephemeral],
     });
     return;
   }
@@ -17809,37 +17788,17 @@ async function handleModalSubmit(interaction) {
       sellerPaymentProfiles.set(key, profile);
       scheduleSavePersistentState(true);
 
-      const container = new ContainerBuilder()
-        .setAccentColor(COLOR_BLUE)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            "> `✅` × Pomyślnie zapisano dane płatności."
-          )
-        );
-
-      appendBrandFooterToContainer(container, interaction.guildId);
-
       await interaction.reply({
-        components: [container],
-        flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+        content: "> `✅` × Pomyślnie zapisano dane płatności.",
+        flags: [MessageFlags.Ephemeral],
       });
     } else {
       sellerPaymentProfiles.delete(key);
       scheduleSavePersistentState(true);
 
-      const container = new ContainerBuilder()
-        .setAccentColor(COLOR_BLUE)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            "> `🧹` × Formularz był pusty – pomyślnie wyczyszczono dane płatności."
-          )
-        );
-
-      appendBrandFooterToContainer(container, interaction.guildId);
-
       await interaction.reply({
-        components: [container],
-        flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+        content: "> `🧹` × Formularz był pusty – pomyślnie wyczyszczono dane płatności.",
+        flags: [MessageFlags.Ephemeral],
       });
     }
     return;
