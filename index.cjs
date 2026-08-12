@@ -6094,11 +6094,14 @@ async function handleModalSubmit(interaction) {
 
     const prowizja = (userData.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
 
+    const klientEmoji1 = findGuildEmojiByName(interaction.guildId, "klient");
+    const userEmojiStr1 = klientEmoji1 ? toGuildEmojiMarkup(klientEmoji1) : "👤";
+
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setTitle("`💱` Rozliczenie dodane")
       .setDescription(
-        `> 👤 **Użytkownik:** <@${userId}>\n` +
+        `> ${userEmojiStr1} **Użytkownik:** <@${userId}>\n` +
         `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
         `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`
       );
@@ -8546,11 +8549,14 @@ async function handleRozliczenieCommand(interaction) {
   scheduleSavePersistentState(true);
   console.log(`[rozliczenie] Użytkownik ${userId} dodał rozliczenie: ${kwota} zł, suma tygodniowa: ${userData.amount} zł`);
 
+  const klientEmojiCmd = findGuildEmojiByName(interaction.guildId, "klient");
+  const userEmojiStrCmd = klientEmojiCmd ? toGuildEmojiMarkup(klientEmojiCmd) : "👤";
+
   const embed = new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setTitle("\`💱\` Rozliczenie dodane")
     .setDescription(
-      `> 👤 **Użytkownik:** <@${userId}>\n` +
+      `> ${userEmojiStrCmd} **Użytkownik:** <@${userId}>\n` +
       `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
       `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`,
     );
@@ -18165,11 +18171,14 @@ async function handleModalSubmit(interaction) {
 
     const prowizja = (userData.amount * ROZLICZENIA_PROWIZJA).toFixed(2);
 
+    const klientEmojiModal = findGuildEmojiByName(interaction.guildId, "klient");
+    const userEmojiStrModal = klientEmojiModal ? toGuildEmojiMarkup(klientEmojiModal) : "👤";
+
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setTitle("`💱` Rozliczenie dodane")
       .setDescription(
-        `> 👤 **Użytkownik:** <@${userId}>\n` +
+        `> ${userEmojiStrModal} **Użytkownik:** <@${userId}>\n` +
         `> \`✅\` × **Dodano sprzedaż:** ${kwota.toLocaleString("pl-PL")} zł\n` +
         `> \`📊\` × **Suma tygodniowa:** ${userData.amount.toLocaleString("pl-PL")} zł`
       );
