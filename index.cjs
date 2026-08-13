@@ -12766,6 +12766,7 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
   }
 
   const buttons = [];
+  const headerLines = [];
   const payloadFiles = getEmbedTestPayloadFiles(state);
   const attachedFileNames = new Set(payloadFiles.map((f) => f.name));
 
