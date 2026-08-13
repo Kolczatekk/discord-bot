@@ -4431,13 +4431,23 @@ const commands = [
   new SlashCommandBuilder()
     .setName("wydane")
     .setDescription("Sprawdź ile wydałeś w naszym sklepie")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDefaultMemberPermissions(null)
     .addUserOption((option) =>
       option
         .setName("gracz")
         .setDescription("Wybierz gracza, którego wydaną kwotę chcesz sprawdzić (opcjonalnie)")
         .setRequired(false)
     )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("topwydane")
+    .setDescription("Pokaż ranking graczy z największymi wydatkami w sklepie")
+    .setDefaultMemberPermissions(null)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("top-wydane")
+    .setDescription("Pokaż ranking graczy z największymi wydatkami w sklepie")
+    .setDefaultMemberPermissions(null)
     .toJSON(),
   new SlashCommandBuilder()
     .setName("znizka")
@@ -4459,6 +4469,11 @@ const commands = [
     .toJSON(),
   new SlashCommandBuilder()
     .setName("wydaneshop")
+    .setDescription("Pokaż łączne wydatki i obrót całego sklepu (tylko właściciel)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("wydatkishop")
     .setDescription("Pokaż łączne wydatki i obrót całego sklepu (tylko właściciel)")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .toJSON(),
@@ -8757,8 +8772,10 @@ async function handleSlashCommand(interaction) {
       await handleWydaneCommand(interaction);
       break;
     case "topwydane":
+    case "top-wydane":
       await handleTopWydaneCommand(interaction);
       break;
+    case "wydaneshop":
     case "wydatkishop":
       await handleShopTotalsCommand(interaction);
       break;
