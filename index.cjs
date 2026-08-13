@@ -16565,6 +16565,11 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   recordDailyLegitRep("anonimowy", dailyTransactionAmount);
   console.log(`[anonim] +rep wystawione przez bota, licznik: ${legitRepCount}`);
 
+  if (ticketData.commandUserId) {
+    const current = sellerTicketCounts.get(ticketData.commandUserId) || 0;
+    sellerTicketCounts.set(ticketData.commandUserId, current + 1);
+  }
+
   scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
   scheduleSavePersistentState();
 
