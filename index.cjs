@@ -634,6 +634,17 @@ async function countExistingLegitRepMessages(channel) {
   return legitRepMessageIds.size;
 }
 
+function formatTicketsPlural(count) {
+  const n = Math.abs(Number(count) || 0);
+  if (n === 1) return "ticket";
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return "tickety";
+  }
+  return "ticketów";
+}
+
 async function getSellerTicketCount(userId, forceRecalculate = false) {
   if (!forceRecalculate && sellerTicketCounts.has(userId)) {
     return sellerTicketCounts.get(userId);
@@ -17322,7 +17333,7 @@ async function handleUstawTicketySprzedawcyCommand(interaction) {
   scheduleSavePersistentState(true);
 
   await interaction.reply({
-    content: `> \`✅\` × **Pomyślnie ustawiono** liczbę ticketów dla <@${user.id}> na **${ilosc}**.`,
+    content: `> \`✅\` × **Pomyślnie ustawiono** liczbę ticketów dla <@${user.id}> na **${ilosc}** (${formatTicketsPlural(ilosc)}).`,
     flags: [MessageFlags.Ephemeral],
   });
 }
@@ -17341,7 +17352,7 @@ async function handlePrzeliczTicketySprzedawcyCommand(interaction) {
   const count = await getSellerTicketCount(user.id, true);
 
   await interaction.editReply({
-    content: `> \`✅\` × **Przeliczono z kanału +rep**: użytkownik <@${user.id}> ma łącznie **${count}** ticketów.`,
+    content: `> \`✅\` × **Przeliczono z kanału +rep**: użytkownik <@${user.id}> ma łącznie **${count}** ${formatTicketsPlural(count)}.`,
   });
 }
 
@@ -18333,7 +18344,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
       .setColor(COLOR_BLUE)
       .setDescription(
         `> \`✅\` × Ticket został przejęty przez: ${publicClaimerLabel}\n` +
-        `> <a:card:1537186328867770488> × Wykonał on łącznie: __**${sellerCount}**__ ticketów`
+        `> <a:card:1537186328867770488> × Wykonał on łącznie: __**${sellerCount}**__ ${formatTicketsPlural(sellerCount)}`
       );
 
     if (ticketData.lastUnclaimMsgId) {
