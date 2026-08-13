@@ -16602,21 +16602,16 @@ async function closeTicketAnonymously(channel, guild, executorId) {
     try {
       const rozliczeniaChannel = await client.channels.fetch("1449162620807675935").catch(() => null);
       if (rozliczeniaChannel && rozliczeniaChannel.isTextBased()) {
-        const rozliczenieEmbed = new EmbedBuilder()
-          .setColor(COLOR_BLUE)
-          .setDescription(
-            "```\n" +
-            "🧾 New Shop × WYSTAW ROZLICZENIE\n" +
-            "```\n" +
-            `> \`👤\` × **Sprzedawca:** <@${ticketData.commandUserId}>\n` +
-            `> \`🛒\` × **Wystawiono anonimowy legit check za zakup:** **${ticketData.co}**${ticketData.serwer ? ` (${ticketData.serwer})` : ""}\n` +
-            `> \`📌\` × Pamiętaj o wystawieniu **rozliczenia** za powyższą transakcję!`
-          );
-        await rozliczeniaChannel.send({
+        const pingMsg = await rozliczeniaChannel.send({
           content: `<@${ticketData.commandUserId}>`,
-          embeds: [rozliczenieEmbed],
           allowedMentions: { users: [ticketData.commandUserId] },
         }).catch((err) => console.error("[rozliczenia-ping] Błąd wysyłania powiadomienia:", err));
+
+        if (pingMsg && pingMsg.deletable) {
+          setTimeout(() => {
+            pingMsg.delete().catch(() => null);
+          }, 5000);
+        }
       }
     } catch (rozliczenieErr) {
       console.error("[rozliczenia-ping] Błąd:", rozliczenieErr);
@@ -21948,21 +21943,16 @@ client.on(Events.MessageCreate, async (message) => {
                 try {
                   const rozliczeniaChannel = await client.channels.fetch("1449162620807675935").catch(() => null);
                   if (rozliczeniaChannel && rozliczeniaChannel.isTextBased()) {
-                    const rozliczenieEmbed = new EmbedBuilder()
-                      .setColor(COLOR_BLUE)
-                      .setDescription(
-                        "```\n" +
-                        "🧾 New Shop × WYSTAW ROZLICZENIE\n" +
-                        "```\n" +
-                        `> \`👤\` × **Sprzedawca:** <@${expectedId}>\n` +
-                        `> \`🛒\` × **Klient <@${senderId}> wystawił +rep za zakup:** **${ticketData.co}**${ticketData.serwer ? ` (${ticketData.serwer})` : ""}\n` +
-                        `> \`📌\` × Pamiętaj o wystawieniu **rozliczenia** za powyższą transakcję!`
-                      );
-                    await rozliczeniaChannel.send({
+                    const pingMsg = await rozliczeniaChannel.send({
                       content: `<@${expectedId}>`,
-                      embeds: [rozliczenieEmbed],
                       allowedMentions: { users: [expectedId] },
                     }).catch((err) => console.error("[rozliczenia-ping] Błąd wysyłania powiadomienia:", err));
+
+                    if (pingMsg && pingMsg.deletable) {
+                      setTimeout(() => {
+                        pingMsg.delete().catch(() => null);
+                      }, 5000);
+                    }
                   }
                 } catch (rozliczenieErr) {
                   console.error("[rozliczenia-ping] Błąd:", rozliczenieErr);
