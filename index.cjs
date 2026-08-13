@@ -19384,70 +19384,89 @@ async function handleModalSubmit(interaction) {
 
   const embedTestContentMatch = cid.match(/^embedtest_modal_content_(\d+)$/);
   if (embedTestContentMatch) {
-    const [, messageId] = embedTestContentMatch;
-    const state = embedTestStates.get(messageId);
+    try {
+      const [, messageId] = embedTestContentMatch;
+      let state = embedTestStates.get(messageId);
 
-    if (!state) {
+      if (!state) {
+        const channel = interaction.channel;
+        const msg = await channel?.messages?.fetch(messageId).catch(() => null);
+        if (msg) {
+          state = reconstructEmbedTestStateFromMessage(msg, interaction.user.id);
+        }
+      }
+
+      if (!state) {
+        await interaction.reply({
+          content: "> `❌` × Ta sesja edycji wygasła. Użyj `/sprawdzembedtest` ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+        return;
+      }
+
+      if (!isAdminOrSeller(interaction.member) && state.ownerId !== interaction.user.id) {
+        await interaction.reply({
+          content: "> `❗` × Brak wymaganych uprawnień do edycji tego embeda.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+        return;
+      }
+
+      const titleVal = getModalTextInputValueSafe(interaction, "title");
+      const cashTitleVal = getModalTextInputValueSafe(interaction, "cash_section_title");
+      const cashBodyVal = getModalTextInputValueSafe(interaction, "cash_body");
+      const itemsTitleVal = getModalTextInputValueSafe(interaction, "items_section_title");
+      const itemsBodyVal = getModalTextInputValueSafe(interaction, "items_body");
+
+      if (titleVal !== null) state.title = titleVal.trim();
+
+      if (isRegulationEmbedState(state)) {
+        const pages = getRegulationPanelPages(state).map((page) =>
+          normalizeRegulationPage(page),
+        );
+        pages[0] = {
+          title: (cashTitleVal || "").trim(),
+          body: (cashBodyVal || "").trim(),
+        };
+        pages[1] = {
+          title: (itemsTitleVal || "").trim(),
+          body: (itemsBodyVal || "").trim(),
+        };
+        setRegulationPagesOnState(state, pages);
+      } else {
+        if (cashTitleVal !== null) state.cashSectionTitle = cashTitleVal.trim();
+        if (cashBodyVal !== null) state.cashBody = cashBodyVal.trim();
+        if (itemsTitleVal !== null) state.itemsSectionTitle = itemsTitleVal.trim();
+        if (itemsBodyVal !== null) state.itemsBody = itemsBodyVal.trim();
+      }
+      embedTestStates.set(messageId, state);
+
+      const updated = await updateEmbedTestMessage(state);
+      if (!updated) {
+        embedTestStates.delete(messageId);
+        await interaction.reply({
+          content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/sprawdzembedtest` ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+        return;
+      }
+
       await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
+        ...buildEmbedTestControlPayload(
+          state,
+          isRegulationEmbedState(state)
+            ? "Zaktualizowałem strony regulaminu"
+            : "Zaktualizowałem treść embeda",
+        ),
         flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
+      }).catch(() => null);
+    } catch (err) {
+      console.error("Błąd zapisu embedtest_modal_content:", err);
       await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
+        content: "> `❌` × Wystąpił błąd podczas zapisywania treści embeda. Spróbuj ponownie.",
         flags: [MessageFlags.Ephemeral],
-      });
-      return;
+      }).catch(() => null);
     }
-
-    state.title = interaction.fields.getTextInputValue("title").trim();
-    if (isRegulationEmbedState(state)) {
-      const pages = getRegulationPanelPages(state).map((page) =>
-        normalizeRegulationPage(page),
-      );
-      pages[0] = {
-        title: interaction.fields.getTextInputValue("cash_section_title").trim(),
-        body: interaction.fields.getTextInputValue("cash_body").trim(),
-      };
-      pages[1] = {
-        title: interaction.fields.getTextInputValue("items_section_title").trim(),
-        body: interaction.fields.getTextInputValue("items_body").trim(),
-      };
-      setRegulationPagesOnState(state, pages);
-    } else {
-      state.cashSectionTitle = interaction.fields
-        .getTextInputValue("cash_section_title")
-        .trim();
-      state.cashBody = interaction.fields.getTextInputValue("cash_body").trim();
-      state.itemsSectionTitle = interaction.fields
-        .getTextInputValue("items_section_title")
-        .trim();
-      state.itemsBody = interaction.fields.getTextInputValue("items_body").trim();
-    }
-    embedTestStates.set(messageId, state);
-
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
-      await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(
-        state,
-        isRegulationEmbedState(state)
-          ? "Zaktualizowałem strony regulaminu"
-          : "Zaktualizowałem treść embeda",
-      ),
-      flags: [MessageFlags.Ephemeral],
-    });
     return;
   }
 
