@@ -634,8 +634,8 @@ async function countExistingLegitRepMessages(channel) {
   return legitRepMessageIds.size;
 }
 
-async function getSellerTicketCount(userId) {
-  if (sellerTicketCounts.has(userId)) {
+async function getSellerTicketCount(userId, forceRecalculate = false) {
+  if (!forceRecalculate && sellerTicketCounts.has(userId)) {
     return sellerTicketCounts.get(userId);
   }
 
@@ -4956,6 +4956,25 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("ustaw-tickety-sprzedawcy")
+    .setDescription("Ustaw ręcznie liczbę wykonanych ticketów dla sprzedawcy")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addUserOption((o) =>
+      o.setName("uzytkownik").setDescription("Sprzedawca").setRequired(true),
+    )
+    .addIntegerOption((o) =>
+      o.setName("ilosc").setDescription("Liczba ticketów").setRequired(true),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("przelicz-tickety-sprzedawcy")
+    .setDescription("Przelicz ponownie liczbę ticketów sprzedawcy z historii kanału +rep")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addUserOption((o) =>
+      o.setName("uzytkownik").setDescription("Sprzedawca").setRequired(true),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("aktualizacja-embed")
     .setDescription("Usuń i wyślij ponownie najbliższy embedtest w aktualnym wydaniu")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -8808,6 +8827,12 @@ async function handleSlashCommand(interaction) {
       break;
     case "sprawdzembedtest":
       await handleSprawdzEmbedTestCommand(interaction);
+      break;
+    case "ustaw-tickety-sprzedawcy":
+      await handleUstawTicketySprzedawcyCommand(interaction);
+      break;
+    case "przelicz-tickety-sprzedawcy":
+      await handlePrzeliczTicketySprzedawcyCommand(interaction);
       break;
     case "zaaktualizuj-film":
       await handleZaaktualizujFilmCommand(interaction);
@@ -17245,6 +17270,53 @@ async function handleDailyLegitChartTestCommand(interaction) {
   });
 }
 
+async function handleUstawTicketySprzedawcyCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const user = interaction.options.getUser("uzytkownik");
+  const ilosc = interaction.options.getInteger("ilosc");
+
+  if (!user || ilosc < 0) {
+    await interaction.reply({
+      content: "> `❌` × Podaj poprawnego użytkownika i dodatnią liczbę.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  sellerTicketCounts.set(user.id, ilosc);
+  scheduleSavePersistentState(true);
+
+  await interaction.reply({
+    content: `> \`✅\` × **Pomyślnie ustawiono** liczbę ticketów dla <@${user.id}> na **${ilosc}**.`,
+    flags: [MessageFlags.Ephemeral],
+  });
+}
+
+async function handlePrzeliczTicketySprzedawcyCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const user = interaction.options.getUser("uzytkownik");
+  const count = await getSellerTicketCount(user.id, true);
+
+  await interaction.editReply({
+    content: `> \`✅\` × **Przeliczono z kanału +rep**: użytkownik <@${user.id}> ma łącznie **${count}** ticketów.`,
+  });
+}
+
 async function handleLegitRepUstawCommand(interaction) {
   try {
     console.log("[/legit-check-ustaw] start", {
@@ -21656,10 +21728,9 @@ client.on(Events.MessageCreate, async (message) => {
       if (message.mentions.users.size > 0) {
         let changed = false;
         for (const user of message.mentions.users.values()) {
-          if (sellerTicketCounts.has(user.id)) {
-            sellerTicketCounts.set(user.id, sellerTicketCounts.get(user.id) + 1);
-            changed = true;
-          }
+          const current = sellerTicketCounts.get(user.id) || 0;
+          sellerTicketCounts.set(user.id, current + 1);
+          changed = true;
         }
         if (changed) scheduleSavePersistentState();
       }
