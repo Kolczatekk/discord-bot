@@ -641,7 +641,7 @@ async function getSellerTicketCount(userId, forceRecalculate = false) {
 
   const channel = await client.channels.fetch(REP_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased?.()) {
-    return 0; // fallback
+    return sellerTicketCounts.get(userId) || 0;
   }
 
   let count = 0;
@@ -654,7 +654,13 @@ async function getSellerTicketCount(userId, forceRecalculate = false) {
       if (!batch.size) break;
 
       for (const message of batch.values()) {
-        if (message.mentions.users.has(userId)) {
+        const mentionsUser = message.mentions?.users?.has(userId);
+        const contentHasId = message.content && (
+          message.content.includes(`<@${userId}>`) ||
+          message.content.includes(`<@!${userId}>`) ||
+          message.content.includes(userId)
+        );
+        if (mentionsUser || contentHasId) {
           count++;
         }
       }
