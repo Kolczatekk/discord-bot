@@ -15085,7 +15085,7 @@ function buildPurchaseTicketChannelName(member, user, paymentValue, serverValue)
   const serverSlug =
     serverDef?.channelSlug || sanitizeTicketChannelNamePart(serverValue || "serwer");
 
-  return `zakup-${serverSlug}-${paymentSlug}`.slice(0, 100);
+  return `${serverSlug}-${paymentSlug}`.slice(0, 100);
 }
 
 function buildSpecialPurchaseTicketChannelName(member, user, suffix, modName, paymentValue) {
@@ -20605,7 +20605,7 @@ async function handleModalSubmit(interaction) {
         const serwerSlug = serwerDef?.channelSlug || sanitizeTicketChannelNamePart(serwerRaw);
         const payoutDef = getShopPaymentOptionDef(payoutRaw);
         const payoutSlug = payoutDef?.channelSlug || sanitizeTicketChannelNamePart(payoutRaw);
-        preferredChannelName = `sprzedaz-${serwerSlug}-${payoutSlug}`.slice(0, 100);
+        preferredChannelName = `${serwerSlug}-${payoutSlug}`.slice(0, 100);
       }
 
       formInfo =
@@ -20719,7 +20719,7 @@ async function handleModalSubmit(interaction) {
           .replace(/anarchia-gg/gi, "anarchia-lf");
         const rewardSlug = sanitizeTicketChannelNamePart(rawReward);
         const createOptions = {
-          name: `nagroda-${rewardSlug}`.slice(0, 100),
+          name: `${rewardSlug}`.slice(0, 100),
           type: ChannelType.GuildText,
           permissionOverwrites: [
             {
