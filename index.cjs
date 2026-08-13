@@ -16760,9 +16760,9 @@ async function handleTopWydaneCommand(interaction) {
 }
 
 async function handleShopTotalsCommand(interaction) {
-  if (interaction.user.id !== interaction.guild.ownerId) {
+  if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
-      content: "> `❗` × Tylko właściciel serwera może użyć tej komendy.",
+      content: "> `❗` × Brak wymaganych uprawnień.",
       flags: [MessageFlags.Ephemeral],
     });
     return;
