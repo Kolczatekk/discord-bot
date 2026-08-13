@@ -13381,7 +13381,10 @@ async function updateEmbedTestMessage(state) {
   const message = await channel.messages.fetch(state.messageId).catch(() => null);
   if (!message) return false;
 
-  await message.edit(buildEmbedTestMessagePayload(state));
+  const payload = buildEmbedTestMessagePayload(state);
+  payload.embeds = [];
+
+  await message.edit(payload);
   delete state.mediaFiles;
 
   if (isRegulationEmbedState(state) && state.persistPanel) {
@@ -19328,57 +19331,70 @@ async function handleModalSubmit(interaction) {
 
   const embedTestEmojisMatch = cid.match(/^embedtest_modal_emojis_(\d+)$/);
   if (embedTestEmojisMatch) {
-    const [, messageId] = embedTestEmojisMatch;
-    const state = embedTestStates.get(messageId);
-
-    if (!state) {
-      await interaction.reply({
-        content: "> `❌` × Ta sesja edycji wygasła. Użyj `/embedtest` ponownie.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    if (state.ownerId !== interaction.user.id) {
-      await interaction.reply({
-        content: "> `❗` × Tylko autor testu może edytować ten embed.",
-        flags: [MessageFlags.Ephemeral],
-      });
-      return;
-    }
-
-    state.buttonOneEmoji = interaction.fields
-      .getTextInputValue("button_one_emoji")
-      .trim();
-    state.buttonTwoEmoji = interaction.fields
-      .getTextInputValue("button_two_emoji")
-      .trim();
     try {
-      state.buttonThreeEmoji = interaction.fields
-        .getTextInputValue("button_three_emoji")
-        .trim();
-    } catch (_) {}
-    embedTestStates.set(messageId, state);
+      const [, messageId] = embedTestEmojisMatch;
+      let state = embedTestStates.get(messageId);
 
-    const updated = await updateEmbedTestMessage(state);
-    if (!updated) {
-      embedTestStates.delete(messageId);
+      if (!state) {
+        const channel = interaction.channel;
+        const msg = await channel?.messages?.fetch(messageId).catch(() => null);
+        if (msg) {
+          state = reconstructEmbedTestStateFromMessage(msg, interaction.user.id);
+        }
+      }
+
+      if (!state) {
+        await interaction.reply({
+          content: "> `❌` × Ta sesja edycji wygasła. Użyj `/sprawdzembedtest` ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+        return;
+      }
+
+      if (!isAdminOrSeller(interaction.member) && state.ownerId !== interaction.user.id) {
+        await interaction.reply({
+          content: "> `❗` × Brak wymaganych uprawnień.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+        return;
+      }
+
+      const b1Emoji = getModalTextInputValueSafe(interaction, "button_one_emoji");
+      const b2Emoji = getModalTextInputValueSafe(interaction, "button_two_emoji");
+      const b3Emoji = getModalTextInputValueSafe(interaction, "button_three_emoji");
+
+      if (b1Emoji !== null) state.buttonOneEmoji = b1Emoji.trim();
+      if (b2Emoji !== null) state.buttonTwoEmoji = b2Emoji.trim();
+      if (b3Emoji !== null) state.buttonThreeEmoji = b3Emoji.trim();
+
+      embedTestStates.set(messageId, state);
+
+      const updated = await updateEmbedTestMessage(state);
+      if (!updated) {
+        embedTestStates.delete(messageId);
+        await interaction.reply({
+          content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/sprawdzembedtest` ponownie.",
+          flags: [MessageFlags.Ephemeral],
+        }).catch(() => null);
+        return;
+      }
+
       await interaction.reply({
-        content: "> `❌` × Nie udało się zaktualizować wiadomości. Użyj `/embedtest` ponownie.",
+        ...buildEmbedTestControlPayload(
+          state,
+          isRegulationEmbedState(state)
+            ? "Zaktualizowałem emoji panelu regulaminu"
+            : "Zaktualizowałem emoji embeda",
+        ),
         flags: [MessageFlags.Ephemeral],
-      });
-      return;
+      }).catch(() => null);
+    } catch (err) {
+      console.error("Błąd embedtest_modal_emojis:", err);
+      await interaction.reply({
+        content: "> `❌` × Wystąpił błąd podczas edycji emoji.",
+        flags: [MessageFlags.Ephemeral],
+      }).catch(() => null);
     }
-
-    await interaction.reply({
-      ...buildEmbedTestControlPayload(
-        state,
-        isRegulationEmbedState(state)
-          ? "Zaktualizowałem emoji panelu regulaminu"
-          : "Zaktualizowałem emoji embeda",
-      ),
-      flags: [MessageFlags.Ephemeral],
-    });
     return;
   }
 
