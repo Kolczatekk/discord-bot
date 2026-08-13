@@ -1453,35 +1453,35 @@ const FREE_KASA_REWARD_POOL = [
   {
     key: "cash_50k",
     kind: "reward",
-    rewardText: "50k$ na anarchia.gg",
+    rewardText: "50k$ na Anarchia LF",
     rewardAmount: 50000,
     weight: 4,
   },
   {
     key: "cash_40k",
     kind: "reward",
-    rewardText: "40k$ na anarchia.gg",
+    rewardText: "40k$ na Anarchia LF",
     rewardAmount: 40000,
     weight: 7,
   },
   {
     key: "cash_30k",
     kind: "reward",
-    rewardText: "30k$ na anarchia.gg",
+    rewardText: "30k$ na Anarchia LF",
     rewardAmount: 30000,
     weight: 12,
   },
   {
     key: "cash_20k",
     kind: "reward",
-    rewardText: "20k$ na anarchia.gg",
+    rewardText: "20k$ na Anarchia LF",
     rewardAmount: 20000,
     weight: 28,
   },
   {
     key: "cash_10k",
     kind: "reward",
-    rewardText: "10k$ na anarchia.gg",
+    rewardText: "10k$ na Anarchia LF",
     rewardAmount: 10000,
     weight: 40,
   },
@@ -2397,7 +2397,7 @@ async function createTimedRewardCode({
 async function createInviteRewardCode(userId, milestone) {
   return createTimedRewardCode({
     userId,
-    rewardText: `${milestone?.label || INVITE_REWARD_TEXT} na anarchia.gg`,
+    rewardText: `${milestone?.label || INVITE_REWARD_TEXT} na Anarchia LF`,
     rewardAmount: Number(milestone?.amount || 0),
     type: "invite_cash",
     expiresMs: FREE_KASA_REWARD_CODE_EXPIRES_MS,
@@ -2432,7 +2432,7 @@ async function sendInviteRewardCodeDm(user, milestone, rewardCodeData) {
   const dmEmbed = buildCodeDeliveryDmEmbed({
     title: "🎁 Twój kod nagrody",
     code: rewardCodeData.code,
-    rewardLine: `> \`🏆\` × **Otrzymałeś:** \`${milestone.label} na anarchia.gg\``,
+    rewardLine: `> \`🏆\` × **Otrzymałeś:** \`${milestone.label} na Anarchia LF\``,
     expiryTimestamp: rewardCodeData.expiryTimestamp,
     instructionText: REWARD_CODE_USAGE_TEXT,
   });
@@ -2588,7 +2588,7 @@ function buildFreeKasaHistoryLines(userId, limit = 6) {
   return entries.map((entry) => {
     const rewardLabel =
       entry.kind === "cash" && entry.amount
-        ? `${formatRewardCashAmount(entry.amount)} na anarchia.gg`
+        ? `${formatRewardCashAmount(entry.amount)} na Anarchia LF`
         : entry.rewardText || "Nagroda";
     const timeTag = entry.createdAt
       ? ` <t:${Math.floor(Number(entry.createdAt) / 1000)}:R>`
@@ -15803,7 +15803,7 @@ function getClientCodeReward(codeData) {
 
   const rewardAmount = Number(codeData.rewardAmount || 0);
   if (rewardAmount > 0) {
-    return `${rewardAmount.toLocaleString("pl-PL")}$ na anarchia.gg`;
+    return `${rewardAmount.toLocaleString("pl-PL")}$ na Anarchia LF`;
   }
 
   return "Nagroda do odebrania";
@@ -20712,9 +20712,12 @@ async function handleModalSubmit(interaction) {
           else parentToUse = null;
         }
 
-        const rewardSlug = sanitizeTicketChannelNamePart(
-          codeData.rewardText || codeData.reward || "nagroda"
-        );
+        let rawReward = String(codeData.rewardText || codeData.reward || "nagroda");
+        rawReward = rawReward
+          .replace(/na\s+anarchia\.gg/gi, "anarchia-lf")
+          .replace(/anarchia\.gg/gi, "anarchia-lf")
+          .replace(/anarchia-gg/gi, "anarchia-lf");
+        const rewardSlug = sanitizeTicketChannelNamePart(rawReward);
         const createOptions = {
           name: `nagroda-${rewardSlug}`.slice(0, 100),
           type: ChannelType.GuildText,
