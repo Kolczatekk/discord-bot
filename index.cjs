@@ -13373,18 +13373,25 @@ async function updateEmbedTestMessage(state) {
   await ensureEmbedTestEmojiCache(state.guildId);
 
   const guild = client.guilds.cache.get(state.guildId) || null;
-  if (!guild) return false;
+  if (!guild) throw new Error("Nie znaleziono serwera w pamięci bota.");
 
   const channel = await guild.channels.fetch(state.channelId).catch(() => null);
-  if (!channel || !channel.isTextBased()) return false;
+  if (!channel || !channel.isTextBased()) throw new Error("Nie znaleziono kanału.");
 
   const message = await channel.messages.fetch(state.messageId).catch(() => null);
-  if (!message) return false;
+  if (!message) throw new Error("Nie znaleziono wiadomości na kanale.");
 
   const payload = buildEmbedTestMessagePayload(state);
   payload.embeds = [];
 
-  await message.edit(payload);
+  try {
+    await message.edit(payload);
+  } catch (editErr) {
+    console.error("[EmbedTest] Pierwotny message.edit nie powiódł się, próba bez embeds:", editErr);
+    delete payload.embeds;
+    await message.edit(payload);
+  }
+
   delete state.mediaFiles;
 
   if (isRegulationEmbedState(state) && state.persistPanel) {
@@ -19478,8 +19485,9 @@ async function handleModalSubmit(interaction) {
       }).catch(() => null);
     } catch (err) {
       console.error("Błąd zapisu embedtest_modal_content:", err);
+      const errMsg = err?.message || String(err);
       await interaction.reply({
-        content: "> `❌` × Wystąpił błąd podczas zapisywania treści embeda. Spróbuj ponownie.",
+        content: `> \`❌\` × **Błąd zapisywania:** \`${errMsg}\``,
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
