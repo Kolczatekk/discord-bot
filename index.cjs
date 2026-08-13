@@ -12766,10 +12766,31 @@ function buildEmbedTestMessagePayload(state, skipFooter = false) {
   }
 
   const buttons = [];
-  const headerLines = [];
-  const mediaUrls = Array.isArray(state.mediaUrls)
+  const payloadFiles = getEmbedTestPayloadFiles(state);
+  const attachedFileNames = new Set(payloadFiles.map((f) => f.name));
+
+  const rawMediaUrls = Array.isArray(state.mediaUrls)
     ? state.mediaUrls.filter((url) => typeof url === "string" && url.trim())
     : [];
+
+  const mediaUrls = rawMediaUrls
+    .map((url) => {
+      if (url.startsWith("attachment://")) {
+        const filename = url.replace("attachment://", "");
+        if (attachedFileNames.has(filename)) {
+          return url;
+        }
+        const matchFile = state.mediaFiles?.find(
+          (f) => f.name === filename || f.name.includes(filename),
+        );
+        if (matchFile?.url && matchFile.url.startsWith("http")) {
+          return matchFile.url;
+        }
+        return null;
+      }
+      return url;
+    })
+    .filter(Boolean);
   const buttonOneEmoji = parseButtonEmojiInput(
     state.buttonOneEmoji,
     state.guildId,
@@ -13391,8 +13412,6 @@ async function updateEmbedTestMessage(state) {
     delete payload.embeds;
     await message.edit(payload);
   }
-
-  delete state.mediaFiles;
 
   if (isRegulationEmbedState(state) && state.persistPanel) {
     regulationPanels.set(
