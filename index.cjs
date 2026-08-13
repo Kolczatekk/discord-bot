@@ -14216,10 +14216,15 @@ async function findLatestEmbedTestMessage(channel) {
       const componentDump = getPanelComponentDump(message);
 
       if (
+        componentDump.includes("embedtest_") ||
         componentDump.includes("embedtest_buy_open_") ||
+        componentDump.includes("\"Zakup\"") ||
+        componentDump.includes("\"Metody płatności\"") ||
         componentDump.includes("\"Kup teraz\"") ||
         componentDump.includes("\"Płatności\"") ||
-        componentDump.includes("\"Zobacz regulamin\"")
+        componentDump.includes("\"Zobacz regulamin\"") ||
+        (message.flags?.has && message.flags.has(MessageFlags.IsComponentsV2)) ||
+        (message.embeds && message.embeds.length > 0)
       ) {
         return message;
       }
@@ -14257,7 +14262,7 @@ async function handleSprawdzEmbedTestCommand(interaction) {
     return;
   }
 
-  if (interaction.user.id !== interaction.guild.ownerId) {
+  if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
       content: "> `‼️` × Brak wymaganych uprawnień.",
       flags: [MessageFlags.Ephemeral],
@@ -14422,7 +14427,7 @@ async function handleZaaktualizujFilmCommand(interaction) {
     return;
   }
 
-  if (interaction.user.id !== interaction.guild.ownerId) {
+  if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
       content: "> `❗` × Brak wymaganych uprawnień.",
       flags: [MessageFlags.Ephemeral],
