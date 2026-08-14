@@ -5118,6 +5118,11 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("test-legit-check-sukces")
+    .setDescription("Przetestuj podmienienie embeda na sukces w aktualnym tickecie")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("test-rozliczenia-ping")
     .setDescription("Przetestuj wysłanie krótkiego pinga rozliczenia na kanał rozliczeń (usuwa się po 5s)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -8932,6 +8937,9 @@ async function handleSlashCommand(interaction) {
     case "rozliczeniazaplacil":
     case "rozliczeniezaplacil":
       await handleRozliczenieZaplacilCommand(interaction);
+      break;
+    case "test-legit-check-sukces":
+      await handleTestLegitCheckSukcesCommand(interaction);
       break;
     case "test-rozliczenia-ping":
       await handleTestRozliczeniaPingCommand(interaction);
@@ -16617,17 +16625,23 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
       }
     }
 
-    const successEmbed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
         "```\n" +
         "✅ New Shop × LEGIT CHECK\n" +
-        "```\n" +
-        "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
-        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**\n\n" +
-        "─────────────────────────"
+        "```"
       )
-      .setBrandFooter();
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
+        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**"
+      )
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    appendBrandFooterToContainer(container, channel.guild?.id || null);
 
     let targetMsg = null;
     if (ticketData?.embedMessageId) {
@@ -16647,19 +16661,46 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     if (targetMsg) {
       await targetMsg.edit({
         content: null,
-        embeds: [successEmbed],
-        components: [],
-        files: []
+        embeds: [],
+        components: [container],
+        files: [],
+        flags: MessageFlags.IsComponentsV2,
       }).catch(() => null);
     } else {
       await channel.send({
-        embeds: [successEmbed],
-        components: []
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
       }).catch(() => null);
     }
   } catch (err) {
     console.error("[LegitCheck] Błąd podmieniania embeda:", err);
   }
+}
+
+async function handleTestLegitCheckSukcesCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const channel = interaction.channel;
+  if (!channel) return;
+
+  const ticketData = pendingTicketClose.get(channel.id) || {
+    typ: "zakup",
+    co: "50 PLN",
+    serwer: "ANARCHIA LIFESTEAL"
+  };
+
+  await interaction.reply({
+    content: "> `🧪` × Testowe podmienienie embeda na sukces...",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  await replaceLegitCheckEmbedWithSuccess(channel, ticketData);
 }
 
 // Helper for closing ticket anonymously (used by /anonim and button)
