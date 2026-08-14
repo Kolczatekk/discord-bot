@@ -5118,6 +5118,11 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("test-legit-check-wzor")
+    .setDescription("Przetestuj wygląd panelu wygenerowanego po /ticket-zakoncz (wzór + przycisk)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("test-legit-check-sukces")
     .setDescription("Przetestuj podmienienie embeda na sukces w aktualnym tickecie")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -8937,6 +8942,9 @@ async function handleSlashCommand(interaction) {
     case "rozliczeniazaplacil":
     case "rozliczeniezaplacil":
       await handleRozliczenieZaplacilCommand(interaction);
+      break;
+    case "test-legit-check-wzor":
+      await handleTestLegitCheckWzorCommand(interaction);
       break;
     case "test-legit-check-sukces":
       await handleTestLegitCheckSukcesCommand(interaction);
@@ -16700,6 +16708,78 @@ async function handleTestLegitCheckSukcesCommand(interaction) {
   });
 
   await replaceLegitCheckEmbedWithSuccess(channel, ticketData);
+}
+
+async function handleTestLegitCheckWzorCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const legitRepChannelId = "1449840030947217529";
+  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+  const thankLine = "Dziękujemy za zakup w naszym sklepie";
+  const repMessage = `+rep @${interaction.user.username} ZAKUP 50 PLN ANARCHIA LIFESTEAL`;
+
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
+      "```\n" +
+      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
+      "```\n" +
+      `${arrowEmoji} **${thankLine}**\n\n` +
+      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
+      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``,
+    )
+    .setImage("attachment://standard_5.gif");
+
+  const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
+  const gifAttachment = fs.existsSync(gifPath)
+    ? new AttachmentBuilder(gifPath, { name: "standard_5.gif" })
+    : null;
+
+  const anonBtn = new ButtonBuilder()
+    .setCustomId("ticket_anon_close")
+    .setLabel("︲Anonimowo")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji("1521899996914647321");
+  const row = new ActionRowBuilder().addComponents(anonBtn);
+
+  await interaction.reply({
+    content: "> `🧪` × Wysłano testowy panel oczekiwania na legit checka ze wzorem.",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  const payload = {
+    content: `<@${interaction.user.id}>`,
+    allowedMentions: { users: [interaction.user.id] },
+    embeds: [embed],
+    components: [row]
+  };
+  if (gifAttachment) payload.files = [gifAttachment];
+
+  const sentEmbedMsg = await interaction.channel.send(payload).catch(() => null);
+
+  const sentRepMsg = await interaction.channel.send({
+    content: repMessage,
+  }).catch(() => null);
+
+  pendingTicketClose.set(interaction.channelId, {
+    userId: interaction.user.id,
+    commandUserId: interaction.user.id,
+    commandUsername: interaction.user.username,
+    typ: "zakup",
+    co: "50 PLN",
+    serwer: "ANARCHIA LIFESTEAL",
+    awaitingRep: true,
+    legitRepChannelId,
+    embedMessageId: sentEmbedMsg?.id || null,
+    repTextMessageId: sentRepMsg?.id || null,
+    ts: Date.now()
+  });
 }
 
 // Helper for closing ticket anonymously (used by /anonim and button)
