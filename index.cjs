@@ -16363,6 +16363,12 @@ async function handleTicketZakonczCommand(interaction) {
     flags: [MessageFlags.Ephemeral],
   });
 
+  // Wyślij ping osobno nad embedem
+  const pingMsg = await interaction.channel.send({
+    content: `<@${ticketOwnerId}>`,
+    allowedMentions: { users: [ticketOwnerId] },
+  }).catch(() => null);
+
   // Wyślij embed + wzór na ticket
   const sentEmbedMsg = await interaction.channel.send(payload).catch(() => null);
 
@@ -16617,7 +16623,6 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `<@${ticketOwnerId}>\n` +
       `${arrowEmoji} **${thankLine}**\n\n` +
       `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
       `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
@@ -16757,6 +16762,11 @@ async function handleTestLegitCheckWzorCommand(interaction) {
       repMessage,
       interaction.guild?.id || null
     );
+
+    const pingMsg = await interaction.channel.send({
+      content: `<@${interaction.user.id}>`,
+      allowedMentions: { users: [interaction.user.id] },
+    }).catch(() => null);
 
     const sentEmbedMsg = await interaction.channel.send(payload);
 
