@@ -16637,7 +16637,7 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `> 📋 **Wzór do skopiowania:**\n\`${repMessage}\``
+      `> \`📋\` **Wzór do skopiowania:**\n\`${repMessage}\``
     )
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
