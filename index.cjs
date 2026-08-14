@@ -16673,8 +16673,8 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "`📝` × **Pomyślnie wystawiono legit checka.**\n" +
-        `${arrowEmoji} × **Dziękujemy za zakup i zapraszamy ponownie!**`
+        "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
+        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**"
       )
     );
     appendBrandFooterToContainer(container, channel.guild?.id || null);
