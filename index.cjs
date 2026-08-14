@@ -16684,6 +16684,24 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
         `> \`🛒\` × **${thankText}**`
       )
     );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+    const btnPanelKlienta = new ButtonBuilder()
+      .setLabel("︲Panel klienta")
+      .setEmoji("🔥")
+      .setStyle(ButtonStyle.Link)
+      .setURL("https://discord.com/channels/1350446732365926491/1523806115177959590");
+
+    const btnBonusyKlientow = new ButtonBuilder()
+      .setLabel("︲Bonusy klientów")
+      .setEmoji("🏅")
+      .setStyle(ButtonStyle.Link)
+      .setURL("https://discord.com/channels/1350446732365926491/1521896517055807601");
+
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(btnPanelKlienta, btnBonusyKlientow)
+    );
+
     appendBrandFooterToContainer(container, channel.guild?.id || null);
 
     let targetMsg = null;
@@ -16904,7 +16922,7 @@ async function closeTicketAnonymously(channel, guild, executorId) {
     } catch (closeErr) {
       console.error("Błąd zamykania kanału w closeTicketAnonymously:", closeErr);
     }
-  }, 3000);
+  }, 10000);
 }
 
 async function sendLegitCheckInfoMessage(channel) {
@@ -22258,7 +22276,7 @@ client.on(Events.MessageCreate, async (message) => {
                     } catch (closeErr) {
                       console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
                     }
-                  }, 3000);
+                  }, 10000);
                 } catch (err) {
                   console.error("Błąd podczas przetwarzania zamknięcia ticketu (+rep):", err);
                 }
