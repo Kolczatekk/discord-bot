@@ -16338,7 +16338,6 @@ async function handleTicketZakonczCommand(interaction) {
   }
 
   const legitRepChannelId = "1449840030947217529";
-  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
   let thankLine = "Dziękujemy za zakup w naszym sklepie";
   const typLower = typ.toLowerCase();
   if (typLower === "sprzedaż") {
@@ -16350,27 +16349,13 @@ async function handleTicketZakonczCommand(interaction) {
   const verb = typ.toUpperCase();
   const repMessage = `+rep @${interaction.user.username} ${verb} ${formattedCena}${serwer ? ` ${serwer}` : ""}`;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
-      "```\n" +
-      `${arrowEmoji} **${thankLine}**\n\n` +
-      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
-      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``,
-    )
-    .setImage("attachment://standard_5.gif");
-
-  const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
-  const gifAttachment = new AttachmentBuilder(gifPath, { name: "standard_5.gif" });
-
-  const anonBtn = new ButtonBuilder()
-    .setCustomId("ticket_anon_close")
-    .setLabel("︲Anonimowo")
-    .setStyle(ButtonStyle.Secondary)
-    .setEmoji("1521899996914647321");
-  const row = new ActionRowBuilder().addComponents(anonBtn);
+  const payload = buildPendingLegitCheckPayload(
+    ticketOwnerId,
+    thankLine,
+    legitRepChannelId,
+    repMessage,
+    interaction.guild?.id || null
+  );
 
   // Ephemeral potwierdzenie dla sprzedawcy
   await interaction.reply({
@@ -16379,13 +16364,7 @@ async function handleTicketZakonczCommand(interaction) {
   });
 
   // Wyślij embed + wzór na ticket
-  const sentEmbedMsg = await interaction.channel.send({
-    content: `<@${ticketOwnerId}>`,
-    allowedMentions: { users: [ticketOwnerId] },
-    embeds: [embed],
-    files: [gifAttachment],
-    components: [row]
-  }).catch(() => null);
+  const sentEmbedMsg = await interaction.channel.send(payload).catch(() => null);
 
   const sentRepMsg = await interaction.channel.send({
     content: repMessage,
@@ -16624,6 +16603,44 @@ async function handleZamknijZPowodemCommand(interaction) {
   }
 }
 
+function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannelId, repMessage, guildId) {
+  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `> ${arrowEmoji} **${thankLine}**\n\n` +
+      `> ${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
+      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const anonBtn = new ButtonBuilder()
+    .setCustomId("ticket_anon_close")
+    .setLabel("︲Anonimowo")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji("1521899996914647321");
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(anonBtn));
+
+  appendBrandFooterToContainer(container, guildId);
+
+  return {
+    content: `<@${ticketOwnerId}>`,
+    allowedMentions: { users: [ticketOwnerId] },
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
 async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
   try {
     if (ticketData?.repTextMessageId) {
@@ -16634,16 +16651,22 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     }
 
     const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
-    const successEmbed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
         "```\n" +
         "✅ New Shop × LEGIT CHECK\n" +
-        "```\n" +
+        "```"
+      )
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
         "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
         `> ${arrowEmoji} × **Dziękujemy za zakup i zapraszamy ponownie!**`
       )
-      .setBrandFooter();
+    );
+    appendBrandFooterToContainer(container, channel.guild?.id || null);
 
     let targetMsg = null;
     if (ticketData?.embedMessageId) {
@@ -16655,7 +16678,7 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
       if (recent) {
         targetMsg = recent.find((m) =>
           m.author.id === client.user.id &&
-          (m.components.length > 0 || (m.embeds.length > 0 && JSON.stringify(m.embeds).includes("wzór")))
+          m.components && m.components.length > 0
         ) || null;
       }
     }
@@ -16663,14 +16686,15 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     if (targetMsg) {
       await targetMsg.edit({
         content: null,
-        embeds: [successEmbed],
-        components: [],
-        files: []
+        embeds: [],
+        components: [container],
+        files: [],
+        flags: MessageFlags.IsComponentsV2,
       }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] edit error:", err));
     } else {
       await channel.send({
-        embeds: [successEmbed],
-        components: []
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
       }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] send error:", err));
     }
   } catch (err) {
@@ -16714,46 +16738,21 @@ async function handleTestLegitCheckWzorCommand(interaction) {
   }
 
   const legitRepChannelId = "1449840030947217529";
-  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
   const thankLine = "Dziękujemy za zakup w naszym sklepie";
   const repMessage = `+rep @${interaction.user.username} ZAKUP 50 PLN ANARCHIA LIFESTEAL`;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
-      "```\n" +
-      "✅ New Shop × WYSTAW LEGIT CHECK\n" +
-      "```\n" +
-      `${arrowEmoji} **${thankLine}**\n\n` +
-      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
-      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``,
-    )
-    .setImage("attachment://standard_5.gif");
-
-  const gifPath = path.join(__dirname, "attached_assets", "standard (5).gif");
-  const gifAttachment = fs.existsSync(gifPath)
-    ? new AttachmentBuilder(gifPath, { name: "standard_5.gif" })
-    : null;
-
-  const anonBtn = new ButtonBuilder()
-    .setCustomId("ticket_anon_close")
-    .setLabel("︲Anonimowo")
-    .setStyle(ButtonStyle.Secondary)
-    .setEmoji("1521899996914647321");
-  const row = new ActionRowBuilder().addComponents(anonBtn);
+  const payload = buildPendingLegitCheckPayload(
+    interaction.user.id,
+    thankLine,
+    legitRepChannelId,
+    repMessage,
+    interaction.guild?.id || null
+  );
 
   await interaction.reply({
     content: "> `🧪` × Wysłano testowy panel oczekiwania na legit checka ze wzorem.",
     flags: [MessageFlags.Ephemeral],
   });
-
-  const payload = {
-    content: `<@${interaction.user.id}>`,
-    allowedMentions: { users: [interaction.user.id] },
-    embeds: [embed],
-    components: [row]
-  };
-  if (gifAttachment) payload.files = [gifAttachment];
 
   const sentEmbedMsg = await interaction.channel.send(payload).catch(() => null);
 
