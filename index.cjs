@@ -16633,22 +16633,17 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
       }
     }
 
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
+    const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+    const successEmbed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
         "```\n" +
         "✅ New Shop × LEGIT CHECK\n" +
-        "```"
-      )
-    );
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
+        "```\n" +
         "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
-        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**"
+        `> ${arrowEmoji} × **Dziękujemy za zakup i zapraszamy ponownie!**`
       )
-    );
-    appendBrandFooterToContainer(container, channel.guild?.id || null);
+      .setBrandFooter();
 
     let targetMsg = null;
     if (ticketData?.embedMessageId) {
@@ -16668,16 +16663,15 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     if (targetMsg) {
       await targetMsg.edit({
         content: null,
-        embeds: [],
-        components: [container],
-        files: [],
-        flags: MessageFlags.IsComponentsV2,
-      }).catch(() => null);
+        embeds: [successEmbed],
+        components: [],
+        files: []
+      }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] edit error:", err));
     } else {
       await channel.send({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2,
-      }).catch(() => null);
+        embeds: [successEmbed],
+        components: []
+      }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] send error:", err));
     }
   } catch (err) {
     console.error("[LegitCheck] Błąd podmieniania embeda:", err);
