@@ -16661,7 +16661,14 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
       }
     }
 
-    const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+    let thankText = "Dziękujemy za zakup i zapraszamy ponownie!";
+    const typLower = String(ticketData?.typ || "").toLowerCase();
+    if (typLower === "sprzedaż" || typLower === "sprzedaz") {
+      thankText = "Dziękujemy za sprzedaż i zapraszamy ponownie!";
+    } else if (typLower === "wręczył nagrodę" || typLower === "wreczyl nagrode") {
+      thankText = "Nagroda została nadana i zapraszamy ponownie!";
+    }
+
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -16674,7 +16681,7 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
-        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**"
+        `> \`🛒\` × **${thankText}**`
       )
     );
     appendBrandFooterToContainer(container, channel.guild?.id || null);
