@@ -16633,14 +16633,13 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
         "```"
       )
     );
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
         "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**"
       )
     );
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     appendBrandFooterToContainer(container, channel.guild?.id || null);
 
     let targetMsg = null;
