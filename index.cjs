@@ -16623,9 +16623,21 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${arrowEmoji} **${thankLine}**\n\n` +
-      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
-      `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
+      `> ${arrowEmoji} **${thankLine}**`
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `> ${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>`
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `> 📋 **Wzór do skopiowania:**\n\`${repMessage}\``
     )
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
