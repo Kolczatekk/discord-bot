@@ -16311,17 +16311,17 @@ async function handleTicketZakonczCommand(interaction) {
   });
 
   // Wyślij embed + wzór na ticket
-  await interaction.channel.send({
+  const sentEmbedMsg = await interaction.channel.send({
     content: `<@${ticketOwnerId}>`,
     allowedMentions: { users: [ticketOwnerId] },
     embeds: [embed],
     files: [gifAttachment],
     components: [row]
-  });
+  }).catch(() => null);
 
-  await interaction.channel.send({
+  const sentRepMsg = await interaction.channel.send({
     content: repMessage,
-  });
+  }).catch(() => null);
 
   // Oznacz właściciela ticketu na kanałach do opinii/repa i usuń ping po chwili
   try {
@@ -16360,6 +16360,8 @@ async function handleTicketZakonczCommand(interaction) {
     serwer: serwer,
     awaitingRep: true,
     legitRepChannelId,
+    embedMessageId: sentEmbedMsg?.id || null,
+    repTextMessageId: sentRepMsg?.id || null,
     ts: Date.now()
   });
 
@@ -16554,6 +16556,59 @@ async function handleZamknijZPowodemCommand(interaction) {
   }
 }
 
+async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
+  try {
+    if (ticketData?.repTextMessageId) {
+      const repMsg = await channel.messages.fetch(ticketData.repTextMessageId).catch(() => null);
+      if (repMsg && repMsg.deletable) {
+        await repMsg.delete().catch(() => null);
+      }
+    }
+
+    const successEmbed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
+        "```\n" +
+        "✅ New Shop × LEGIT CHECK\n" +
+        "```\n" +
+        "> `✅` × **Pomyślnie wystawiono legit checka.**\n" +
+        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**"
+      )
+      .setBrandFooter();
+
+    let targetMsg = null;
+    if (ticketData?.embedMessageId) {
+      targetMsg = await channel.messages.fetch(ticketData.embedMessageId).catch(() => null);
+    }
+
+    if (!targetMsg && channel.messages) {
+      const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+      if (recent) {
+        targetMsg = recent.find((m) =>
+          m.author.id === client.user.id &&
+          (m.components.length > 0 || (m.embeds.length > 0 && JSON.stringify(m.embeds).includes("wzór")))
+        ) || null;
+      }
+    }
+
+    if (targetMsg) {
+      await targetMsg.edit({
+        content: null,
+        embeds: [successEmbed],
+        components: [],
+        files: []
+      }).catch(() => null);
+    } else {
+      await channel.send({
+        embeds: [successEmbed],
+        components: []
+      }).catch(() => null);
+    }
+  } catch (err) {
+    console.error("[LegitCheck] Błąd podmieniania embeda:", err);
+  }
+}
+
 // Helper for closing ticket anonymously (used by /anonim and button)
 async function closeTicketAnonymously(channel, guild, executorId) {
   const ticketData = pendingTicketClose.get(channel.id);
@@ -16625,15 +16680,25 @@ async function closeTicketAnonymously(channel, guild, executorId) {
     console.error("[legit-check] Błąd panelu po anonimowym checku:", error),
   );
 
+  // Podmień embed na sukces i usuń stary wzór + przycisk
+  await replaceLegitCheckEmbedWithSuccess(channel, ticketData);
+
   const ticketMeta = ticketOwners.get(channel.id) || null;
-  await archiveTicketOnClose(channel, executorId, ticketMeta, {
-    closeMethod: "Automatyczne zamknięcie po anonimowym legit checku",
-  }).catch(() => null);
-  
-  await channel.delete('Ticket zamknięty po anonimowym legit checku');
-  pendingTicketClose.delete(channel.id);
-  await commitRewardTicketClaim(channel.id).catch(() => null);
-  ticketOwners.delete(channel.id);
+
+  setTimeout(async () => {
+    try {
+      await archiveTicketOnClose(channel, executorId, ticketMeta, {
+        closeMethod: "Automatyczne zamknięcie po anonimowym legit checku",
+      }).catch(() => null);
+
+      await channel.delete('Ticket zamknięty po anonimowym legit checku').catch(() => null);
+      pendingTicketClose.delete(channel.id);
+      await commitRewardTicketClaim(channel.id).catch(() => null);
+      ticketOwners.delete(channel.id);
+    } catch (closeErr) {
+      console.error("Błąd zamykania kanału w closeTicketAnonymously:", closeErr);
+    }
+  }, 3000);
 }
 
 async function sendLegitCheckInfoMessage(channel) {
@@ -21964,22 +22029,32 @@ client.on(Events.MessageCreate, async (message) => {
               const ticketChannel = await client.channels.fetch(ticketChannelId).catch(() => null);
               if (ticketChannel) {
                 try {
+                  // Podmień embed na sukces i usuń stary wzór + przycisk
+                  await replaceLegitCheckEmbedWithSuccess(ticketChannel, ticketData);
+
                   const ticketMeta = ticketOwners.get(ticketChannelId) || null;
-                  await archiveTicketOnClose(
-                    ticketChannel,
-                    message.author.id,
-                    ticketMeta,
-                    {
-                      closeMethod: "Automatyczne zamknięcie po +rep",
-                    },
-                  ).catch((e) => console.error("archiveTicketOnClose error (+rep):", e));
-                  await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep');
-                  pendingTicketClose.delete(ticketChannelId);
-                  await commitRewardTicketClaim(ticketChannelId).catch(() => null);
-                  ticketOwners.delete(ticketChannelId);
-                  console.log(`Ticket ${ticketChannelId} został zamknięty po +rep`);
-                } catch (closeErr) {
-                  console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
+
+                  setTimeout(async () => {
+                    try {
+                      await archiveTicketOnClose(
+                        ticketChannel,
+                        message.author.id,
+                        ticketMeta,
+                        {
+                          closeMethod: "Automatyczne zamknięcie po +rep",
+                        },
+                      ).catch((e) => console.error("archiveTicketOnClose error (+rep):", e));
+                      await ticketChannel.delete('Ticket zamknięty po otrzymaniu +rep').catch(() => null);
+                      pendingTicketClose.delete(ticketChannelId);
+                      await commitRewardTicketClaim(ticketChannelId).catch(() => null);
+                      ticketOwners.delete(ticketChannelId);
+                      console.log(`Ticket ${ticketChannelId} został zamknięty po +rep`);
+                    } catch (closeErr) {
+                      console.error(`Błąd zamykania ticketu ${ticketChannelId}:`, closeErr);
+                    }
+                  }, 3000);
+                } catch (err) {
+                  console.error("Błąd podczas przetwarzania zamknięcia ticketu (+rep):", err);
                 }
               }
             }
