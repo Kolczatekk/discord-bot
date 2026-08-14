@@ -16627,7 +16627,7 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
     .setCustomId("ticket_anon_close")
     .setLabel("︲Anonimowo")
     .setStyle(ButtonStyle.Secondary)
-    .setEmoji("1521899996914647321");
+    .setEmoji({ id: "1521899996914647321" });
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(anonBtn));
 
