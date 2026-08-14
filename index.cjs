@@ -16686,17 +16686,30 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     );
     container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
+    const shopEmoji = findGuildEmojiByName(channel.guild?.id, "shop");
+    const kasaEmoji = findGuildEmojiByName(channel.guild?.id, "kasa_3");
+
     const btnPanelKlienta = new ButtonBuilder()
       .setLabel("︲Panel klienta")
-      .setEmoji("🔥")
       .setStyle(ButtonStyle.Link)
       .setURL("https://discord.com/channels/1350446732365926491/1523806115177959590");
 
+    if (shopEmoji) {
+      btnPanelKlienta.setEmoji({ id: shopEmoji.id, name: shopEmoji.name, animated: shopEmoji.animated });
+    } else {
+      btnPanelKlienta.setEmoji("🛒");
+    }
+
     const btnBonusyKlientow = new ButtonBuilder()
       .setLabel("︲Bonusy klientów")
-      .setEmoji("🏅")
       .setStyle(ButtonStyle.Link)
       .setURL("https://discord.com/channels/1350446732365926491/1521896517055807601");
+
+    if (kasaEmoji) {
+      btnBonusyKlientow.setEmoji({ id: kasaEmoji.id, name: kasaEmoji.name, animated: kasaEmoji.animated });
+    } else {
+      btnBonusyKlientow.setEmoji("💵");
+    }
 
     container.addActionRowComponents(
       new ActionRowBuilder().addComponents(btnPanelKlienta, btnBonusyKlientow)
