@@ -15865,9 +15865,9 @@ async function handlePanelKlientaSpent(interaction) {
 
     const roleTiers = [
       { name: "Klient 200+", min: 200, roleId: "1521924538265243738" },
-      { name: "Rzeźnik 500+", min: 500, roleId: "1458145139938562058" },
-      { name: "Niszczyciel 1000+", min: 1000, roleId: "1521924656792080384" },
-      { name: "Demon 2000+", min: 2000, roleId: "1521924963190177924" }
+      { name: "Klient 500+", min: 500, roleId: "1458145139938562058" },
+      { name: "Klient 1000+", min: 1000, roleId: "1521924656792080384" },
+      { name: "Klient 2000+", min: 2000, roleId: "1521924963190177924" }
     ];
 
     let nextTier = null;
@@ -17338,9 +17338,9 @@ async function handleSprawdzBonusyButton(interaction) {
 
     const roleTiers = [
       { name: "Klient 200+", min: 200, roleId: "1521924538265243738" },
-      { name: "Rzeźnik 500+", min: 500, roleId: "1458145139938562058" },
-      { name: "Niszczyciel 1000+", min: 1000, roleId: "1521924656792080384" },
-      { name: "Demon 2000+", min: 2000, roleId: "1521924963190177924" }
+      { name: "Klient 500+", min: 500, roleId: "1458145139938562058" },
+      { name: "Klient 1000+", min: 1000, roleId: "1521924656792080384" },
+      { name: "Klient 2000+", min: 2000, roleId: "1521924963190177924" }
     ];
 
     let nextTier = null;
