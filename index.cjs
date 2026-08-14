@@ -16605,24 +16605,17 @@ async function handleZamknijZPowodemCommand(interaction) {
 
 function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannelId, repMessage, guildId) {
   const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
-  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
+  const embed = new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(
       "```\n" +
       "✅ New Shop × WYSTAW LEGIT CHECK\n" +
-      "```"
-    )
-  );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `> <@${ticketOwnerId}>\n` +
-      `> ${arrowEmoji} **${thankLine}**\n\n` +
-      `> ${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
+      "```\n" +
+      `${arrowEmoji} **${thankLine}**\n\n` +
+      `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
       `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
     )
-  );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    .setBrandFooter();
 
   const anonBtn = new ButtonBuilder()
     .setCustomId("ticket_anon_close")
@@ -16636,13 +16629,13 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
     anonBtn.setEmoji({ id: "1521899996914647321", name: "legit_shield", animated: true });
   }
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(anonBtn));
-
-  appendBrandFooterToContainer(container, guildId);
+  const row = new ActionRowBuilder().addComponents(anonBtn);
 
   return {
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
+    content: `<@${ticketOwnerId}>`,
+    allowedMentions: { users: [ticketOwnerId] },
+    embeds: [embed],
+    components: [row]
   };
 }
 
@@ -16656,22 +16649,16 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     }
 
     const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
-    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
+    const successEmbed = new EmbedBuilder()
+      .setColor(COLOR_BLUE)
+      .setDescription(
         "```\n" +
         "✅ New Shop × LEGIT CHECK\n" +
-        "```"
-      )
-    );
-    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
+        "```\n" +
         "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
         `> ${arrowEmoji} × **Dziękujemy za zakup i zapraszamy ponownie!**`
       )
-    );
-    appendBrandFooterToContainer(container, channel.guild?.id || null);
+      .setBrandFooter();
 
     let targetMsg = null;
     if (ticketData?.embedMessageId) {
@@ -16683,7 +16670,7 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
       if (recent) {
         targetMsg = recent.find((m) =>
           m.author.id === client.user.id &&
-          m.components && m.components.length > 0
+          (m.components.length > 0 || (m.embeds.length > 0 && JSON.stringify(m.embeds).includes("WYSTAW LEGIT CHECK")))
         ) || null;
       }
     }
@@ -16691,15 +16678,14 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     if (targetMsg) {
       await targetMsg.edit({
         content: null,
-        embeds: [],
-        components: [container],
-        files: [],
-        flags: MessageFlags.IsComponentsV2,
+        embeds: [successEmbed],
+        components: [],
+        files: []
       }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] edit error:", err));
     } else {
       await channel.send({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2,
+        embeds: [successEmbed],
+        components: []
       }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] send error:", err));
     }
   } catch (err) {
