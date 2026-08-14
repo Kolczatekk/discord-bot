@@ -25203,19 +25203,27 @@ const weeklySales = new Map(); // userId -> { amount, lastUpdate }
 let rozliczeniaPanelMessageId = null;
 
 // Funkcja do wysyłania wiadomości o rozliczeniach
-async function sendRozliczeniaMessage() {
+async function sendRozliczeniaMessage(options = {}) {
+  const force = typeof options === "object" && options?.force === true;
   try {
-    const channel = await client.channels.fetch(ROZLICZENIA_CHANNEL_ID);
+    const channel = await client.channels.fetch(ROZLICZENIA_CHANNEL_ID).catch(() => null);
     if (!channel) return;
 
-    // Usuń starą wiadomość panelu po zapisanym ID
+    const fetched = await channel.messages.fetch({ limit: 5 }).catch(() => null);
+    const lastMsg = fetched?.first();
+
+    if (!force && lastMsg && lastMsg.author.id === client.user.id && JSON.stringify(lastMsg.toJSON()).includes("rozliczenie_dodaj_btn")) {
+      rozliczeniaPanelMessageId = lastMsg.id;
+      return;
+    }
+
+    // Usun stara wiadomosc panelu po zapisanym ID
     if (rozliczeniaPanelMessageId) {
       await channel.messages.delete(rozliczeniaPanelMessageId).catch(() => null);
       rozliczeniaPanelMessageId = null;
     }
 
-    // Awaryjnie usuń też wszystkie stare panele bota z kanału (np. po restarcie)
-    const fetched = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    // Awaryjnie usun tez wszystkie stare panele bota z kanalu (np. po restarcie)
     if (fetched && fetched.size > 0) {
       const oldPanels = fetched.filter(msg =>
         msg.author.id === client.user.id &&
