@@ -16626,8 +16626,14 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
   const anonBtn = new ButtonBuilder()
     .setCustomId("ticket_anon_close")
     .setLabel("︲Anonimowo")
-    .setStyle(ButtonStyle.Secondary)
-    .setEmoji({ id: "1521899996914647321" });
+    .setStyle(ButtonStyle.Secondary);
+
+  const customEmoji = findGuildEmojiByName(guildId, "legit_shield") || findGuildEmojiByName(guildId, "anonim");
+  if (customEmoji) {
+    anonBtn.setEmoji({ id: customEmoji.id, name: customEmoji.name, animated: customEmoji.animated });
+  } else {
+    anonBtn.setEmoji({ id: "1521899996914647321", name: "legit_shield", animated: true });
+  }
 
   container.addActionRowComponents(new ActionRowBuilder().addComponents(anonBtn));
 
@@ -16737,42 +16743,50 @@ async function handleTestLegitCheckWzorCommand(interaction) {
     return;
   }
 
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
   const legitRepChannelId = "1449840030947217529";
   const thankLine = "Dziękujemy za zakup w naszym sklepie";
   const repMessage = `+rep @${interaction.user.username} ZAKUP 50 PLN ANARCHIA LIFESTEAL`;
 
-  const payload = buildPendingLegitCheckPayload(
-    interaction.user.id,
-    thankLine,
-    legitRepChannelId,
-    repMessage,
-    interaction.guild?.id || null
-  );
+  try {
+    const payload = buildPendingLegitCheckPayload(
+      interaction.user.id,
+      thankLine,
+      legitRepChannelId,
+      repMessage,
+      interaction.guild?.id || null
+    );
 
-  await interaction.reply({
-    content: "> `🧪` × Wysłano testowy panel oczekiwania na legit checka ze wzorem.",
-    flags: [MessageFlags.Ephemeral],
-  });
+    const sentEmbedMsg = await interaction.channel.send(payload);
 
-  const sentEmbedMsg = await interaction.channel.send(payload).catch(() => null);
+    const sentRepMsg = await interaction.channel.send({
+      content: repMessage,
+    }).catch(() => null);
 
-  const sentRepMsg = await interaction.channel.send({
-    content: repMessage,
-  }).catch(() => null);
+    pendingTicketClose.set(interaction.channelId, {
+      userId: interaction.user.id,
+      commandUserId: interaction.user.id,
+      commandUsername: interaction.user.username,
+      typ: "zakup",
+      co: "50 PLN",
+      serwer: "ANARCHIA LIFESTEAL",
+      awaitingRep: true,
+      legitRepChannelId,
+      embedMessageId: sentEmbedMsg?.id || null,
+      repTextMessageId: sentRepMsg?.id || null,
+      ts: Date.now()
+    });
 
-  pendingTicketClose.set(interaction.channelId, {
-    userId: interaction.user.id,
-    commandUserId: interaction.user.id,
-    commandUsername: interaction.user.username,
-    typ: "zakup",
-    co: "50 PLN",
-    serwer: "ANARCHIA LIFESTEAL",
-    awaitingRep: true,
-    legitRepChannelId,
-    embedMessageId: sentEmbedMsg?.id || null,
-    repTextMessageId: sentRepMsg?.id || null,
-    ts: Date.now()
-  });
+    await interaction.editReply({
+      content: "> `🧪` × Wysłano testowy panel oczekiwania na legit checka ze wzorem.",
+    });
+  } catch (err) {
+    console.error("[handleTestLegitCheckWzorCommand] Błąd:", err);
+    await interaction.editReply({
+      content: `> \`❌\` × Błąd wysyłania panelu: **${err.message}**`,
+    });
+  }
 }
 
 // Helper for closing ticket anonymously (used by /anonim and button)
