@@ -16616,6 +16616,7 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
+      `> <@${ticketOwnerId}>\n` +
       `> ${arrowEmoji} **${thankLine}**\n\n` +
       `> ${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
       `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
@@ -16640,8 +16641,6 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
   appendBrandFooterToContainer(container, guildId);
 
   return {
-    content: `<@${ticketOwnerId}>`,
-    allowedMentions: { users: [ticketOwnerId] },
     components: [container],
     flags: MessageFlags.IsComponentsV2,
   };
