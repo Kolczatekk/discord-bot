@@ -15864,10 +15864,10 @@ async function handlePanelKlientaSpent(interaction) {
     const spent = await db.getUserSpent(userId, guild.id);
 
     const roleTiers = [
-      { name: "Klient (200+)", min: 200, roleId: "1521924538265243738" },
-      { name: "Rzeźnik (500+)", min: 500, roleId: "1458145139938562058" },
-      { name: "Niszczyciel (1000+)", min: 1000, roleId: "1521924656792080384" },
-      { name: "Demon (2000+)", min: 2000, roleId: "1521924963190177924" }
+      { name: "Klient 200+", min: 200, roleId: "1521924538265243738" },
+      { name: "Rzeźnik 500+", min: 500, roleId: "1458145139938562058" },
+      { name: "Niszczyciel 1000+", min: 1000, roleId: "1521924656792080384" },
+      { name: "Demon 2000+", min: 2000, roleId: "1521924963190177924" }
     ];
 
     let nextTier = null;
@@ -15882,7 +15882,7 @@ async function handlePanelKlientaSpent(interaction) {
     const ownedRoles = [];
     for (const tier of roleTiers) {
       if (member && member.roles.cache.has(tier.roleId)) {
-        ownedRoles.push(`<@&${tier.roleId}>`);
+        ownedRoles.push(`**${tier.name}**`);
       }
     }
 
@@ -15895,7 +15895,7 @@ async function handlePanelKlientaSpent(interaction) {
 
     let line3 = "";
     if (nextTier) {
-      line3 = `<a:arrowwhite:1491476759290449984> ×  Do __następnej rangi__ (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
+      line3 = `<a:arrowwhite:1491476759290449984> ×  Do __następnej rangi__ (**${nextTier.name}**) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
     } else {
       line3 = `<a:arrowwhite:1491476759290449984> ×  Osiągnąłeś już __najwyższą rangę__ bonusową!`;
     }
@@ -17337,10 +17337,10 @@ async function handleSprawdzBonusyButton(interaction) {
     const spent = await db.getUserSpent(userId, guild.id);
 
     const roleTiers = [
-      { name: "Klient (200+)", min: 200, roleId: "1521924538265243738" },
-      { name: "Rzeźnik (500+)", min: 500, roleId: "1458145139938562058" },
-      { name: "Niszczyciel (1000+)", min: 1000, roleId: "1521924656792080384" },
-      { name: "Demon (2000+)", min: 2000, roleId: "1521924963190177924" }
+      { name: "Klient 200+", min: 200, roleId: "1521924538265243738" },
+      { name: "Rzeźnik 500+", min: 500, roleId: "1458145139938562058" },
+      { name: "Niszczyciel 1000+", min: 1000, roleId: "1521924656792080384" },
+      { name: "Demon 2000+", min: 2000, roleId: "1521924963190177924" }
     ];
 
     let nextTier = null;
@@ -17355,22 +17355,22 @@ async function handleSprawdzBonusyButton(interaction) {
     const ownedRoles = [];
     for (const tier of roleTiers) {
       if (member && member.roles.cache.has(tier.roleId)) {
-        ownedRoles.push(`<@&${tier.roleId}>`);
+        ownedRoles.push(`**${tier.name}**`);
       }
     }
 
-    let line1 = `<a:arrowwhite:1491476759290449984> × Aktualnie __nie posiadasz__ żadnej __rangi__. `;
+    let line1 = `<a:arrowwhite:1491476759290449984> ×  Aktualnie __nie posiadasz__ żadnej __rangi__. `;
     if (ownedRoles.length > 0) {
-      line1 = `<a:arrowwhite:1491476759290449984> × **Posiadasz** __rangę__ ${ownedRoles.join(", ")}.`;
+      line1 = `<a:arrowwhite:1491476759290449984> ×  **Posiadasz** __rangę__ ${ownedRoles.join(", ")}.`;
     }
 
-    const line2 = `<a:arrowwhite:1491476759290449984> × Łącznie __wydałeś__ **${spent.toFixed(0)} PLN** w naszym sklepie.`;
+    const line2 = `<a:arrowwhite:1491476759290449984> ×  Łącznie __wydałeś__ **${spent.toFixed(0)} PLN** w naszym sklepie.`;
 
     let line3 = "";
     if (nextTier) {
-      line3 = `<a:arrowwhite:1491476759290449984> × Do __następnej rangi__ (<@&${nextTier.roleId}>) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
+      line3 = `<a:arrowwhite:1491476759290449984> ×  Do __następnej rangi__ (**${nextTier.name}**) brakuje Ci **${(nextTier.min - spent).toFixed(0)} PLN**.`;
     } else {
-      line3 = `<a:arrowwhite:1491476759290449984> × Osiągnąłeś już __najwyższą rangę__ bonusową!`;
+      line3 = `<a:arrowwhite:1491476759290449984> ×  Osiągnąłeś już __najwyższą rangę__ bonusową!`;
     }
 
     const descContent = [
