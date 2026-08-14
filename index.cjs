@@ -5077,14 +5077,12 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
-    .setName("test-rozliczenia-reset00")
-    .setDescription("Testowo wykonaj akcję z niedzieli 00:00 (zabranie limitów)")
+    .setName("test-rozliczenia-ping")
+    .setDescription("Przetestuj wysłanie krótkiego pinga rozliczenia na kanał rozliczeń (usuwa się po 5s)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .toJSON(),
-  new SlashCommandBuilder()
-    .setName("test-rozliczenia-deadline20")
-    .setDescription("Testowo wykonaj akcję z niedzieli 20:00 (nadanie roli ZAWIESZONY)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Sprzedawca do oznaczenia").setRequired(true)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("rozliczenieprowizja")
@@ -8893,11 +8891,8 @@ async function handleSlashCommand(interaction) {
     case "rozliczeniezaplacil":
       await handleRozliczenieZaplacilCommand(interaction);
       break;
-    case "test-rozliczenia-reset00":
-      await handleTestRozliczeniaReset00Command(interaction);
-      break;
-    case "test-rozliczenia-deadline20":
-      await handleTestRozliczeniaDeadline20Command(interaction);
+    case "test-rozliczenia-ping":
+      await handleTestRozliczeniaPingCommand(interaction);
       break;
     case "rozliczenieprowizja":
     case "rozliczenie-prowizja":
@@ -9355,48 +9350,63 @@ async function handleRozliczenieProwizjaCommand(interaction) {
 
   await sendRozliczeniaStatusReport(interaction.guild);
 }
-async function handleTestRozliczeniaReset00Command(interaction) {
-  const isOwner = interaction.user.id === interaction.guild?.ownerId;
-  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
-                  interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels);
-
-  if (!isAdmin && !isOwner) {
+async function handleTestRozliczeniaPingCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
     await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral]
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetSeller = interaction.options.getUser("sprzedawca");
+  if (!targetSeller) {
+    await interaction.reply({
+      content: "> `❌` × Wybierz sprzedawcę.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (targetSeller.id === "1305200545979437129") {
+    await interaction.reply({
+      content: "> `ℹ️` × Użytkownik <@1305200545979437129> to właściciel — jest wykluczony z powiadomień o rozliczeniach.",
+      flags: [MessageFlags.Ephemeral],
     });
     return;
   }
 
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-  const count = await executeSundayReset00(interaction.guild);
-  await sendRozliczeniaStatusReport(interaction.guild, true);
-  await interaction.editReply({
-    content: `> \`⏰\` × **[TEST 00:00]** Wykonano testowy reset z niedzieli 00:00.\n> \`🔒\` × **Odebrano rangi limitów:** dla ${count} osób posiadających niezapłacone rozliczenia.\n> \`📊\` × **Wysłano raport statusu na kanał rozliczeń.**`
-  });
-  setTimeout(sendRozliczeniaMessage, 1000);
-}
 
-async function handleTestRozliczeniaDeadline20Command(interaction) {
-  const isOwner = interaction.user.id === interaction.guild?.ownerId;
-  const isAdmin = interaction.member?.permissions?.has(PermissionFlagsBits.Administrator) ||
-                  interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+  try {
+    const rozliczeniaChannel = await client.channels.fetch("1449162620807675935").catch(() => null);
+    if (!rozliczeniaChannel || !rozliczeniaChannel.isTextBased()) {
+      await interaction.editReply({
+        content: "> `❌` × Nie udało się odnaleźć kanału rozliczeń (1449162620807675935).",
+      });
+      return;
+    }
 
-  if (!isAdmin && !isOwner) {
-    await interaction.reply({
-      content: "> `❗` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral]
+    const pingMsg = await rozliczeniaChannel.send({
+      content: `<@${targetSeller.id}>`,
+      allowedMentions: { users: [targetSeller.id] },
+    }).catch(() => null);
+
+    if (pingMsg && pingMsg.deletable) {
+      setTimeout(() => {
+        pingMsg.delete().catch(() => null);
+      }, 5000);
+    }
+
+    await interaction.editReply({
+      content: `> \`✅\` × **Wysłano testowy ping** dla <@${targetSeller.id}> na kanał <#1449162620807675935> (zostanie usunięty po 5s).`,
     });
-    return;
+  } catch (err) {
+    console.error("Błąd w handleTestRozliczeniaPingCommand:", err);
+    await interaction.editReply({
+      content: "> `❌` × Błąd podczas testowania pinga.",
+    });
   }
-
-  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-  const count = await executeSundayDeadline20(interaction.guild);
-  await sendRozliczeniaStatusReport(interaction.guild);
-  await interaction.editReply({
-    content: `> \`🔴\` × **[TEST 20:00]** Wykonano testowy deadline z niedzieli 20:00.\n> \`⛔\` × **Nadano rolę ZAWIESZONY:** dla ${count} osób, które nie zapłaciły rozliczenia.\n> \`📊\` × **Zaktualizowano raport statusu na kanale rozliczeń.**`
-  });
-  setTimeout(sendRozliczeniaMessage, 1000);
 }
 
 // Handler dla komendy /rozliczeniezakoncz
@@ -16571,8 +16581,9 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
         "```\n" +
         "✅ New Shop × LEGIT CHECK\n" +
         "```\n" +
-        "> `✅` × **Pomyślnie wystawiono legit checka.**\n" +
-        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**"
+        "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
+        "> `🛒` × **Dziękujemy za zakup i zapraszamy ponownie!**\n\n" +
+        "─────────────────────────"
       )
       .setBrandFooter();
 
@@ -16653,7 +16664,7 @@ async function closeTicketAnonymously(channel, guild, executorId) {
     sellerTicketCounts.set(ticketData.commandUserId, current + 1);
   }
 
-  if (String(ticketData.typ || "").toLowerCase() === "zakup") {
+  if (String(ticketData.typ || "").toLowerCase() === "zakup" && String(ticketData.commandUserId) !== "1305200545979437129") {
     try {
       const rozliczeniaChannel = await client.channels.fetch("1449162620807675935").catch(() => null);
       if (rozliczeniaChannel && rozliczeniaChannel.isTextBased()) {
@@ -22004,7 +22015,7 @@ client.on(Events.MessageCreate, async (message) => {
             if (mentionMatchesSeller || usernameIncluded) {
               console.log(`Znaleziono ticket ${ticketChannelId} - twórca ticketu ${senderId} wysłał +rep dla ${expectedUsername}`);
               
-              if (String(ticketData.typ || "").toLowerCase() === "zakup" || parsedRep?.verb === "ZAKUP") {
+              if ((String(ticketData.typ || "").toLowerCase() === "zakup" || parsedRep?.verb === "ZAKUP") && String(expectedId) !== "1305200545979437129") {
                 try {
                   const rozliczeniaChannel = await client.channels.fetch("1449162620807675935").catch(() => null);
                   if (rozliczeniaChannel && rozliczeniaChannel.isTextBased()) {
