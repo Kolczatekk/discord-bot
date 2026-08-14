@@ -16605,17 +16605,25 @@ async function handleZamknijZPowodemCommand(interaction) {
 
 function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannelId, repMessage, guildId) {
   const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
       "```\n" +
       "✅ New Shop × WYSTAW LEGIT CHECK\n" +
-      "```\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `<@${ticketOwnerId}>\n` +
       `${arrowEmoji} **${thankLine}**\n\n` +
       `${arrowEmoji} **Aby zamknąć ticket wyślij legit checka na kanał**\n<#${legitRepChannelId}>\n\n` +
       `📋 **Wzór do skopiowania:**\n\`${repMessage}\``
     )
-    .setBrandFooter();
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
   const anonBtn = new ButtonBuilder()
     .setCustomId("ticket_anon_close")
@@ -16629,13 +16637,13 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
     anonBtn.setEmoji({ id: "1521899996914647321", name: "legit_shield", animated: true });
   }
 
-  const row = new ActionRowBuilder().addComponents(anonBtn);
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(anonBtn));
+
+  appendBrandFooterToContainer(container, guildId);
 
   return {
-    content: `<@${ticketOwnerId}>`,
-    allowedMentions: { users: [ticketOwnerId] },
-    embeds: [embed],
-    components: [row]
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
   };
 }
 
@@ -16649,16 +16657,22 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     }
 
     const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
-    const successEmbed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
+    const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
         "```\n" +
         "✅ New Shop × LEGIT CHECK\n" +
-        "```\n" +
-        "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
-        `> ${arrowEmoji} × **Dziękujemy za zakup i zapraszamy ponownie!**`
+        "```"
       )
-      .setBrandFooter();
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "`📝` × **Pomyślnie wystawiono legit checka.**\n" +
+        `${arrowEmoji} × **Dziękujemy za zakup i zapraszamy ponownie!**`
+      )
+    );
+    appendBrandFooterToContainer(container, channel.guild?.id || null);
 
     let targetMsg = null;
     if (ticketData?.embedMessageId) {
@@ -16670,7 +16684,7 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
       if (recent) {
         targetMsg = recent.find((m) =>
           m.author.id === client.user.id &&
-          (m.components.length > 0 || (m.embeds.length > 0 && JSON.stringify(m.embeds).includes("WYSTAW LEGIT CHECK")))
+          m.components && m.components.length > 0
         ) || null;
       }
     }
@@ -16678,14 +16692,15 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     if (targetMsg) {
       await targetMsg.edit({
         content: null,
-        embeds: [successEmbed],
-        components: [],
-        files: []
+        embeds: [],
+        components: [container],
+        files: [],
+        flags: MessageFlags.IsComponentsV2,
       }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] edit error:", err));
     } else {
       await channel.send({
-        embeds: [successEmbed],
-        components: []
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
       }).catch((err) => console.error("[replaceLegitCheckEmbedWithSuccess] send error:", err));
     }
   } catch (err) {
