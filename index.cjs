@@ -16785,6 +16785,8 @@ async function handleTestLegitCheckWzorCommand(interaction) {
       legitRepChannelId,
       embedMessageId: sentEmbedMsg?.id || null,
       repTextMessageId: sentRepMsg?.id || null,
+      pingMessageId: pingMsg?.id || null,
+      isTest: true,
       ts: Date.now()
     });
 
@@ -16804,6 +16806,13 @@ async function closeTicketAnonymously(channel, guild, executorId) {
   const ticketData = pendingTicketClose.get(channel.id);
   if (!ticketData || !ticketData.awaitingRep) {
     throw new Error("Brak oczekującego legit checka! Najpierw użyj komendy **/ticket-zakoncz**.");
+  }
+
+  // Jeśli to tylko test komendą /test-legit-check-wzor, tylko podmień embed bez wysyłania prawdziwego repa i bez zamykania kanału
+  if (ticketData.isTest) {
+    await replaceLegitCheckEmbedWithSuccess(channel, ticketData);
+    pendingTicketClose.delete(channel.id);
+    return;
   }
 
   const repChannel = await client.channels.fetch(ticketData.legitRepChannelId).catch(() => null);
