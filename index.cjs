@@ -4615,6 +4615,47 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("dzienne-lc-ustaw")
+    .setDescription("Dodaj, odejmij lub wyzeruj dzienne statystyki legit checków")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((option) =>
+      option
+        .setName("akcja")
+        .setDescription("Wybierz operację")
+        .setRequired(true)
+        .addChoices(
+          { name: "Dodaj dzienne legit checki", value: "dodaj" },
+          { name: "Odejmij dzienne legit checki", value: "odejmij" },
+          { name: "Wyzeruj dzisiejsze LC", value: "wyzeruj" },
+          { name: "Odśwież obraz wykresu", value: "odswiez" },
+        ),
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("ile")
+        .setDescription("Ile legit checków dodać lub odjąć (domyślnie 1)")
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(500),
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("godzina")
+        .setDescription("Godzina 0-23 (domyślnie aktualna)")
+        .setRequired(false)
+        .setMinValue(0)
+        .setMaxValue(23),
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("kwota")
+        .setDescription("Testowa kwota wydana w PLN (domyślnie 0)")
+        .setRequired(false)
+        .setMinValue(0)
+        .setMaxValue(100000),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("help")
     .setDescription("Spis podstawowych komend bota")
     .toJSON(),
@@ -8801,6 +8842,7 @@ async function handleSlashCommand(interaction) {
       await handleLegitRepUstawCommand(interaction);
       break;
     case "wykres-legit-test":
+    case "dzienne-lc-ustaw":
       await handleDailyLegitChartTestCommand(interaction);
       break;
     case "ticketpanel":
