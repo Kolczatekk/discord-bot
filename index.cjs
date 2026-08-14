@@ -16681,7 +16681,7 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "> `📝` × **Pomyślnie wystawiono legit checka.**\n" +
-        `> \`🛒\` × **${thankText}**`
+        `> \`❤️\` × **${thankText}**`
       )
     );
     container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
