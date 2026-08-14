@@ -2983,10 +2983,19 @@ async function updateFreeKasaInstructionInPlace() {
 }
 
 function buildFreeKasaInstructionPayload(guildId = null) {
-  const rawDescription = [
-    "```",
-    "💰 New Shop × Wylosuj nagrodę",
-    "```",
+  const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "💰 New Shop × Wylosuj nagrodę\n" +
+      "```"
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const rawBody = [
     "### `📌` × Ustaw w statusie `.gg/newshop`",
     "`⏰` × Masz **1** próbę co **12** godzin",
     "`📩` × Nagrodę odebrać będziesz mógł od **1** zaproszenia!",
@@ -3000,14 +3009,12 @@ function buildFreeKasaInstructionPayload(guildId = null) {
     ":arrowwhite: :elytra: Elytra",
   ].join("\n");
 
-  const description = guildId
-    ? replaceNamedGuildEmojis(replaceEmbedAliasTokens(rawDescription), guildId)
-    : replaceEmbedAliasTokens(rawDescription);
-
-  const container = new ContainerBuilder().setAccentColor(COLOR_YELLOW);
+  const bodyContent = guildId
+    ? replaceNamedGuildEmojis(replaceEmbedAliasTokens(rawBody), guildId)
+    : replaceEmbedAliasTokens(rawBody);
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(description)
+    new TextDisplayBuilder().setContent(bodyContent)
   );
 
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
