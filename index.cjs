@@ -374,12 +374,41 @@ function getUserCommissionRate(userId) {
 
 function getNextSundayTimestamp() {
   const now = new Date();
-  const daysUntilSunday = (7 - now.getDay()) % 7;
-  const addDays = (daysUntilSunday === 0 && (now.getHours() > 0 || now.getMinutes() > 0)) ? 7 : (daysUntilSunday === 0 ? 7 : daysUntilSunday);
-  const nextSunday = new Date(now);
-  nextSunday.setDate(now.getDate() + addDays);
-  nextSunday.setHours(0, 0, 0, 0);
-  return Math.floor(nextSunday.getTime() / 1000);
+  const polandDateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Warsaw",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+
+  const [year, month, day] = polandDateStr.split("-").map(Number);
+  const polandDayStr = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Warsaw",
+    weekday: "short",
+  }).format(now);
+  const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const currentDay = dayMap[polandDayStr] ?? 0;
+
+  let daysUntilSunday = (7 - currentDay) % 7;
+  if (daysUntilSunday === 0) {
+    daysUntilSunday = 7;
+  }
+
+  const targetUtc = new Date(Date.UTC(year, month - 1, day + daysUntilSunday));
+  const targetY = targetUtc.getUTCFullYear();
+  const targetM = String(targetUtc.getUTCMonth() + 1).padStart(2, "0");
+  const targetD = String(targetUtc.getUTCDate()).padStart(2, "0");
+
+  const sample = new Date(`${targetY}-${targetM}-${targetD}T12:00:00Z`);
+  const warsawTimeString = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Warsaw",
+    hour: "numeric",
+    hour12: false,
+  }).format(sample);
+  const offset = Number(warsawTimeString) - 12;
+
+  const finalDate = new Date(Date.UTC(targetY, Number(targetM) - 1, Number(targetD), -offset, 0, 0, 0));
+  return Math.floor(finalDate.getTime() / 1000);
 }
 
 // NEW: keep last posted instruction message per channel so we can delete & re-post
