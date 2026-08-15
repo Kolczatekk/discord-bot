@@ -3356,7 +3356,7 @@ function buildDmAutoReplyPayload(guildId = null) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "`👋` **Cześć! Jestem automatycznym botem.**\n\n" +
+      "`👋` **Cześć! Jestem jedynie botem.**\n\n" +
       "> `❓` × Jeżeli masz **jakiekolwiek pytanie**, otwórz ticket na serwerze **New Shop** w kategorii **POMOC**!"
     )
   );
