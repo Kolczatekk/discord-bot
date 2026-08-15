@@ -1417,7 +1417,7 @@ const FREE_KASA_PITY_GUARANTEE_AFTER = 40;
 const PURCHASE_CODE_USAGE_TEXT =
   "> `❓` × **Kodu użyjesz**, używając komendy `/zniżka <KOD>` na kanale ticketu.";
 const REWARD_CODE_USAGE_TEXT =
-  "> `❓` × **Kod odbierzesz**, podając go na kanale ticketu.";
+  "> `❓` × Aby odebrać nagrodę, wpisz kod podany u góry w kategorii **ODBIERZ NAGRODĘ**.";
 let INVITE_REWARD_MILESTONES = [
   { threshold: 5, amount: 90_000, label: "90k$" },
   { threshold: 10, amount: 200_000, label: "200k$" },
