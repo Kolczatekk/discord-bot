@@ -11770,11 +11770,83 @@ async function handlePanelWeryfikacjaCommand(interaction) {
   }
 }
 
+async function searchLogiTicketChannel(guild, query, searchType = "kod") {
+  const logCh = await getLogiTicketChannel(guild);
+  if (!logCh) return searchType === "kod" ? null : [];
+
+  const messages = await logCh.messages.fetch({ limit: 100 }).catch(() => null);
+  if (!messages || messages.size === 0) return searchType === "kod" ? null : [];
+
+  if (searchType === "kod") {
+    const qLower = String(query).toLowerCase();
+    for (const msg of messages.values()) {
+      for (const embed of msg.embeds || []) {
+        const footerText = String(embed.footer?.text || "").toLowerCase();
+        const channelField = embed.fields?.find((f) => f.name === "Kanał")?.value || "";
+        const typeField = embed.fields?.find((f) => f.name === "Typ")?.value || "";
+        const statusField = embed.fields?.find((f) => f.name === "Status")?.value || "";
+        const ownerField = embed.fields?.find((f) => f.name === "Klient")?.value || "";
+        const claimedField = embed.fields?.find((f) => f.name === "Obsługa")?.value || "";
+        const infoField = embed.fields?.find((f) => f.name === "Informacje")?.value || "";
+
+        if (footerText.includes(qLower) || channelField.includes(qLower)) {
+          const shortMatch = footerText.match(/kod id:\s*([a-z0-9_-]+)/i);
+          const shortId = shortMatch ? shortMatch[1] : (generateTicketShortCode(query) || query);
+          const ownerMatch = ownerField.match(/<@!?(\d+)>/);
+          const ownerId = ownerMatch ? ownerMatch[1] : null;
+
+          return {
+            shortId,
+            channelId: query,
+            ownerId,
+            type: typeField.replace(/`/g, ""),
+            status: statusField.replace(/`/g, ""),
+            openedAt: msg.createdTimestamp,
+            closedAt: statusField.includes("ZAMKNIĘTY") ? msg.createdTimestamp : null,
+            closeReason: infoField.includes("Powód:") ? infoField.split("Powód:")[1]?.split("\n")[0]?.trim() : "brak",
+            claimedBy: claimedField.match(/<@!?(\d+)>/)?.[1] || null,
+            formInfo: infoField.includes("Informacje z formularza") ? infoField : null,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  if (searchType === "user") {
+    const results = [];
+    const userId = query;
+    for (const msg of messages.values()) {
+      for (const embed of msg.embeds || []) {
+        const ownerField = embed.fields?.find((f) => f.name === "Klient")?.value || "";
+        if (ownerField.includes(userId)) {
+          const footerText = String(embed.footer?.text || "");
+          const shortMatch = footerText.match(/kod id:\s*([a-z0-9_-]+)/i);
+          const shortId = shortMatch ? shortMatch[1] : generateTicketShortCode(msg.id);
+          const typeField = embed.fields?.find((f) => f.name === "Typ")?.value || "NIEZNANY";
+          const statusField = embed.fields?.find((f) => f.name === "Status")?.value || "ZAMKNIĘTY";
+
+          results.push({
+            shortId,
+            ownerId: userId,
+            type: typeField.replace(/`/g, ""),
+            status: statusField.replace(/`/g, ""),
+            openedAt: msg.createdTimestamp,
+          });
+          break;
+        }
+      }
+    }
+    return results;
+  }
+}
+
 async function handleZnajdzTicketCommand(interaction) {
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+
   if (!isAdminOrSeller(interaction.member)) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "> `‼️` × Brak wymaganych uprawnień.",
-      flags: [MessageFlags.Ephemeral],
     });
     return;
   }
@@ -11783,9 +11855,8 @@ async function handleZnajdzTicketCommand(interaction) {
   const targetUser = interaction.options.getUser("uzytkownik");
 
   if (!kodInput && !targetUser) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "> `❌` × Musisz podać **kod ID ticketu** lub **oznaczyć gracza**.",
-      flags: [MessageFlags.Ephemeral],
     });
     return;
   }
@@ -11805,10 +11876,13 @@ async function handleZnajdzTicketCommand(interaction) {
       }
     }
 
+    if (!ticketRecord && interaction.guild) {
+      ticketRecord = await searchLogiTicketChannel(interaction.guild, kodInput, "kod");
+    }
+
     if (!ticketRecord) {
-      await interaction.reply({
+      await interaction.editReply({
         content: `> \`❌\` × Nie znaleziono ticketu o ID lub kodzie: \`${kodInput}\`.`,
-        flags: [MessageFlags.Ephemeral],
       });
       return;
     }
@@ -11828,7 +11902,7 @@ async function handleZnajdzTicketCommand(interaction) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `> ${noEmoji} × **Kod ID:** \`${ticketRecord.shortId}\`\n` +
-        `> ${noEmoji} × **Klient:** <@${ticketRecord.ownerId}> (\`${ticketRecord.ownerId}\`)\n` +
+        `> ${noEmoji} × **Klient:** ${ticketRecord.ownerId ? `<@${ticketRecord.ownerId}> (\`${ticketRecord.ownerId}\`)` : "Nieznany"}\n` +
         `> ${noEmoji} × **Typ ticketu:** \`${ticketRecord.type || "NIEZNANY"}\`\n` +
         `> ${noEmoji} × **Status:** \`${ticketRecord.status || "NIEZNANY"}\`\n` +
         `> ${noEmoji} × **Data utworzenia:** ${openedTimeStr}\n` +
@@ -11849,9 +11923,8 @@ async function handleZnajdzTicketCommand(interaction) {
 
     appendBrandFooterToContainer(container, interaction.guildId);
 
-    await interaction.reply({
+    await interaction.editReply({
       components: [container],
-      flags: [MessageFlags.Ephemeral],
     });
     return;
   }
@@ -11867,10 +11940,19 @@ async function handleZnajdzTicketCommand(interaction) {
       }
     }
 
+    if (userTickets.length === 0 && interaction.guild) {
+      const channelResults = await searchLogiTicketChannel(interaction.guild, targetUser.id, "user");
+      for (const rec of channelResults) {
+        if (rec.shortId && !seenShortIds.has(rec.shortId)) {
+          seenShortIds.add(rec.shortId);
+          userTickets.push(rec);
+        }
+      }
+    }
+
     if (userTickets.length === 0) {
-      await interaction.reply({
+      await interaction.editReply({
         content: `> \`❌\` × Gracz <@${targetUser.id}> nie posiada zarejestrowanych ticketów.`,
-        flags: [MessageFlags.Ephemeral],
       });
       return;
     }
@@ -11900,9 +11982,8 @@ async function handleZnajdzTicketCommand(interaction) {
 
     appendBrandFooterToContainer(container, interaction.guildId);
 
-    await interaction.reply({
+    await interaction.editReply({
       components: [container],
-      flags: [MessageFlags.Ephemeral],
     });
   }
 }
