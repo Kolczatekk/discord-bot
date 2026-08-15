@@ -3379,7 +3379,26 @@ function buildDmAutoReplyPayload(guildId = null) {
   };
 }
 
-function buildTicketClosedDmPayload({ powod, guildId = null }) {
+function generateTicketShortCode(channelId = "") {
+  if (!channelId) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let res = "";
+    for (let i = 0; i < 12; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return res;
+  }
+  const crypto = require("crypto");
+  const hash = crypto.createHash("md5").update(`ticket_${channelId}`).digest("base64url");
+  return hash.slice(0, 12);
+}
+
+function buildTicketClosedDmPayload({
+  powod,
+  channelId = null,
+  closedTimestamp = null,
+  guildId = null,
+}) {
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
 
   container.addTextDisplayComponents(
@@ -3392,10 +3411,23 @@ function buildTicketClosedDmPayload({ powod, guildId = null }) {
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
   const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+  const shortTicketId = generateTicketShortCode(channelId);
+  const safeClosedTime = closedTimestamp || Math.floor(Date.now() / 1000);
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n` +
       `> \`🗒️\` × **\`${powod}\`**`
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `### \`🛍️\` × **Informację o tickecie:**\n` +
+      `> ${arrowEmoji} × **ID Ticketa:** \`${shortTicketId}\`\n` +
+      `> ${arrowEmoji} × **Zapisz** ten **__kod__**! Będzie on **potrzebny** w razie **problemów**.\n` +
+      `> ${arrowEmoji} × **Data zamknięcia:** <t:${safeClosedTime}:f>`
     )
   );
 
@@ -16652,6 +16684,8 @@ async function handleZamknijZPowodemCommand(interaction) {
     if (ticketOwner) {
       const payload = buildTicketClosedDmPayload({
         powod,
+        channelId: channel.id,
+        closedTimestamp: Math.floor(Date.now() / 1000),
         guildId: interaction.guild?.id || null,
       });
       await ticketOwner.send(payload).catch(() => null);
@@ -16948,6 +16982,8 @@ async function handleTestPvCommand(interaction) {
     payloadsToSend.push(
       buildTicketClosedDmPayload({
         powod: "Brak odpowiedzi",
+        channelId: "1449453853731983484",
+        closedTimestamp: Math.floor(Date.now() / 1000),
         guildId: interaction.guild?.id || null,
       })
     );
