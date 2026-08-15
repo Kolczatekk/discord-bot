@@ -26083,7 +26083,7 @@ async function checkWeeklyReset() {
   const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 
   // Niedziela 00:00 - odebranie limitów dla osób z niezapłaconym rozliczeniem
-  if (dayOfWeek === 0 && hour === 0 && minute === 0 && lastReset00Trigger !== dateKey) {
+  if (dayOfWeek === 0 && hour === 0 && lastReset00Trigger !== dateKey) {
     lastReset00Trigger = dateKey;
     console.log("[rozliczenia-timer] Niedziela 00:00 - zabieranie limitów dla osób bez zapłaty...");
     for (const guild of client.guilds.cache.values()) {
@@ -26093,7 +26093,7 @@ async function checkWeeklyReset() {
   }
 
   // Niedziela 20:00 - nadanie roli ZAWIESZONY osobom które nie zapłaciły do 20:00
-  if (dayOfWeek === 0 && hour === 20 && minute === 0 && lastDeadline20Trigger !== dateKey) {
+  if (dayOfWeek === 0 && hour >= 20 && lastDeadline20Trigger !== dateKey) {
     lastDeadline20Trigger = dateKey;
     console.log("[rozliczenia-timer] Niedziela 20:00 - nadawanie roli ZAWIESZONY dla osób bez zapłaty...");
     for (const guild of client.guilds.cache.values()) {
@@ -26103,7 +26103,7 @@ async function checkWeeklyReset() {
   }
 
   // Niedziela 23:59 - czyszczenie danych na nowy tydzień
-  if (dayOfWeek === 0 && hour === 23 && minute === 59 && weeklySales.size > 0) {
+  if (dayOfWeek === 0 && hour === 23 && minute >= 55 && weeklySales.size > 0) {
     console.log("[rozliczenia-timer] Koniec tygodnia - reset danych rozliczeń na nowy tydzień...");
     weeklySales.clear();
     isSundayResetTriggered = false;
@@ -26137,8 +26137,8 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Uruchom sprawdzanie co 5 minut
-setInterval(checkWeeklyReset, 5 * 60 * 1000);
+// Uruchom sprawdzanie co minutę
+setInterval(checkWeeklyReset, 60 * 1000);
 
 // Wysyłaj wiadomość o rozliczeniach i odświeżaj raport statusu
 setInterval(async () => {
@@ -26148,8 +26148,9 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000);
 
-// Wyślij wiadomość i odśwież raport przy starcie bota
+// Wyślij wiadomość, sprawdź reset i odśwież raport przy starcie bota
 setTimeout(async () => {
+  await checkWeeklyReset().catch(() => null);
   await sendRozliczeniaMessage().catch(() => null);
   for (const guild of client.guilds.cache.values()) {
     await sendRozliczeniaStatusReport(guild).catch(() => null);
