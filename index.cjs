@@ -2421,52 +2421,38 @@ async function createInviteRewardCode(userId, milestone) {
   });
 }
 
-function buildCodeDeliveryDmPayload({
+function buildCodeDeliveryDmEmbed({
   code,
   rewardLine,
   expiryTimestamp,
   instructionText,
-  guildId = null,
 }) {
-  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  const description = [
+    "```",
+    "🎁 New Shop × NAGRODA",
+    "```",
+    `> \`🏷️\` × **Kod:** \`${code}\``,
+    rewardLine,
+    `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
+    "",
+    instructionText,
+  ].join("\n");
 
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      "```\n" +
-      "🎁 New Shop × NAGRODA\n" +
-      "```"
-    )
-  );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `> \`🏷️\` × **Kod:** \`${code}\`\n` +
-      `${rewardLine}\n` +
-      `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>\n\n` +
-      `${instructionText}`
-    )
-  );
-
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  appendBrandFooterToContainer(container, guildId);
-
-  return {
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
-  };
+  return new EmbedBuilder()
+    .setColor(COLOR_BLUE)
+    .setDescription(description)
+    .setBrandFooter();
 }
 
 async function sendInviteRewardCodeDm(user, milestone, rewardCodeData) {
-  const payload = buildCodeDeliveryDmPayload({
+  const dmEmbed = buildCodeDeliveryDmEmbed({
     code: rewardCodeData.code,
     rewardLine: `> \`💸\` × **Otrzymałeś:** \`${milestone.label} na Anarchia LF\``,
     expiryTimestamp: rewardCodeData.expiryTimestamp,
     instructionText: REWARD_CODE_USAGE_TEXT,
-    guildId: user.guild?.id || null,
   });
 
-  await user.send(payload);
+  await user.send({ embeds: [dmEmbed] });
 }
 
 async function deliverPendingInviteRewardCodes(guild, userId) {
@@ -3255,14 +3241,13 @@ async function handleFreeKasaCommand(interaction) {
 
     let dmDelivered = true;
     try {
-      const payload = buildCodeDeliveryDmPayload({
+      const dmEmbed = buildCodeDeliveryDmEmbed({
         code,
         rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${reward.discount}%\``,
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
-        guildId: interaction.guild?.id || null,
       });
-      await user.send(payload);
+      await user.send({ embeds: [dmEmbed] });
     } catch (_error) {
       dmDelivered = false;
     }
@@ -3291,14 +3276,13 @@ async function handleFreeKasaCommand(interaction) {
 
   let dmDelivered = true;
   try {
-    const payload = buildCodeDeliveryDmPayload({
+    const dmEmbed = buildCodeDeliveryDmEmbed({
       code: rewardCodeData.code,
       rewardLine: `> \`💸\` × **Wybrałeś/Wygrałeś:** \`${reward.rewardText}\``,
       expiryTimestamp: rewardCodeData.expiryTimestamp,
       instructionText: REWARD_CODE_USAGE_TEXT,
-      guildId: interaction.guild?.id || null,
     });
-    await user.send(payload);
+    await user.send({ embeds: [dmEmbed] });
   } catch (_error) {
     dmDelivered = false;
   }
@@ -8723,17 +8707,16 @@ async function handleSlashCommand(interaction) {
 
       const expiryTimestamp = Math.floor(expiresAt / 1000);
 
-      const dmPayload = buildCodeDeliveryDmPayload({
+      const dmEmbed = buildCodeDeliveryDmEmbed({
         code,
         rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${znizka}%\``,
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
-        guildId: interaction.guild?.id || null,
       });
 
       let dmSent = true;
       try {
-        await interaction.user.send(dmPayload);
+        await interaction.user.send({ embeds: [dmEmbed] });
       } catch (_err) {
         dmSent = false;
       }
@@ -8745,7 +8728,7 @@ async function handleSlashCommand(interaction) {
         });
       } else {
         await interaction.reply({
-          ...dmPayload,
+          embeds: [dmEmbed],
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -16734,6 +16717,86 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
   }
 }
 
+async function handleTestPvCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  const typ = interaction.options.getString("typ");
+  const user = interaction.user;
+  const expiryTimestamp = Math.floor(Date.now() / 1000) + 7 * 24 * 3600; // za 7 dni
+
+  const embedsToSend = [];
+
+  if (typ === "wygrana-znizka" || typ === "wszystkie") {
+    embedsToSend.push(
+      buildCodeDeliveryDmEmbed({
+        code: "TEST-DISCOUNT-10",
+        rewardLine: "> `💸` × **Otrzymałeś:** `-10%`",
+        expiryTimestamp,
+        instructionText: PURCHASE_CODE_USAGE_TEXT,
+      })
+    );
+  }
+
+  if (typ === "wygrana-kasa" || typ === "wszystkie") {
+    embedsToSend.push(
+      buildCodeDeliveryDmEmbed({
+        code: "TEST-REWARD-50K",
+        rewardLine: "> `💸` × **Wybrałeś/Wygrałeś:** `50k$ na Anarchia LIFESTEAL`",
+        expiryTimestamp,
+        instructionText: REWARD_CODE_USAGE_TEXT,
+      })
+    );
+  }
+
+  if (typ === "wygrana-przedmiot" || typ === "wszystkie") {
+    embedsToSend.push(
+      buildCodeDeliveryDmEmbed({
+        code: "TEST-ITEM-MIECZ",
+        rewardLine: "> `💸` × **Otrzymałeś:** `Anarchiczny miecz na Anarchia LF`",
+        expiryTimestamp,
+        instructionText: REWARD_CODE_USAGE_TEXT,
+      })
+    );
+  }
+
+  if (typ === "weryfikacja" || typ === "wszystkie") {
+    embedsToSend.push(
+      new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "🛒 New Shop × WERYFIKACJA\n" +
+          "```\n" +
+          "`✨` Gratulacje!\n\n" +
+          "`📝` Pomyślnie przeszedłeś weryfikacje na naszym serwerze discord życzymy udanych zakupów!"
+        )
+        .setBrandFooter()
+    );
+  }
+
+  try {
+    for (const embed of embedsToSend) {
+      await user.send({ embeds: [embed] });
+    }
+
+    await interaction.editReply({
+      content: `> \`✅\` × **Pomyślnie wysłano testowe wiadomości PV (${embedsToSend.length}) na Twoje prywatne wiadomości!** Sprawdź swoje PV.`,
+    });
+  } catch (err) {
+    console.error("Błąd w handleTestPvCommand (DM blocked):", err);
+    await interaction.editReply({
+      content: "> `❌` × **Nie udało się wysłać prywatnej wiadomości!** Upewnij się, że masz włączone wiadomości prywatne (DM) z członkami serwera w ustawieniach prywatności Discorda.",
+    });
+  }
+}
 
 // Helper for closing ticket anonymously (used by /anonim and button)
 async function closeTicketAnonymously(channel, guild, executorId) {
