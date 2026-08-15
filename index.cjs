@@ -3413,6 +3413,7 @@ function buildTicketClosedDmPayload({
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
   const noEmoji = '<a:NO:1537166621527908382>';
+  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
   const shortTicketId = generateTicketShortCode(channelId);
   const safeClosedTime = closedTimestamp || Math.floor(Date.now() / 1000);
 
@@ -3427,9 +3428,9 @@ function buildTicketClosedDmPayload({
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `### \`🛍️\` × **Informację o tickecie:**\n` +
-      `> ${noEmoji} × **ID Ticketa:** \`${shortTicketId}\`\n` +
-      `> ${noEmoji} × **Zachowaj ten identyfikator!** Przyda się w razie pytań lub reklamacji.\n` +
-      `> ${noEmoji} × **Data zamknięcia:** <t:${safeClosedTime}:f>`
+      `> ${arrowEmoji} × **ID Ticketa:** \`${shortTicketId}\`\n` +
+      `> ${arrowEmoji} × **Zachowaj ten identyfikator!** Przyda się w razie pytań lub reklamacji.\n` +
+      `> ${arrowEmoji} × **Data zamknięcia:** <t:${safeClosedTime}:f>`
     )
   );
 
