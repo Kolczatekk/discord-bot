@@ -22709,7 +22709,7 @@ client.on(Events.MessageCreate, async (message) => {
           const embed = new EmbedBuilder()
             .setColor(COLOR_BLUE)
             .setDescription(
-              "> \`❌\` × Nie posiadasz żadnych ticketów oczekujących na wystawienie legit checka."
+              "> \`❌\` × Brak ticketów **oczekujących** na legit check."
             );
           await message.author.send({ embeds: [embed] });
         } catch {}
