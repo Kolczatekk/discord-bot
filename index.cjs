@@ -26112,11 +26112,21 @@ client.on('messageCreate', async (message) => {
 // Uruchom sprawdzanie co 5 minut
 setInterval(checkWeeklyReset, 5 * 60 * 1000);
 
-// Wysyłaj wiadomość o rozliczeniach co 12 godzin
-setInterval(sendRozliczeniaMessage, 12 * 60 * 60 * 1000);
+// Wysyłaj wiadomość o rozliczeniach i odświeżaj raport statusu
+setInterval(async () => {
+  await sendRozliczeniaMessage().catch(() => null);
+  for (const guild of client.guilds.cache.values()) {
+    await sendRozliczeniaStatusReport(guild).catch(() => null);
+  }
+}, 60 * 60 * 1000);
 
-// Wyślij wiadomość przy starcie bota
-setTimeout(sendRozliczeniaMessage, 5000);
+// Wyślij wiadomość i odśwież raport przy starcie bota
+setTimeout(async () => {
+  await sendRozliczeniaMessage().catch(() => null);
+  for (const guild of client.guilds.cache.values()) {
+    await sendRozliczeniaStatusReport(guild).catch(() => null);
+  }
+}, 5000);
 
 // ---------------------------------------------------
 // FULL MONITORING MODE - System statusów i alertów
