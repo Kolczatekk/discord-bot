@@ -431,6 +431,39 @@ function getTodaySunday20Timestamp() {
   return Math.floor(finalDate.getTime() / 1000);
 }
 
+function getPolandTime() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Warsaw",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const getPart = (type) => parts.find((p) => p.type === type)?.value;
+
+  const year = Number(getPart("year"));
+  const month = Number(getPart("month"));
+  const day = Number(getPart("day"));
+  let hour = Number(getPart("hour"));
+  if (hour === 24) hour = 0;
+  const minute = Number(getPart("minute"));
+
+  const weekdayStr = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Warsaw",
+    weekday: "short",
+  }).format(now);
+  const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dayOfWeek = dayMap[weekdayStr] ?? 0;
+  const dateKey = `${year}-${month}-${day}`;
+
+  return { year, month, day, hour, minute, dayOfWeek, dateKey };
+}
+
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
 const lastDropInstruction = new Map(); // channelId -> messageId  <-- NEW for drop instructions
@@ -9398,11 +9431,12 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     const klientEmoji = findGuildEmojiByName(guild?.id, "klient");
     const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
 
+    const { dayOfWeek, hour } = getPolandTime();
     const hasUnpaidSales = Array.from(weeklySales.values()).some((data) => data.amount > 0 && !data.paid);
     if (!hasUnpaidSales) {
       isSundayResetTriggered = false;
     }
-    const isSundayMode = (new Date().getDay() === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales);
+    const isSundayMode = (dayOfWeek === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales);
 
     const sortedSales = Array.from(weeklySales.entries())
       .filter(([_, data]) => data.amount > 0)
@@ -9427,8 +9461,8 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(salesListText));
     } else {
-      const isSunday = new Date().getDay() === 0;
-      const isBefore20 = new Date().getHours() < 20;
+      const isSunday = dayOfWeek === 0;
+      const isBefore20 = hour < 20;
       const timerLine = (isSunday && isBefore20)
         ? `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`
         : `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getNextSundayTimestamp()}:R>`;
@@ -26076,11 +26110,7 @@ let lastDeadline20Trigger = "";
 
 // Funkcja do sprawdzania i resetowania cotygodniowych rozliczeń
 async function checkWeeklyReset() {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = niedziela
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  const { dayOfWeek, hour, minute, dateKey } = getPolandTime();
 
   // Niedziela 00:00 - odebranie limitów dla osób z niezapłaconym rozliczeniem
   if (dayOfWeek === 0 && hour === 0 && lastReset00Trigger !== dateKey) {
