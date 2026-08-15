@@ -3348,7 +3348,7 @@ function buildDmAutoReplyPayload(guildId = null) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "```\n" +
-      "🤖 New Shop × POMOC\n" +
+      "❓ New Shop × POMOC\n" +
       "```"
     )
   );
