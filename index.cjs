@@ -3395,7 +3395,7 @@ function buildTicketClosedDmPayload({ powod, guildId = null }) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n` +
-      `> \`🗓️\` × **\`${powod}\`**`
+      `> \`🗒️\` × **\`${powod}\`**`
     )
   );
 
