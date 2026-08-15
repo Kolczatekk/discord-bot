@@ -2460,8 +2460,14 @@ function buildCodeDeliveryDmPayload({
     .setStyle(ButtonStyle.Link)
     .setURL("https://discord.com/channels/1350446732365926491/1449453853731983484");
 
+  const btnSkopiujKod = new ButtonBuilder()
+    .setCustomId(`copy_dm_code_${code}`)
+    .setLabel("Skopiuj kod")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji({ id: "1537166632613322792", name: "YES", animated: true });
+
   container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(btnKanalTicketu)
+    new ActionRowBuilder().addComponents(btnKanalTicketu, btnSkopiujKod)
   );
 
   appendBrandFooterToContainer(container, guildId);
@@ -7482,6 +7488,15 @@ async function handleButtonInteraction(interaction) {
   const customId = interaction.customId;
   const botName = client.user?.username || "NEWSHOP";
   const detectedServer = await detectServerFromContext(interaction);
+
+  if (customId && customId.startsWith("copy_dm_code_")) {
+    const code = customId.replace("copy_dm_code_", "");
+    await interaction.reply({
+      content: `\`${code}\``,
+      flags: [MessageFlags.Ephemeral],
+    }).catch(() => null);
+    return;
+  }
 
   if (customId === "daily_legit_record") {
     const records = {
