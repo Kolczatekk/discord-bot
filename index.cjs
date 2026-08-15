@@ -11800,6 +11800,8 @@ async function searchLogiTicketChannel(guild, query, searchType = "kod") {
             const ownerId = ownerMatch ? ownerMatch[1] : null;
             const historyField = embed.fields?.find((f) => f.name === "Historia")?.value || "";
             const historyLines = historyField ? historyField.split("\n").filter(Boolean) : [];
+            const txtAtt = msg.attachments?.find((a) => a.name.endsWith(".txt")) || msg.attachments?.first();
+            const attachmentUrl = txtAtt?.url || null;
 
             return {
               shortId,
@@ -11813,6 +11815,7 @@ async function searchLogiTicketChannel(guild, query, searchType = "kod") {
               claimedBy: claimedField.match(/<@!?(\d+)>/)?.[1] || null,
               formInfo: infoField.includes("Informacje z formularza") ? infoField : null,
               history: historyLines,
+              attachmentUrl,
             };
           }
         }
@@ -11943,12 +11946,40 @@ async function handleZnajdzTicketCommand(interaction) {
         );
       }
 
+      const files = [];
+      if (ticketRecord.transcriptText) {
+        files.push(
+          new AttachmentBuilder(Buffer.from(ticketRecord.transcriptText, "utf-8"), {
+            name: `transcript-${ticketRecord.shortId}.txt`,
+          })
+        );
+      } else if (ticketRecord.attachmentUrl) {
+        files.push(
+          new AttachmentBuilder(ticketRecord.attachmentUrl, {
+            name: `transcript-${ticketRecord.shortId}.txt`,
+          })
+        );
+      }
+
+      if (files.length > 0) {
+        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### \`📁\` × **Transkrypt wiadomości:**\n` +
+            `> \`📄\` × **Pełny zapis przebiegu rozmowy został dołączony w załączniku poniżej.**`
+          )
+        );
+      }
+
       appendBrandFooterToContainer(container, interaction.guildId);
 
-      await interaction.editReply({
+      const replyPayload = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
-      });
+      };
+      if (files.length > 0) replyPayload.files = files;
+
+      await interaction.editReply(replyPayload);
       return;
     }
 
@@ -25709,6 +25740,14 @@ async function sendTicketLogEntry(guild, options = {}) {
       formInfo: options.formInfo || existingRec.formInfo,
       history: timeline.length ? timeline : existingRec.history || [],
     };
+
+    if (options.files?.length && options.files[0]?.attachment) {
+      const fileItem = options.files[0];
+      if (Buffer.isBuffer(fileItem.attachment)) {
+        updatedRec.transcriptText = fileItem.attachment.toString("utf-8");
+      }
+    }
+
     ticketHistoryStore.set(ticketId, updatedRec);
     ticketHistoryStore.set(shortTicketId, updatedRec);
   }
