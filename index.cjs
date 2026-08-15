@@ -26110,12 +26110,16 @@ let lastDeadline20Trigger = "";
 
 // Funkcja do sprawdzania i resetowania cotygodniowych rozliczeń
 async function checkWeeklyReset() {
-  const { dayOfWeek, hour, minute, dateKey } = getPolandTime();
+  const { year, month, day, dayOfWeek, hour, minute, dateKey } = getPolandTime();
 
-  // Niedziela 00:00 - odebranie limitów dla osób z niezapłaconym rozliczeniem
-  if (dayOfWeek === 0 && hour === 0 && lastReset00Trigger !== dateKey) {
+  // Dzisiejszy test: odpal o 00:15 (16.08.2026). W kolejne tygodnie odpalaj od 00:00 (hour === 0).
+  const isTestToday = (year === 2026 && month === 8 && day === 16);
+  const shouldRun00Reset = isTestToday ? (hour === 0 && minute >= 15) : (hour === 0);
+
+  // Niedziela 00:00 / 00:15 - odebranie limitów dla osób z niezapłaconym rozliczeniem
+  if (dayOfWeek === 0 && shouldRun00Reset && lastReset00Trigger !== dateKey) {
     lastReset00Trigger = dateKey;
-    console.log("[rozliczenia-timer] Niedziela 00:00 - zabieranie limitów dla osób bez zapłaty...");
+    console.log("[rozliczenia-timer] Niedziela 00:00/00:15 - zabieranie limitów dla osób bez zapłaty...");
     for (const guild of client.guilds.cache.values()) {
       await executeSundayReset00(guild).catch((e) => console.error("Błąd executeSundayReset00:", e));
     }
