@@ -11771,74 +11771,82 @@ async function handlePanelWeryfikacjaCommand(interaction) {
 }
 
 async function searchLogiTicketChannel(guild, query, searchType = "kod") {
-  const logCh = await getLogiTicketChannel(guild);
-  if (!logCh) return searchType === "kod" ? null : [];
+  try {
+    const logCh = await getLogiTicketChannel(guild);
+    if (!logCh) return searchType === "kod" ? null : [];
 
-  const messages = await logCh.messages.fetch({ limit: 100 }).catch(() => null);
-  if (!messages || messages.size === 0) return searchType === "kod" ? null : [];
+    const fetchPromise = logCh.messages.fetch({ limit: 100 }).catch(() => null);
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 1500));
+    const messages = await Promise.race([fetchPromise, timeoutPromise]);
 
-  if (searchType === "kod") {
-    const qLower = String(query).toLowerCase();
-    for (const msg of messages.values()) {
-      for (const embed of msg.embeds || []) {
-        const footerText = String(embed.footer?.text || "").toLowerCase();
-        const channelField = embed.fields?.find((f) => f.name === "Kanał")?.value || "";
-        const typeField = embed.fields?.find((f) => f.name === "Typ")?.value || "";
-        const statusField = embed.fields?.find((f) => f.name === "Status")?.value || "";
-        const ownerField = embed.fields?.find((f) => f.name === "Klient")?.value || "";
-        const claimedField = embed.fields?.find((f) => f.name === "Obsługa")?.value || "";
-        const infoField = embed.fields?.find((f) => f.name === "Informacje")?.value || "";
+    if (!messages || !messages.size) return searchType === "kod" ? null : [];
 
-        if (footerText.includes(qLower) || channelField.includes(qLower)) {
-          const shortMatch = footerText.match(/kod id:\s*([a-z0-9_-]+)/i);
-          const shortId = shortMatch ? shortMatch[1] : (generateTicketShortCode(query) || query);
-          const ownerMatch = ownerField.match(/<@!?(\d+)>/);
-          const ownerId = ownerMatch ? ownerMatch[1] : null;
+    if (searchType === "kod") {
+      const qLower = String(query).toLowerCase().trim();
+      for (const msg of messages.values()) {
+        for (const embed of (msg.embeds || [])) {
+          const footerText = String(embed.footer?.text || "").toLowerCase();
+          const channelField = String(embed.fields?.find((f) => f.name === "Kanał")?.value || "").toLowerCase();
+          const typeField = String(embed.fields?.find((f) => f.name === "Typ")?.value || "");
+          const statusField = String(embed.fields?.find((f) => f.name === "Status")?.value || "");
+          const ownerField = String(embed.fields?.find((f) => f.name === "Klient")?.value || "");
+          const claimedField = String(embed.fields?.find((f) => f.name === "Obsługa")?.value || "");
+          const infoField = String(embed.fields?.find((f) => f.name === "Informacje")?.value || "");
 
-          return {
-            shortId,
-            channelId: query,
-            ownerId,
-            type: typeField.replace(/`/g, ""),
-            status: statusField.replace(/`/g, ""),
-            openedAt: msg.createdTimestamp,
-            closedAt: statusField.includes("ZAMKNIĘTY") ? msg.createdTimestamp : null,
-            closeReason: infoField.includes("Powód:") ? infoField.split("Powód:")[1]?.split("\n")[0]?.trim() : "brak",
-            claimedBy: claimedField.match(/<@!?(\d+)>/)?.[1] || null,
-            formInfo: infoField.includes("Informacje z formularza") ? infoField : null,
-          };
+          if (footerText.includes(qLower) || channelField.includes(qLower)) {
+            const shortMatch = footerText.match(/kod id:\s*([a-z0-9_-]+)/i);
+            const shortId = shortMatch ? shortMatch[1] : (generateTicketShortCode(query) || query);
+            const ownerMatch = ownerField.match(/<@!?(\d+)>/);
+            const ownerId = ownerMatch ? ownerMatch[1] : null;
+
+            return {
+              shortId,
+              channelId: query,
+              ownerId,
+              type: typeField.replace(/`/g, ""),
+              status: statusField.replace(/`/g, ""),
+              openedAt: msg.createdTimestamp,
+              closedAt: statusField.includes("ZAMKNIĘTY") ? msg.createdTimestamp : null,
+              closeReason: infoField.includes("Powód:") ? infoField.split("Powód:")[1]?.split("\n")[0]?.trim() : "brak",
+              claimedBy: claimedField.match(/<@!?(\d+)>/)?.[1] || null,
+              formInfo: infoField.includes("Informacje z formularza") ? infoField : null,
+            };
+          }
         }
       }
+      return null;
     }
-    return null;
-  }
 
-  if (searchType === "user") {
-    const results = [];
-    const userId = query;
-    for (const msg of messages.values()) {
-      for (const embed of msg.embeds || []) {
-        const ownerField = embed.fields?.find((f) => f.name === "Klient")?.value || "";
-        if (ownerField.includes(userId)) {
-          const footerText = String(embed.footer?.text || "");
-          const shortMatch = footerText.match(/kod id:\s*([a-z0-9_-]+)/i);
-          const shortId = shortMatch ? shortMatch[1] : generateTicketShortCode(msg.id);
-          const typeField = embed.fields?.find((f) => f.name === "Typ")?.value || "NIEZNANY";
-          const statusField = embed.fields?.find((f) => f.name === "Status")?.value || "ZAMKNIĘTY";
+    if (searchType === "user") {
+      const results = [];
+      const userId = String(query);
+      for (const msg of messages.values()) {
+        for (const embed of (msg.embeds || [])) {
+          const ownerField = String(embed.fields?.find((f) => f.name === "Klient")?.value || "");
+          if (ownerField.includes(userId)) {
+            const footerText = String(embed.footer?.text || "");
+            const shortMatch = footerText.match(/kod id:\s*([a-z0-9_-]+)/i);
+            const shortId = shortMatch ? shortMatch[1] : generateTicketShortCode(msg.id);
+            const typeField = String(embed.fields?.find((f) => f.name === "Typ")?.value || "NIEZNANY");
+            const statusField = String(embed.fields?.find((f) => f.name === "Status")?.value || "ZAMKNIĘTY");
 
-          results.push({
-            shortId,
-            ownerId: userId,
-            type: typeField.replace(/`/g, ""),
-            status: statusField.replace(/`/g, ""),
-            openedAt: msg.createdTimestamp,
-          });
-          break;
+            results.push({
+              shortId,
+              ownerId: userId,
+              type: typeField.replace(/`/g, ""),
+              status: statusField.replace(/`/g, ""),
+              openedAt: msg.createdTimestamp,
+            });
+            break;
+          }
         }
       }
+      return results;
     }
-    return results;
+  } catch (err) {
+    console.error("searchLogiTicketChannel error:", err);
   }
+  return searchType === "kod" ? null : [];
 }
 
 async function handleZnajdzTicketCommand(interaction) {
