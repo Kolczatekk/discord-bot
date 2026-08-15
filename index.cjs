@@ -3342,6 +3342,52 @@ async function handleFreeKasaCommand(interaction) {
   }
 }
 
+function buildWezwijDmPayload({
+  isOwner,
+  channelLink,
+  channelId,
+  guildId = null,
+}) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "🚨 New Shop × JESTEŚ WZYWANY\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+  const textContent = isOwner
+    ? `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
+      `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
+      `**KANAŁ:** <#${channelId}>`
+    : `${arrowEmoji} **jesteś wzywany** na kanał\n\n` +
+      `**KANAŁ:** <#${channelId}>`;
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(textContent)
+  );
+
+  const btnPrzejdz = new ButtonBuilder()
+    .setLabel("🔨︲Przejdź do ticketu")
+    .setStyle(ButtonStyle.Link)
+    .setURL(channelLink);
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(btnPrzejdz)
+  );
+
+  appendBrandFooterToContainer(container, guildId);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
 // Handler dla komendy /wezwij
 async function handleWezwijCommand(interaction) {
   const channel = interaction.channel;
@@ -3365,7 +3411,6 @@ async function handleWezwijCommand(interaction) {
 
   const targetUser = interaction.options.getUser("uzytkownik");
   const channelLink = `https://discord.com/channels/${interaction.guildId}/${channel.id}`;
-  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
 
   if (targetUser) {
     try {
@@ -3376,17 +3421,14 @@ async function handleWezwijCommand(interaction) {
         ReadMessageHistory: true,
       });
 
-      const embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
-          "```\n" +
-          "🚨 New Shop × JESTES WZYWANY\n" +
-          "```\n" +
-          `${arrowEmoji} **jesteś wzywany** na kanał\n\n` +
-          `**KANAŁ:** ${channelLink}`
-        );
+      const payload = buildWezwijDmPayload({
+        isOwner: false,
+        channelLink,
+        channelId: channel.id,
+        guildId: interaction.guildId,
+      });
 
-      await targetUser.send({ embeds: [embed] });
+      await targetUser.send(payload);
 
       await interaction.reply({
         content: `> \`✅\` × Dodano użytkownika <@${targetUser.id}> do kanału i wysłano wezwanie na PV.`,
@@ -3414,21 +3456,17 @@ async function handleWezwijCommand(interaction) {
     try {
       const user = await client.users.fetch(ownerId);
 
-      const embed = new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
-          "```\n" +
-          "🚨 New Shop × JESTES WZYWANY\n" +
-          "```\n" +
-          `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
-          `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
-          `**KANAŁ:** ${channelLink}`
-        );
+      const payload = buildWezwijDmPayload({
+        isOwner: true,
+        channelLink,
+        channelId: channel.id,
+        guildId: interaction.guildId,
+      });
 
-      await user.send({ embeds: [embed] });
+      await user.send(payload);
 
       await interaction.reply({
-        content: `> ` + "`✅`" + ` × Wysłano wezwanie do właściciela ticketu.`,
+        content: `> \`✅\` × Wysłano wezwanie do właściciela ticketu.`,
         flags: [MessageFlags.Ephemeral],
       });
     } catch (err) {
@@ -5172,6 +5210,7 @@ const commands = [
           { name: "💰 Wygrany kod pieniężny (50k$)", value: "wygrana-kasa" },
           { name: "⚔️ Wygrana przedmiot (Anarchiczny miecz)", value: "wygrana-przedmiot" },
           { name: "🏆 Nagroda za zaproszenia (90k$)", value: "wygrana-zaproszenia" },
+          { name: "🚨 Wezwanie na ticket (/wezwij)", value: "wezwanie" },
           { name: "✨ Powiadomienie po weryfikacji", value: "weryfikacja" },
           { name: "🚀 Wszystkie wiadomości na raz", value: "wszystkie" },
         ),
@@ -16825,6 +16864,17 @@ async function handleTestPvCommand(interaction) {
         rewardLine: "> `💸` × **Wygrałeś:** `90k$ na Anarchia LF`",
         expiryTimestamp,
         instructionText: REWARD_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
+      })
+    );
+  }
+
+  if (typ === "wezwanie" || typ === "wszystkie") {
+    payloadsToSend.push(
+      buildWezwijDmPayload({
+        isOwner: true,
+        channelLink: "https://discord.com/channels/1350446732365926491/1449453853731983484",
+        channelId: "1449453853731983484",
         guildId: interaction.guild?.id || null,
       })
     );
