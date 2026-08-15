@@ -1415,9 +1415,9 @@ const FREE_KASA_PITY_STEP = 0.5;
 const FREE_KASA_PITY_CAP = 15;
 const FREE_KASA_PITY_GUARANTEE_AFTER = 40;
 const PURCHASE_CODE_USAGE_TEXT =
-  "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i wpisz komendę `/zniżka <KOD>`.";
+  "> `❓` × Aby użyć kodu, otwórz ticket w kategorii **ZAKUP ITEMÓW** i wpisz komendę `/zniżka <KOD>`.";
 const REWARD_CODE_USAGE_TEXT =
-  "> `🎟️` × Aby użyć kodu, otwórz ticket w kategorii **ODBIERZ NAGRODĘ**.";
+  "> `❓` × Aby użyć kodu, otwórz ticket w kategorii **ODBIERZ NAGRODĘ**.";
 let INVITE_REWARD_MILESTONES = [
   { threshold: 5, amount: 90_000, label: "90k$" },
   { threshold: 10, amount: 200_000, label: "200k$" },
@@ -2421,38 +2421,57 @@ async function createInviteRewardCode(userId, milestone) {
   });
 }
 
-function buildCodeDeliveryDmEmbed({
+function buildCodeDeliveryDmPayload({
   code,
   rewardLine,
   expiryTimestamp,
   instructionText,
+  guildId = null,
 }) {
-  const description = [
-    "```",
-    "🎁 New Shop × NAGRODA",
-    "```",
-    `> \`🏷️\` × **Kod:** \`${code}\``,
-    rewardLine,
-    `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
-    "",
-    instructionText,
-  ].join("\n");
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
 
-  return new EmbedBuilder()
-    .setColor(COLOR_BLUE)
-    .setDescription(description)
-    .setBrandFooter();
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "🎁 New Shop × NAGRODA\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `> \`🏷️\` × **Kod:** \`${code}\`\n` +
+      `${rewardLine}\n` +
+      `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `${instructionText}`
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  appendBrandFooterToContainer(container, guildId);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
 }
 
 async function sendInviteRewardCodeDm(user, milestone, rewardCodeData) {
-  const dmEmbed = buildCodeDeliveryDmEmbed({
+  const payload = buildCodeDeliveryDmPayload({
     code: rewardCodeData.code,
-    rewardLine: `> \`💸\` × **Otrzymałeś:** \`${milestone.label} na Anarchia LF\``,
+    rewardLine: `> \`💸\` × **Wygrałeś:** \`${milestone.label} na Anarchia LF\``,
     expiryTimestamp: rewardCodeData.expiryTimestamp,
     instructionText: REWARD_CODE_USAGE_TEXT,
+    guildId: user.guild?.id || null,
   });
 
-  await user.send({ embeds: [dmEmbed] });
+  await user.send(payload);
 }
 
 async function deliverPendingInviteRewardCodes(guild, userId) {
@@ -3241,13 +3260,14 @@ async function handleFreeKasaCommand(interaction) {
 
     let dmDelivered = true;
     try {
-      const dmEmbed = buildCodeDeliveryDmEmbed({
+      const payload = buildCodeDeliveryDmPayload({
         code,
         rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${reward.discount}%\``,
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       });
-      await user.send({ embeds: [dmEmbed] });
+      await user.send(payload);
     } catch (_error) {
       dmDelivered = false;
     }
@@ -3276,13 +3296,14 @@ async function handleFreeKasaCommand(interaction) {
 
   let dmDelivered = true;
   try {
-    const dmEmbed = buildCodeDeliveryDmEmbed({
+    const payload = buildCodeDeliveryDmPayload({
       code: rewardCodeData.code,
-      rewardLine: `> \`💸\` × **Wybrałeś/Wygrałeś:** \`${reward.rewardText}\``,
+      rewardLine: `> \`💸\` × **Wygrałeś:** \`${reward.rewardText}\``,
       expiryTimestamp: rewardCodeData.expiryTimestamp,
       instructionText: REWARD_CODE_USAGE_TEXT,
+      guildId: interaction.guild?.id || null,
     });
-    await user.send({ embeds: [dmEmbed] });
+    await user.send(payload);
   } catch (_error) {
     dmDelivered = false;
   }
@@ -8707,16 +8728,17 @@ async function handleSlashCommand(interaction) {
 
       const expiryTimestamp = Math.floor(expiresAt / 1000);
 
-      const dmEmbed = buildCodeDeliveryDmEmbed({
+      const dmPayload = buildCodeDeliveryDmPayload({
         code,
         rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${znizka}%\``,
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       });
 
       let dmSent = true;
       try {
-        await interaction.user.send({ embeds: [dmEmbed] });
+        await interaction.user.send(dmPayload);
       } catch (_err) {
         dmSent = false;
       }
@@ -8728,7 +8750,7 @@ async function handleSlashCommand(interaction) {
         });
       } else {
         await interaction.reply({
-          embeds: [dmEmbed],
+          ...dmPayload,
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -16732,63 +16754,76 @@ async function handleTestPvCommand(interaction) {
   const user = interaction.user;
   const expiryTimestamp = Math.floor(Date.now() / 1000) + 7 * 24 * 3600; // za 7 dni
 
-  const embedsToSend = [];
+  const payloadsToSend = [];
 
   if (typ === "wygrana-znizka" || typ === "wszystkie") {
-    embedsToSend.push(
-      buildCodeDeliveryDmEmbed({
+    payloadsToSend.push(
+      buildCodeDeliveryDmPayload({
         code: "TEST-DISCOUNT-10",
         rewardLine: "> `💸` × **Otrzymałeś:** `-10%`",
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       })
     );
   }
 
   if (typ === "wygrana-kasa" || typ === "wszystkie") {
-    embedsToSend.push(
-      buildCodeDeliveryDmEmbed({
+    payloadsToSend.push(
+      buildCodeDeliveryDmPayload({
         code: "TEST-REWARD-50K",
-        rewardLine: "> `💸` × **Wybrałeś/Wygrałeś:** `50k$ na Anarchia LIFESTEAL`",
+        rewardLine: "> `💸` × **Wygrałeś:** `50k$ na Anarchia LIFESTEAL`",
         expiryTimestamp,
         instructionText: REWARD_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       })
     );
   }
 
   if (typ === "wygrana-przedmiot" || typ === "wszystkie") {
-    embedsToSend.push(
-      buildCodeDeliveryDmEmbed({
+    payloadsToSend.push(
+      buildCodeDeliveryDmPayload({
         code: "TEST-ITEM-MIECZ",
-        rewardLine: "> `💸` × **Otrzymałeś:** `Anarchiczny miecz na Anarchia LF`",
+        rewardLine: "> `💸` × **Wygrałeś:** `Anarchiczny miecz na Anarchia LF`",
         expiryTimestamp,
         instructionText: REWARD_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       })
     );
   }
 
   if (typ === "weryfikacja" || typ === "wszystkie") {
-    embedsToSend.push(
-      new EmbedBuilder()
-        .setColor(COLOR_BLUE)
-        .setDescription(
-          "```\n" +
-          "🛒 New Shop × WERYFIKACJA\n" +
-          "```\n" +
-          "`✨` Gratulacje!\n\n" +
-          "`📝` Pomyślnie przeszedłeś weryfikacje na naszym serwerze discord życzymy udanych zakupów!"
-        )
-        .setBrandFooter()
+    const vContainer = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+    vContainer.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        "🛒 New Shop × WERYFIKACJA\n" +
+        "```"
+      )
     );
+    vContainer.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    vContainer.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "`✨` Gratulacje!\n\n" +
+        "`📝` Pomyślnie przeszedłeś weryfikacje na naszym serwerze discord życzymy udanych zakupów!"
+      )
+    );
+    vContainer.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    appendBrandFooterToContainer(vContainer, interaction.guild?.id || null);
+
+    payloadsToSend.push({
+      components: [vContainer],
+      flags: MessageFlags.IsComponentsV2,
+    });
   }
 
   try {
-    for (const embed of embedsToSend) {
-      await user.send({ embeds: [embed] });
+    for (const payload of payloadsToSend) {
+      await user.send(payload);
     }
 
     await interaction.editReply({
-      content: `> \`✅\` × **Pomyślnie wysłano testowe wiadomości PV (${embedsToSend.length}) na Twoje prywatne wiadomości!** Sprawdź swoje PV.`,
+      content: `> \`✅\` × **Pomyślnie wysłano testowe wiadomości PV (${payloadsToSend.length}) na Twoje prywatne wiadomości!** Sprawdź swoje PV.`,
     });
   } catch (err) {
     console.error("Błąd w handleTestPvCommand (DM blocked):", err);
