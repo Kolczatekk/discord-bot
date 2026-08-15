@@ -7468,7 +7468,7 @@ async function handleButtonInteraction(interaction) {
         "```",
       ),
     );
-    recordContainer.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
+    recordContainer.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     recordContainer.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `> \`✅\` <a:arrowwhite:1491476759290449984> **Najwięcej legit checków:** \`${legitRecord?.total || 0}\` - \`${formatRecordDate(legitRecord?.dateKey)}\`\n` +
@@ -15840,18 +15840,22 @@ async function handlePanelKlientaSpent(interaction) {
       line3 = `<a:arrowwhite:1491476759290449984> ×  Osiągnąłeś już __najwyższą rangę__ bonusową!`;
     }
 
-    const descContent = [
-      "```",
-      "💵 New Shop × TWOJE STATYSTYKI",
-      "```",
-      `> ${line1}`,
-      `> ${line2}`,
-      `> ${line3}`,
-    ].join("\n");
-
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(descContent)
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        "💵 New Shop × TWOJE STATYSTYKI\n" +
+        "```"
+      )
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `> ${line1}\n` +
+        `> ${line2}\n` +
+        `> ${line3}`
+      )
     );
     appendBrandFooterToContainer(container, guild.id);
 
