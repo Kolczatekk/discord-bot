@@ -411,6 +411,26 @@ function getNextSundayTimestamp() {
   return Math.floor(finalDate.getTime() / 1000);
 }
 
+function getTodaySunday20Timestamp() {
+  const now = new Date();
+  const polandDateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Warsaw",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const [year, month, day] = polandDateStr.split("-").map(Number);
+  const sample = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T12:00:00Z`);
+  const warsawTimeString = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Warsaw",
+    hour: "numeric",
+    hour12: false,
+  }).format(sample);
+  const offset = Number(warsawTimeString) - 12;
+  const finalDate = new Date(Date.UTC(year, month - 1, day, 20 - offset, 0, 0, 0));
+  return Math.floor(finalDate.getTime() / 1000);
+}
+
 // NEW: keep last posted instruction message per channel so we can delete & re-post
 const lastOpinionInstruction = new Map(); // channelId -> messageId
 const lastDropInstruction = new Map(); // channelId -> messageId  <-- NEW for drop instructions
@@ -9308,14 +9328,19 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
 
     const activeSalesCount = Array.from(weeklySales.values()).filter((data) => data.amount > 0).length;
     if (activeSalesCount === 0) {
-      const nextSundayTS = getNextSundayTimestamp();
+      const isSunday = new Date().getDay() === 0;
+      const isBefore20 = new Date().getHours() < 20;
+      const timerLine = (isSunday && isBefore20)
+        ? `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`
+        : `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getNextSundayTimestamp()}:R>`;
+
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("> `📈` × **Bieżące podsumowanie sprzedaży w tym tygodniu:**"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("> `ℹ️` × Brak zarejestrowanych sprzedaży w tym tygodniu."));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(timerLine));
       appendBrandFooterToContainer(container, guild?.id);
 
       if (!rozliczeniaReportMessageId) {
@@ -9402,7 +9427,11 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(salesListText));
     } else {
-      const nextSundayTS = getNextSundayTimestamp();
+      const isSunday = new Date().getDay() === 0;
+      const isBefore20 = new Date().getHours() < 20;
+      const timerLine = (isSunday && isBefore20)
+        ? `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`
+        : `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getNextSundayTimestamp()}:R>`;
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
@@ -9418,8 +9447,7 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(salesListText));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${nextSundayTS}:R>`));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(timerLine));
     }
 
     appendBrandFooterToContainer(container, guild?.id);
