@@ -3420,7 +3420,7 @@ function buildTicketClosedDmPayload({
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `\`❓\` × **Twój ticket został zamknięty z powodu:**\n` +
-      `> \`🗒️\` × **\`${powod}\`**`
+      `> \`🗒️\` × \`${powod}\``
     )
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
