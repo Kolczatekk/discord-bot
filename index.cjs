@@ -11798,6 +11798,8 @@ async function searchLogiTicketChannel(guild, query, searchType = "kod") {
             const shortId = shortMatch ? shortMatch[1] : (generateTicketShortCode(query) || query);
             const ownerMatch = ownerField.match(/<@!?(\d+)>/);
             const ownerId = ownerMatch ? ownerMatch[1] : null;
+            const historyField = embed.fields?.find((f) => f.name === "Historia")?.value || "";
+            const historyLines = historyField ? historyField.split("\n").filter(Boolean) : [];
 
             return {
               shortId,
@@ -11810,6 +11812,7 @@ async function searchLogiTicketChannel(guild, query, searchType = "kod") {
               closeReason: infoField.includes("Powód:") ? infoField.split("Powód:")[1]?.split("\n")[0]?.trim() : "brak",
               claimedBy: claimedField.match(/<@!?(\d+)>/)?.[1] || null,
               formInfo: infoField.includes("Informacje z formularza") ? infoField : null,
+              history: historyLines,
             };
           }
         }
@@ -11926,6 +11929,16 @@ async function handleZnajdzTicketCommand(interaction) {
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `### \`📝\` × **Formularz:**\n${ticketRecord.formInfo}`
+          )
+        );
+      }
+
+      if (ticketRecord.history && ticketRecord.history.length > 0) {
+        container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### \`📜\` × **Historia zdarzeń:**\n` +
+            ticketRecord.history.map((h) => `> ${h}`).join("\n")
           )
         );
       }
@@ -25694,6 +25707,7 @@ async function sendTicketLogEntry(guild, options = {}) {
       closeReason: options.reason || existingRec.closeReason,
       claimedBy: claimedById || existingRec.claimedBy,
       formInfo: options.formInfo || existingRec.formInfo,
+      history: timeline.length ? timeline : existingRec.history || [],
     };
     ticketHistoryStore.set(ticketId, updatedRec);
     ticketHistoryStore.set(shortTicketId, updatedRec);
