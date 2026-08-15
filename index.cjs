@@ -3419,7 +3419,7 @@ function buildTicketClosedDmPayload({
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${noEmoji} **Twój ticket został zamknięty z powodu:**\n` +
+      `${noEmoji} × **Twój ticket został zamknięty z powodu:**\n` +
       `> \`🗒️\` × **\`${powod}\`**`
     )
   );
