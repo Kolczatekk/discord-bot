@@ -21676,7 +21676,7 @@ async function handleModalSubmit(interaction) {
         }
       }
     }
-    if (ticketTopic) createOptions.topic = ticketTopic;
+    // Usuwamy dodawanie opisu kanału (topic)
     if (parentToUse && interaction.guild.channels.cache.has(parentToUse)) {
       createOptions.parent = parentToUse;
     }
