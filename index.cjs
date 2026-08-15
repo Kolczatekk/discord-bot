@@ -2462,7 +2462,7 @@ function buildCodeDeliveryDmPayload({
 
   const btnSkopiujKod = new ButtonBuilder()
     .setCustomId(`copy_dm_code_${code}`)
-    .setLabel("Skopiuj kod")
+    .setLabel("︲Skopiuj kod")
     .setStyle(ButtonStyle.Secondary)
     .setEmoji({ id: "1537166632613322792", name: "YES", animated: true });
 
