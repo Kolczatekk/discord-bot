@@ -2421,40 +2421,52 @@ async function createInviteRewardCode(userId, milestone) {
   });
 }
 
-function buildCodeDeliveryDmEmbed({
-  title,
+function buildCodeDeliveryDmPayload({
   code,
   rewardLine,
   expiryTimestamp,
   instructionText,
+  guildId = null,
 }) {
-  return new EmbedBuilder()
-    .setColor(0xd4af37)
-    .setTitle(title)
-    .setDescription(
-      [
-        "```",
-        code,
-        "```",
-        rewardLine,
-        `> \`🕑\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`,
-        "",
-        instructionText,
-      ].join("\n"),
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "🎁 New Shop × NAGRODA\n" +
+      "```"
     )
-    .setTimestamp();
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `> \`🏷️\` × **Kod:** \`${code}\`\n` +
+      `${rewardLine}\n` +
+      `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>\n\n` +
+      `${instructionText}`
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+  appendBrandFooterToContainer(container, guildId);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
 }
 
 async function sendInviteRewardCodeDm(user, milestone, rewardCodeData) {
-  const dmEmbed = buildCodeDeliveryDmEmbed({
-    title: "🎁 Twój kod nagrody",
+  const payload = buildCodeDeliveryDmPayload({
     code: rewardCodeData.code,
-    rewardLine: `> \`🏆\` × **Otrzymałeś:** \`${milestone.label} na Anarchia LF\``,
+    rewardLine: `> \`💸\` × **Otrzymałeś:** \`${milestone.label} na Anarchia LF\``,
     expiryTimestamp: rewardCodeData.expiryTimestamp,
     instructionText: REWARD_CODE_USAGE_TEXT,
+    guildId: user.guild?.id || null,
   });
 
-  await user.send({ embeds: [dmEmbed] });
+  await user.send(payload);
 }
 
 async function deliverPendingInviteRewardCodes(guild, userId) {
@@ -3243,14 +3255,14 @@ async function handleFreeKasaCommand(interaction) {
 
     let dmDelivered = true;
     try {
-      const dmEmbed = buildCodeDeliveryDmEmbed({
-        title: "`🔑` Twój kod rabatowy",
+      const payload = buildCodeDeliveryDmPayload({
         code,
         rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${reward.discount}%\``,
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       });
-      await user.send({ embeds: [dmEmbed] });
+      await user.send(payload);
     } catch (_error) {
       dmDelivered = false;
     }
@@ -3267,7 +3279,7 @@ async function handleFreeKasaCommand(interaction) {
         content:
           `> \`📩\` × Nie mogłem wysłać DM, więc masz kod tutaj: ||\`${code}\`||\n` +
           `> \`🎁\` × Nagroda: \`${reward.rewardText}\`\n` +
-          `> \`🕑\` × Kod wygaśnie za: <t:${expiryTimestamp}:R>`,
+          `> \`⏰\` × Kod wygaśnie za: <t:${expiryTimestamp}:R>`,
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
@@ -3279,14 +3291,14 @@ async function handleFreeKasaCommand(interaction) {
 
   let dmDelivered = true;
   try {
-    const dmEmbed = buildCodeDeliveryDmEmbed({
-      title: "🎁 Twój kod nagrody",
+    const payload = buildCodeDeliveryDmPayload({
       code: rewardCodeData.code,
-      rewardLine: `> \`🏆\` × **Wygrałeś:** \`${reward.rewardText}\``,
+      rewardLine: `> \`💸\` × **Wybrałeś/Wygrałeś:** \`${reward.rewardText}\``,
       expiryTimestamp: rewardCodeData.expiryTimestamp,
       instructionText: REWARD_CODE_USAGE_TEXT,
+      guildId: interaction.guild?.id || null,
     });
-    await user.send({ embeds: [dmEmbed] });
+    await user.send(payload);
   } catch (_error) {
     dmDelivered = false;
   }
@@ -8711,18 +8723,17 @@ async function handleSlashCommand(interaction) {
 
       const expiryTimestamp = Math.floor(expiresAt / 1000);
 
-      // 1:1 identyczny embed jak u gracza który wygrał kod na kole fortuny
-      const dmEmbed = buildCodeDeliveryDmEmbed({
-        title: "`🔑` Twój kod rabatowy",
+      const dmPayload = buildCodeDeliveryDmPayload({
         code,
         rewardLine: `> \`💸\` × **Otrzymałeś:** \`-${znizka}%\``,
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       });
 
       let dmSent = true;
       try {
-        await interaction.user.send({ embeds: [dmEmbed] });
+        await interaction.user.send(dmPayload);
       } catch (_err) {
         dmSent = false;
       }
@@ -8734,8 +8745,7 @@ async function handleSlashCommand(interaction) {
         });
       } else {
         await interaction.reply({
-          content: "> `⚠️` × **Stworzono kod, ale nie mogłem wysłać PV** (masz zamknięte DM). Masz kod poniżej:",
-          embeds: [dmEmbed],
+          ...dmPayload,
           flags: [MessageFlags.Ephemeral],
         });
       }
@@ -16843,36 +16853,36 @@ async function handleTestPvCommand(interaction) {
 
   if (typ === "wygrana-znizka" || typ === "wszystkie") {
     embedsToSend.push(
-      buildCodeDeliveryDmEmbed({
-        title: "🎁 Twój kod rabatowy",
+      buildCodeDeliveryDmPayload({
         code: "TEST-DISCOUNT-10",
-        rewardLine: "> `🏷️` × **Otrzymałeś:** `-10%`",
+        rewardLine: "> `💸` × **Otrzymałeś:** `-10%`",
         expiryTimestamp,
         instructionText: PURCHASE_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       })
     );
   }
 
   if (typ === "wygrana-kasa" || typ === "wszystkie") {
     embedsToSend.push(
-      buildCodeDeliveryDmEmbed({
-        title: "🎁 Twój kod nagrody",
+      buildCodeDeliveryDmPayload({
         code: "TEST-REWARD-50K",
-        rewardLine: "> `🎁` × **Wybrałeś/Wygrałeś:** `50k$ na Anarchia LIFESTEAL`",
+        rewardLine: "> `💸` × **Wybrałeś/Wygrałeś:** `50k$ na Anarchia LIFESTEAL`",
         expiryTimestamp,
         instructionText: REWARD_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       })
     );
   }
 
   if (typ === "wygrana-przedmiot" || typ === "wszystkie") {
     embedsToSend.push(
-      buildCodeDeliveryDmEmbed({
-        title: "🎁 Twój kod nagrody",
+      buildCodeDeliveryDmPayload({
         code: "TEST-ITEM-MIECZ",
-        rewardLine: "> `⚔️` × **Otrzymałeś:** `Anarchiczny miecz na Anarchia LF`",
+        rewardLine: "> `💸` × **Otrzymałeś:** `Anarchiczny miecz na Anarchia LF`",
         expiryTimestamp,
         instructionText: REWARD_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
       })
     );
   }
