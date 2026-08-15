@@ -3379,6 +3379,34 @@ function buildDmAutoReplyPayload(guildId = null) {
   };
 }
 
+function buildTicketClosedDmPayload({ powod, guildId = null }) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "🎫 New Shop × TICKETY\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n` +
+      `> \`🔒\` × **\`${powod}\`**`
+    )
+  );
+
+  appendBrandFooterToContainer(container, guildId);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
 function buildWezwijDmPayload({
   isOwner,
   channelLink,
@@ -5247,6 +5275,7 @@ const commands = [
           { name: "⚔️ Wygrana przedmiot (Anarchiczny miecz)", value: "wygrana-przedmiot" },
           { name: "🏆 Nagroda za zaproszenia (90k$)", value: "wygrana-zaproszenia" },
           { name: "🚨 Wezwanie na ticket (/wezwij)", value: "wezwanie" },
+          { name: "🔒 Zamknięcie ticketu", value: "zamkniecie-ticketu" },
           { name: "🤖 Auto-odpowiedź na PV", value: "auto-odpowiedz" },
           { name: "✨ Powiadomienie po weryfikacji", value: "weryfikacja" },
           { name: "🚀 Wszystkie wiadomości na raz", value: "wszystkie" },
@@ -16618,22 +16647,14 @@ async function handleZamknijZPowodemCommand(interaction) {
   try {
     const ticketMeta = ticketOwners.get(channel.id) || null;
 
-    // Wyślij embed do właściciela ticketu
-    const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
-    const embed = new EmbedBuilder()
-      .setColor(COLOR_BLUE)
-      .setDescription(
-        "```\n" +
-        "🎫 New Shop × TICKETY\n" +
-        "```\n" +
-        `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n> **\`${powod}\`**`
-      )
-      .setTimestamp();
-
     // Wyślij DM do właściciela ticketu
     const ticketOwner = await client.users.fetch(ticketOwnerId).catch(() => null);
     if (ticketOwner) {
-      await ticketOwner.send({ embeds: [embed] }).catch(() => null);
+      const payload = buildTicketClosedDmPayload({
+        powod,
+        guildId: interaction.guild?.id || null,
+      });
+      await ticketOwner.send(payload).catch(() => null);
     }
 
     // Wyślij potwierdzenie na kanał (publicznie)
@@ -16920,6 +16941,15 @@ async function handleTestPvCommand(interaction) {
   if (typ === "auto-odpowiedz" || typ === "wszystkie") {
     payloadsToSend.push(
       buildDmAutoReplyPayload(interaction.guild?.id || null)
+    );
+  }
+
+  if (typ === "zamkniecie-ticketu" || typ === "wszystkie") {
+    payloadsToSend.push(
+      buildTicketClosedDmPayload({
+        powod: "Brak odpowiedzi",
+        guildId: interaction.guild?.id || null,
+      })
     );
   }
 
