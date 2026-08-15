@@ -2455,16 +2455,16 @@ function buildCodeDeliveryDmPayload({
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
-  const shopEmoji = findGuildEmojiByName(guildId, "shop");
+  const mlotekEmoji = findGuildEmojiByName(guildId, "mlotek") || findGuildEmojiByName(guildId, "hammer");
   const btnKanalTicketu = new ButtonBuilder()
-    .setLabel("︲Kanał ticketu")
+    .setLabel("Stwórz ticket")
     .setStyle(ButtonStyle.Link)
     .setURL("https://discord.com/channels/1350446732365926491/1449453853731983484");
 
-  if (shopEmoji) {
-    btnKanalTicketu.setEmoji({ id: shopEmoji.id, name: shopEmoji.name, animated: shopEmoji.animated });
+  if (mlotekEmoji) {
+    btnKanalTicketu.setEmoji({ id: mlotekEmoji.id, name: mlotekEmoji.name, animated: mlotekEmoji.animated });
   } else {
-    btnKanalTicketu.setEmoji("🛒");
+    btnKanalTicketu.setEmoji("🔨");
   }
 
   container.addActionRowComponents(
