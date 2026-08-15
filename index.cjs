@@ -21803,14 +21803,23 @@ async function handleModalSubmit(interaction) {
   }
 }
 
+const dmAutoReplyCooldowns = new Map();
+const DM_AUTO_REPLY_COOLDOWN_MS = 10 * 60 * 1000; // 10 minut
 const mentionCooldowns = new Map();
 
 // message create handler: enforce channel restrictions and keep existing legitcheck behavior
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
 
-  // Obsługa wiadomości prywatnych (PV)
+  // Obsługa wiadomości prywatnych (PV) z cooldownem 10 minut
   if (!message.guild) {
+    const now = Date.now();
+    const lastSent = dmAutoReplyCooldowns.get(message.author.id) || 0;
+    if (now - lastSent < DM_AUTO_REPLY_COOLDOWN_MS) {
+      return;
+    }
+
+    dmAutoReplyCooldowns.set(message.author.id, now);
     const payload = buildDmAutoReplyPayload();
     await message.reply(payload).catch(() => null);
     return;
