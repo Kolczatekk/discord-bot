@@ -1415,9 +1415,9 @@ const FREE_KASA_PITY_STEP = 0.5;
 const FREE_KASA_PITY_CAP = 15;
 const FREE_KASA_PITY_GUARANTEE_AFTER = 40;
 const PURCHASE_CODE_USAGE_TEXT =
-  "> `❓` × **Kodu użyjesz**, używając komendy `/zniżka <KOD>` na kanale ticketu w kategorii **ZAKUP ITEMÓW**.";
+  "> `❓` × **Kodu użyjesz**, używając komendy `/zniżka <KOD>` na kanale ticketu.";
 const REWARD_CODE_USAGE_TEXT =
-  "> `❓` × **Kod odbierzesz**, podając go na kanale ticketu w kategorii **ODBIERZ NAGRODĘ**.";
+  "> `❓` × **Kod odbierzesz**, podając go na kanale ticketu.";
 let INVITE_REWARD_MILESTONES = [
   { threshold: 5, amount: 90_000, label: "90k$" },
   { threshold: 10, amount: 200_000, label: "200k$" },
