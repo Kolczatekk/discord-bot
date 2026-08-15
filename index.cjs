@@ -11946,40 +11946,55 @@ async function handleZnajdzTicketCommand(interaction) {
         );
       }
 
-      const files = [];
-      if (ticketRecord.transcriptText) {
-        files.push(
-          new AttachmentBuilder(Buffer.from(ticketRecord.transcriptText, "utf-8"), {
-            name: `transcript-${ticketRecord.shortId}.txt`,
-          })
-        );
-      } else if (ticketRecord.attachmentUrl) {
-        files.push(
-          new AttachmentBuilder(ticketRecord.attachmentUrl, {
-            name: `transcript-${ticketRecord.shortId}.txt`,
-          })
-        );
-      }
-
-      if (files.length > 0) {
+      if (ticketRecord.transcriptText || ticketRecord.attachmentUrl) {
         container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `### \`📁\` × **Transkrypt wiadomości:**\n` +
-            `> \`📄\` × **Pełny zapis przebiegu rozmowy został dołączony w załączniku poniżej.**`
-          )
-        );
+
+        let previewText = "";
+        if (ticketRecord.transcriptText) {
+          const rawParts = ticketRecord.transcriptText.split("--- MESSAGES ---");
+          const msgBody = rawParts.length > 1 ? rawParts[1].trim() : rawParts[0].trim();
+          const lines = msgBody.split("\n\n").filter(Boolean);
+          const lastLines = lines.slice(-8);
+          previewText = lastLines.join("\n\n");
+        }
+
+        if (previewText) {
+          if (previewText.length > 1500) previewText = previewText.slice(0, 1500) + "\n...";
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `### \`💬\` × **Zapis rozmowy (Podgląd):**\n` +
+              "```text\n" +
+              previewText + "\n" +
+              "```"
+            )
+          );
+        } else {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `### \`📁\` × **Transkrypt wiadomości:**\n` +
+              `> \`📄\` × **Pełny plik transkryptu jest dostępny do pobrania poniżej.**`
+            )
+          );
+        }
+
+        if (ticketRecord.attachmentUrl) {
+          const btnTranscript = new ButtonBuilder()
+            .setLabel("📄 Otwórz pełny transkrypt (.txt)")
+            .setStyle(ButtonStyle.Link)
+            .setURL(ticketRecord.attachmentUrl);
+
+          container.addActionRowComponents(
+            new ActionRowBuilder().addComponents(btnTranscript)
+          );
+        }
       }
 
       appendBrandFooterToContainer(container, interaction.guildId);
 
-      const replyPayload = {
+      await interaction.editReply({
         components: [container],
         flags: MessageFlags.IsComponentsV2,
-      };
-      if (files.length > 0) replyPayload.files = files;
-
-      await interaction.editReply(replyPayload);
+      });
       return;
     }
 
@@ -25768,7 +25783,15 @@ async function sendTicketLogEntry(guild, options = {}) {
     if (!edited) logMessage = null;
   }
   if (!logMessage) {
-    logMessage = await logCh.send(payload);
+    logMessage = await logCh.send(payload).catch(() => null);
+  }
+
+  if (logMessage && logMessage.attachments?.size) {
+    const attUrl = logMessage.attachments.first()?.url;
+    if (attUrl && ticketId) {
+      const rec = ticketHistoryStore.get(ticketId) || ticketHistoryStore.get(shortTicketId);
+      if (rec) rec.attachmentUrl = attUrl;
+    }
   }
 
   if (ticketId && logMessage?.id) ticketLogCards.set(ticketId, logMessage.id);
