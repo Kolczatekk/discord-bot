@@ -431,7 +431,7 @@ function getTodaySunday20Timestamp() {
   return Math.floor(finalDate.getTime() / 1000);
 }
 
-function getTodaySunday0020Timestamp() {
+function getTodaySunday0022Timestamp() {
   const now = new Date();
   const polandDateStr = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Warsaw",
@@ -447,7 +447,7 @@ function getTodaySunday0020Timestamp() {
     hour12: false,
   }).format(sample);
   const offset = Number(warsawTimeString) - 12;
-  const finalDate = new Date(Date.UTC(year, month - 1, day, -offset, 20, 0, 0));
+  const finalDate = new Date(Date.UTC(year, month - 1, day, -offset, 22, 0, 0));
   return Math.floor(finalDate.getTime() / 1000);
 }
 
@@ -9459,7 +9459,7 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
       isSundayResetTriggered = false;
     }
     const isSundayMode = isTestToday
-      ? (minute >= 20 ? (hasUnpaidSales || isSundayResetTriggered) : false)
+      ? (minute >= 22 ? (hasUnpaidSales || isSundayResetTriggered) : false)
       : ((dayOfWeek === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales));
 
     const sortedSales = Array.from(weeklySales.entries())
@@ -9488,8 +9488,8 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
       const isSunday = dayOfWeek === 0;
       const isBefore20 = hour < 20;
       let timerLine = "";
-      if (isTestToday && minute < 20) {
-        timerLine = `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getTodaySunday0020Timestamp()}:R>`;
+      if (isTestToday && minute < 22) {
+        timerLine = `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getTodaySunday0022Timestamp()}:R>`;
       } else if (isSunday && isBefore20) {
         timerLine = `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`;
       } else {
@@ -26141,14 +26141,15 @@ let lastDeadline20Trigger = "";
 async function checkWeeklyReset() {
   const { year, month, day, dayOfWeek, hour, minute, dateKey } = getPolandTime();
 
-  // TYLKO DZISIAJ DO TESTU (16.08.2026): reset ma się wykonać o 00:20
+  // TYLKO DZISIAJ DO TESTU (16.08.2026): reset ma się wykonać o 00:22
   const isTestToday = (year === 2026 && month === 8 && day === 16);
-  const shouldRunReset = isTestToday ? (hour === 0 && minute >= 20) : (hour === 0);
+  const testKey = isTestToday ? `${dateKey}-TEST22` : dateKey;
+  const shouldRunReset = isTestToday ? (hour === 0 && minute >= 22) : (hour === 0);
 
   // Niedziela - odebranie limitów dla osób z niezapłaconym rozliczeniem
-  if (dayOfWeek === 0 && shouldRunReset && lastReset00Trigger !== dateKey) {
-    lastReset00Trigger = dateKey;
-    console.log("[rozliczenia-timer] TEST Niedziela 00:20 - zabieranie limitów dla osób bez zapłaty...");
+  if (dayOfWeek === 0 && shouldRunReset && lastReset00Trigger !== testKey) {
+    lastReset00Trigger = testKey;
+    console.log("[rozliczenia-timer] TEST Niedziela 00:22 - zabieranie limitów dla osób bez zapłaty...");
     for (const guild of client.guilds.cache.values()) {
       await executeSundayReset00(guild).catch((e) => console.error("Błąd executeSundayReset00:", e));
     }
