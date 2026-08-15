@@ -9585,6 +9585,7 @@ async function executeSundayDeadline20(guild) {
     }
   }
   scheduleSavePersistentState(true);
+  await sendRozliczeniaStatusReport(guild, true);
   return count;
 }
 
