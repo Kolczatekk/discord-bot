@@ -9451,16 +9451,13 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     const klientEmoji = findGuildEmojiByName(guild?.id, "klient");
     const userEmojiStr = klientEmoji ? toGuildEmojiMarkup(klientEmoji) : "👤";
 
-    const { year, month, day, dayOfWeek, hour, minute } = getPolandTime();
-    const isTestToday = (year === 2026 && month === 8 && day === 16);
+    const { dayOfWeek, hour } = getPolandTime();
 
     const hasUnpaidSales = Array.from(weeklySales.values()).some((data) => data.amount > 0 && !data.paid);
     if (!hasUnpaidSales) {
       isSundayResetTriggered = false;
     }
-    const isSundayMode = isTestToday
-      ? (minute >= 22 ? (hasUnpaidSales || isSundayResetTriggered) : false)
-      : ((dayOfWeek === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales));
+    const isSundayMode = (dayOfWeek === 0 ? hasUnpaidSales : false) || (isSundayResetTriggered && hasUnpaidSales);
 
     const sortedSales = Array.from(weeklySales.entries())
       .filter(([_, data]) => data.amount > 0)
@@ -9487,14 +9484,9 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     } else {
       const isSunday = dayOfWeek === 0;
       const isBefore20 = hour < 20;
-      let timerLine = "";
-      if (isTestToday && minute < 22) {
-        timerLine = `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getTodaySunday0022Timestamp()}:R>`;
-      } else if (isSunday && isBefore20) {
-        timerLine = `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`;
-      } else {
-        timerLine = `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getNextSundayTimestamp()}:R>`;
-      }
+      const timerLine = (isSunday && isBefore20)
+        ? `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`
+        : `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getNextSundayTimestamp()}:R>`;
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
@@ -26139,17 +26131,12 @@ let lastDeadline20Trigger = "";
 
 // Funkcja do sprawdzania i resetowania cotygodniowych rozliczeń
 async function checkWeeklyReset() {
-  const { year, month, day, dayOfWeek, hour, minute, dateKey } = getPolandTime();
+  const { dayOfWeek, hour, minute, dateKey } = getPolandTime();
 
-  // TYLKO DZISIAJ DO TESTU (16.08.2026): reset ma się wykonać o 00:22
-  const isTestToday = (year === 2026 && month === 8 && day === 16);
-  const testKey = isTestToday ? `${dateKey}-TEST22` : dateKey;
-  const shouldRunReset = isTestToday ? (hour === 0 && minute >= 22) : (hour === 0);
-
-  // Niedziela - odebranie limitów dla osób z niezapłaconym rozliczeniem
-  if (dayOfWeek === 0 && shouldRunReset && lastReset00Trigger !== testKey) {
-    lastReset00Trigger = testKey;
-    console.log("[rozliczenia-timer] TEST Niedziela 00:22 - zabieranie limitów dla osób bez zapłaty...");
+  // Niedziela 00:00 - odebranie limitów dla osób z niezapłaconym rozliczeniem
+  if (dayOfWeek === 0 && hour === 0 && lastReset00Trigger !== dateKey) {
+    lastReset00Trigger = dateKey;
+    console.log("[rozliczenia-timer] Niedziela 00:00 - zabieranie limitów dla osób bez zapłaty...");
     for (const guild of client.guilds.cache.values()) {
       await executeSundayReset00(guild).catch((e) => console.error("Błąd executeSundayReset00:", e));
     }
@@ -26201,8 +26188,8 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Uruchom sprawdzanie co minutę
-setInterval(checkWeeklyReset, 60 * 1000);
+// Uruchom sprawdzanie co 10 sekund (dla natychmiastowej precyzji o 00:00:00)
+setInterval(checkWeeklyReset, 10 * 1000);
 
 // Wysyłaj wiadomość o rozliczeniach i odświeżaj raport statusu
 setInterval(async () => {
