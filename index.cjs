@@ -3379,6 +3379,8 @@ function buildDmAutoReplyPayload(guildId = null) {
   };
 }
 
+const ticketHistoryStore = new Map(); // shortTicketId OR channelId -> ticketRecord
+
 function generateTicketShortCode(channelId = "") {
   if (!channelId) {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -3410,13 +3412,13 @@ function buildTicketClosedDmPayload({
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
-  const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
+  const noEmoji = '<a:NO:1537166621527908382>';
   const shortTicketId = generateTicketShortCode(channelId);
   const safeClosedTime = closedTimestamp || Math.floor(Date.now() / 1000);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `${arrowEmoji} **Twój ticket został zamknięty z powodu:**\n` +
+      `${noEmoji} **Twój ticket został zamknięty z powodu:**\n` +
       `> \`🗒️\` × **\`${powod}\`**`
     )
   );
@@ -3425,9 +3427,9 @@ function buildTicketClosedDmPayload({
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `### \`🛍️\` × **Informację o tickecie:**\n` +
-      `> ${arrowEmoji} × **ID Ticketa:** \`${shortTicketId}\`\n` +
-      `> ${arrowEmoji} × **Zapisz** ten **__kod__**! Będzie on **potrzebny** w razie **problemów**.\n` +
-      `> ${arrowEmoji} × **Data zamknięcia:** <t:${safeClosedTime}:f>`
+      `> ${noEmoji} × **ID Ticketa:** \`${shortTicketId}\`\n` +
+      `> ${noEmoji} × **Zachowaj ten identyfikator!** Przyda się w razie pytań lub reklamacji.\n` +
+      `> ${noEmoji} × **Data zamknięcia:** <t:${safeClosedTime}:f>`
     )
   );
 
@@ -5245,6 +5247,23 @@ const commands = [
         )
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildText),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("znajdz-ticket")
+    .setDescription("Znajdź szczegóły ticketu po kodzie ID lub sprawdź historię ticketów danego gracza")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((option) =>
+      option
+        .setName("kod")
+        .setDescription("Kod ID ticketu (np. MAi1TRSwRAJj4) lub ID kanału")
+        .setRequired(false)
+    )
+    .addUserOption((option) =>
+      option
+        .setName("uzytkownik")
+        .setDescription("Gracz, którego tickety chcesz sprawdzić")
+        .setRequired(false)
     )
     .toJSON(),
   // RENAMED: sprawdz-zaproszenia (was sprawdz-zapro)
@@ -9031,6 +9050,9 @@ async function handleSlashCommand(interaction) {
     case "usunzakup":
       await handleUsunZakupCommand(interaction);
       break;
+    case "znajdz-ticket":
+      await handleZnajdzTicketCommand(interaction);
+      break;
     case "zamknij-z-powodem":
       await handleZamknijZPowodemCommand(interaction);
       break;
@@ -11744,6 +11766,143 @@ async function handlePanelWeryfikacjaCommand(interaction) {
     } catch (e) {
       // ignore
     }
+  }
+}
+
+async function handleZnajdzTicketCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const kodInput = (interaction.options.getString("kod") || "").trim();
+  const targetUser = interaction.options.getUser("uzytkownik");
+
+  if (!kodInput && !targetUser) {
+    await interaction.reply({
+      content: "> `❌` × Musisz podać **kod ID ticketu** lub **oznaczyć gracza**.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+  const noEmoji = '<a:NO:1537166621527908382>';
+
+  if (kodInput) {
+    let ticketRecord = ticketHistoryStore.get(kodInput);
+
+    if (!ticketRecord) {
+      for (const rec of ticketHistoryStore.values()) {
+        if (rec.shortId === kodInput || rec.channelId === kodInput) {
+          ticketRecord = rec;
+          break;
+        }
+      }
+    }
+
+    if (!ticketRecord) {
+      await interaction.reply({
+        content: `> \`❌\` × Nie znaleziono ticketu o ID lub kodzie: \`${kodInput}\`.`,
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        "🔍 New Shop × SZCZEGÓŁY TICKETU\n" +
+        "```"
+      )
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+    const openedTimeStr = ticketRecord.openedAt ? `<t:${Math.floor(ticketRecord.openedAt / 1000)}:F>` : "Brak danych";
+    const closedTimeStr = ticketRecord.closedAt ? `<t:${Math.floor(ticketRecord.closedAt / 1000)}:F>` : "Nadal otwarty";
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `> ${noEmoji} × **Kod ID:** \`${ticketRecord.shortId}\`\n` +
+        `> ${noEmoji} × **Klient:** <@${ticketRecord.ownerId}> (\`${ticketRecord.ownerId}\`)\n` +
+        `> ${noEmoji} × **Typ ticketu:** \`${ticketRecord.type || "NIEZNANY"}\`\n` +
+        `> ${noEmoji} × **Status:** \`${ticketRecord.status || "NIEZNANY"}\`\n` +
+        `> ${noEmoji} × **Data utworzenia:** ${openedTimeStr}\n` +
+        `> ${noEmoji} × **Data zamknięcia:** ${closedTimeStr}\n` +
+        `> ${noEmoji} × **Powód zamknięcia:** \`${ticketRecord.closeReason || "brak"}\`\n` +
+        `> ${noEmoji} × **Obsługa:** ${ticketRecord.claimedBy ? `<@${ticketRecord.claimedBy}>` : "Brak"}`
+      )
+    );
+
+    if (ticketRecord.formInfo) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### \`📝\` × **Formularz:**\n${ticketRecord.formInfo}`
+        )
+      );
+    }
+
+    appendBrandFooterToContainer(container, interaction.guildId);
+
+    await interaction.reply({
+      components: [container],
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (targetUser) {
+    const userTickets = [];
+    const seenShortIds = new Set();
+
+    for (const rec of ticketHistoryStore.values()) {
+      if (rec.ownerId === targetUser.id && rec.shortId && !seenShortIds.has(rec.shortId)) {
+        seenShortIds.add(rec.shortId);
+        userTickets.push(rec);
+      }
+    }
+
+    if (userTickets.length === 0) {
+      await interaction.reply({
+        content: `> \`❌\` × Gracz <@${targetUser.id}> nie posiada zarejestrowanych ticketów.`,
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    userTickets.sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0));
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "```\n" +
+        "🔍 New Shop × TICKETY GRACZA\n" +
+        "```"
+      )
+    );
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+    const lines = userTickets.slice(0, 15).map((t) => {
+      const dateStr = t.openedAt ? `<t:${Math.floor(t.openedAt / 1000)}:R>` : "dawno";
+      return `> ${noEmoji} × **Kod:** \`${t.shortId}\` | **Typ:** \`${t.type || "Inny"}\` | **Status:** \`${t.status || "Zamknięty"}\` (${dateStr})`;
+    });
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### \`👤\` × **Tickety gracza** <@${targetUser.id}> (Łącznie: \`${userTickets.length}\`):\n` +
+        lines.join("\n")
+      )
+    );
+
+    appendBrandFooterToContainer(container, interaction.guildId);
+
+    await interaction.reply({
+      components: [container],
+      flags: [MessageFlags.Ephemeral],
+    });
   }
 }
 
@@ -25419,9 +25578,31 @@ async function sendTicketLogEntry(guild, options = {}) {
     });
   }
 
+  const shortTicketId = generateTicketShortCode(ticketId);
+  if (ticketId) {
+    const existingRec = ticketHistoryStore.get(ticketId) || ticketHistoryStore.get(shortTicketId) || {};
+    const updatedRec = {
+      ...existingRec,
+      shortId: shortTicketId,
+      channelId: ticketId,
+      channelName: ticketChannel?.name || existingRec.channelName || "unknown",
+      ownerId: ownerId || existingRec.ownerId,
+      type: type || existingRec.type,
+      status: status || existingRec.status,
+      openedAt: openedAt || existingRec.openedAt || now,
+      closedAt: options.statusLabel === "ZAMKNIĘTY" ? now : existingRec.closedAt,
+      closedBy: actorId || existingRec.closedBy,
+      closeReason: options.reason || existingRec.closeReason,
+      claimedBy: claimedById || existingRec.claimedBy,
+      formInfo: options.formInfo || existingRec.formInfo,
+    };
+    ticketHistoryStore.set(ticketId, updatedRec);
+    ticketHistoryStore.set(shortTicketId, updatedRec);
+  }
+
   embed
     .setFooter({
-      text: `Ticket ID: ${ticketId || "brak"}` +
+      text: `Kod ID: ${shortTicketId} • Ticket ID: ${ticketId || "brak"}` +
         (openedAt ? ` • utworzony ${new Date(openedAt).toLocaleDateString("pl-PL")}` : ""),
     })
     .setTimestamp(now);
