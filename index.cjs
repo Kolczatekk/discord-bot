@@ -5126,6 +5126,24 @@ const commands = [
     .toJSON(),
 
   new SlashCommandBuilder()
+    .setName("test-pv")
+    .setDescription("Przetestuj wiadomości wysyłane użytkownikom na PV (wygrane kody, weryfikacja itp.)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((option) =>
+      option
+        .setName("typ")
+        .setDescription("Wybierz typ wiadomości prywatnej do przetestowania")
+        .setRequired(true)
+        .addChoices(
+          { name: "🎁 Wygrany kod rabatowy (-10%)", value: "wygrana-znizka" },
+          { name: "💰 Wygrany kod pieniężny (50k$)", value: "wygrana-kasa" },
+          { name: "⚔️ Wygrana przedmiot (Anarchiczny miecz)", value: "wygrana-przedmiot" },
+          { name: "✨ Powiadomienie po weryfikacji", value: "weryfikacja" },
+          { name: "🚀 Wszystkie 4 wiadomości na raz", value: "wszystkie" },
+        ),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("rozliczenieprowizja")
     .setDescription("Ustaw procent prowizji rozliczenia (dla wszystkich lub wybranej osoby)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -8940,6 +8958,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "rozliczeniezakoncz":
       await handleRozliczenieZakonczCommand(interaction);
+      break;
+    case "test-pv":
+      await handleTestPvCommand(interaction);
       break;
     case "statusbota":
       await handleStatusBotaCommand(interaction);
@@ -16801,6 +16822,90 @@ async function closeTicketAnonymously(channel, guild, executorId) {
       console.error("Błąd zamykania kanału w closeTicketAnonymously:", closeErr);
     }
   }, 10000);
+}
+
+async function handleTestPvCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  const typ = interaction.options.getString("typ");
+  const user = interaction.user;
+  const expiryTimestamp = Math.floor(Date.now() / 1000) + 7 * 24 * 3600; // za 7 dni
+
+  const embedsToSend = [];
+
+  if (typ === "wygrana-znizka" || typ === "wszystkie") {
+    embedsToSend.push(
+      buildCodeDeliveryDmEmbed({
+        title: "🎁 Twój kod rabatowy",
+        code: "TEST-DISCOUNT-10",
+        rewardLine: "> `🏷️` × **Otrzymałeś:** `-10%`",
+        expiryTimestamp,
+        instructionText: PURCHASE_CODE_USAGE_TEXT,
+      })
+    );
+  }
+
+  if (typ === "wygrana-kasa" || typ === "wszystkie") {
+    embedsToSend.push(
+      buildCodeDeliveryDmEmbed({
+        title: "🎁 Twój kod nagrody",
+        code: "TEST-REWARD-50K",
+        rewardLine: "> `🎁` × **Wybrałeś/Wygrałeś:** `50k$ na Anarchia LIFESTEAL`",
+        expiryTimestamp,
+        instructionText: REWARD_CODE_USAGE_TEXT,
+      })
+    );
+  }
+
+  if (typ === "wygrana-przedmiot" || typ === "wszystkie") {
+    embedsToSend.push(
+      buildCodeDeliveryDmEmbed({
+        title: "🎁 Twój kod nagrody",
+        code: "TEST-ITEM-MIECZ",
+        rewardLine: "> `⚔️` × **Otrzymałeś:** `Anarchiczny miecz na Anarchia LF`",
+        expiryTimestamp,
+        instructionText: REWARD_CODE_USAGE_TEXT,
+      })
+    );
+  }
+
+  if (typ === "weryfikacja" || typ === "wszystkie") {
+    embedsToSend.push(
+      new EmbedBuilder()
+        .setColor(COLOR_BLUE)
+        .setDescription(
+          "```\n" +
+          "🛒 New Shop × WERYFIKACJA\n" +
+          "```\n" +
+          "`✨` Gratulacje!\n\n" +
+          "`📝` Pomyślnie przeszedłeś weryfikacje na naszym serwerze discord życzymy udanych zakupów!"
+        )
+        .setTimestamp()
+    );
+  }
+
+  try {
+    for (const embed of embedsToSend) {
+      await user.send({ embeds: [embed] });
+    }
+
+    await interaction.editReply({
+      content: `> \`✅\` × **Pomyślnie wysłano testowe wiadomości PV (${embedsToSend.length}) na Twoje prywatne wiadomości!** Sprawdź swoje PV.`,
+    });
+  } catch (err) {
+    console.error("Błąd w handleTestPvCommand (DM blocked):", err);
+    await interaction.editReply({
+      content: "> `❌` × **Nie udało się wysłać prywatnej wiadomości!** Upewnij się, że masz włączone wiadomości prywatne (DM) z członkami serwera w ustawieniach prywatności Discorda.",
+    });
+  }
 }
 
 async function sendLegitCheckInfoMessage(channel) {
