@@ -2443,7 +2443,7 @@ function buildCodeDeliveryDmPayload({
     new TextDisplayBuilder().setContent(
       `> \`🏷️\` × **Kod:** \`${code}\`\n` +
       `${rewardLine}\n` +
-      `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`
+      `> \`⏰\` × **Kod wygaśnie:** <t:${expiryTimestamp}:R>`
     )
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
@@ -3300,7 +3300,7 @@ async function handleFreeKasaCommand(interaction) {
         content:
           `> \`📩\` × Nie mogłem wysłać DM, więc masz kod tutaj: ||\`${code}\`||\n` +
           `> \`🎁\` × Nagroda: \`${reward.rewardText}\`\n` +
-          `> \`⏰\` × Kod wygaśnie za: <t:${expiryTimestamp}:R>`,
+          `> \`⏰\` × Kod wygaśnie: <t:${expiryTimestamp}:R>`,
         flags: [MessageFlags.Ephemeral],
       }).catch(() => null);
     }
@@ -3362,17 +3362,16 @@ function buildWezwijDmPayload({
   const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
   const textContent = isOwner
     ? `${arrowEmoji} **jesteś wzywany** na **swojego ticketa**!\n` +
-      `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**\n\n` +
-      `**KANAŁ:** <#${channelId}>`
-    : `${arrowEmoji} **jesteś wzywany** na kanał\n\n` +
-      `**KANAŁ:** <#${channelId}>`;
+      `${arrowEmoji} **Masz** **__4 godziny__** na odpowiedź lub ticket **zostanie zamknięty!**`
+    : `${arrowEmoji} **jesteś wzywany** na kanał`;
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(textContent)
   );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 
   const btnPrzejdz = new ButtonBuilder()
-    .setLabel("🔨︲Przejdź do ticketu")
+    .setLabel("📫︲Przejdź na ticket")
     .setStyle(ButtonStyle.Link)
     .setURL(channelLink);
 
