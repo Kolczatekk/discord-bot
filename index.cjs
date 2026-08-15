@@ -803,7 +803,7 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
       "```",
     ),
   );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `> \`📅\` <a:arrowwhite:1491476759290449984> **Data:** \`${displayDate}\`\n` +
