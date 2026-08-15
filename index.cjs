@@ -3348,7 +3348,7 @@ function buildDmAutoReplyPayload(guildId = null) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "```\n" +
-      "❓ New Shop × POMOC\n" +
+      "🤖 New Shop × POMOC\n" +
       "```"
     )
   );
@@ -3357,7 +3357,7 @@ function buildDmAutoReplyPayload(guildId = null) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "> `👋` × **Cześć! Jestem jedynie botem.**\n" +
-      "> `❓` × Jeżeli masz **jakiekolwiek pytanie**, otwórz ticket w kategorii **POMOC**!"
+      "> `📝` × Jeżeli masz **jakiekolwiek pytanie**, otwórz ticket w kategorii **POMOC**!"
     )
   );
   container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
