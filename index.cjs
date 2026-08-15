@@ -3342,6 +3342,43 @@ async function handleFreeKasaCommand(interaction) {
   }
 }
 
+function buildDmAutoReplyPayload(guildId = null) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "🤖 New Shop × POMOC\n" +
+      "```"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "`👋` **Cześć! Jestem automatycznym botem.**\n\n" +
+      "> `❓` × Jeżeli masz **jakiekolwiek pytanie**, otwórz ticket na serwerze **New Shop** w kategorii **POMOC**!"
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const btnKanalTicketu = new ButtonBuilder()
+    .setLabel("🔨︲Stwórz ticket")
+    .setStyle(ButtonStyle.Link)
+    .setURL("https://discord.com/channels/1350446732365926491/1449453853731983484");
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(btnKanalTicketu)
+  );
+
+  appendBrandFooterToContainer(container, guildId);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
 function buildWezwijDmPayload({
   isOwner,
   channelLink,
@@ -5210,6 +5247,7 @@ const commands = [
           { name: "⚔️ Wygrana przedmiot (Anarchiczny miecz)", value: "wygrana-przedmiot" },
           { name: "🏆 Nagroda za zaproszenia (90k$)", value: "wygrana-zaproszenia" },
           { name: "🚨 Wezwanie na ticket (/wezwij)", value: "wezwanie" },
+          { name: "🤖 Auto-odpowiedź na PV", value: "auto-odpowiedz" },
           { name: "✨ Powiadomienie po weryfikacji", value: "weryfikacja" },
           { name: "🚀 Wszystkie wiadomości na raz", value: "wszystkie" },
         ),
@@ -16879,6 +16917,12 @@ async function handleTestPvCommand(interaction) {
     );
   }
 
+  if (typ === "auto-odpowiedz" || typ === "wszystkie") {
+    payloadsToSend.push(
+      buildDmAutoReplyPayload(interaction.guild?.id || null)
+    );
+  }
+
   if (typ === "weryfikacja" || typ === "wszystkie") {
     const vContainer = new ContainerBuilder().setAccentColor(COLOR_BLUE);
     vContainer.addTextDisplayComponents(
@@ -21767,9 +21811,8 @@ client.on(Events.MessageCreate, async (message) => {
 
   // Obsługa wiadomości prywatnych (PV)
   if (!message.guild) {
-    await message.reply({
-      content: "Cześć! Jestem tylko botem. Jeżeli masz jakie kolwiek pytanie stwórz ticket na serwerze NewShop w kategori pomoc.\nhttps://discord.com/channels/1350446732365926491/1449453853731983484"
-    }).catch(() => null);
+    const payload = buildDmAutoReplyPayload();
+    await message.reply(payload).catch(() => null);
     return;
   }
 
