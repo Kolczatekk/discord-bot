@@ -2453,6 +2453,24 @@ function buildCodeDeliveryDmPayload({
       `${instructionText}`
     )
   );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  const shopEmoji = findGuildEmojiByName(guildId, "shop");
+  const btnKanalTicketu = new ButtonBuilder()
+    .setLabel("︲Kanał ticketu")
+    .setStyle(ButtonStyle.Link)
+    .setURL("https://discord.com/channels/1350446732365926491/1449453853731983484");
+
+  if (shopEmoji) {
+    btnKanalTicketu.setEmoji({ id: shopEmoji.id, name: shopEmoji.name, animated: shopEmoji.animated });
+  } else {
+    btnKanalTicketu.setEmoji("🛒");
+  }
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(btnKanalTicketu)
+  );
+
   appendBrandFooterToContainer(container, guildId);
 
   return {
