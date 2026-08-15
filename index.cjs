@@ -16813,7 +16813,7 @@ async function sendLegitCheckInfoMessage(channel) {
       "```",
     ),
   );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(false));
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "### `🗒️` × Jak napisać:\n" +
