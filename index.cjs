@@ -5165,8 +5165,9 @@ const commands = [
           { name: "🎁 Wygrany kod rabatowy (-10%)", value: "wygrana-znizka" },
           { name: "💰 Wygrany kod pieniężny (50k$)", value: "wygrana-kasa" },
           { name: "⚔️ Wygrana przedmiot (Anarchiczny miecz)", value: "wygrana-przedmiot" },
+          { name: "🏆 Nagroda za zaproszenia (90k$)", value: "wygrana-zaproszenia" },
           { name: "✨ Powiadomienie po weryfikacji", value: "weryfikacja" },
-          { name: "🚀 Wszystkie 4 wiadomości na raz", value: "wszystkie" },
+          { name: "🚀 Wszystkie wiadomości na raz", value: "wszystkie" },
         ),
     )
     .toJSON(),
@@ -16795,6 +16796,18 @@ async function handleTestPvCommand(interaction) {
       buildCodeDeliveryDmPayload({
         code: "TEST-ITEM-MIECZ",
         rewardLine: "> `💸` × **Wygrałeś:** `Anarchiczny miecz na Anarchia LF`",
+        expiryTimestamp,
+        instructionText: REWARD_CODE_USAGE_TEXT,
+        guildId: interaction.guild?.id || null,
+      })
+    );
+  }
+
+  if (typ === "wygrana-zaproszenia" || typ === "wszystkie") {
+    payloadsToSend.push(
+      buildCodeDeliveryDmPayload({
+        code: "TEST-INVITE-90K",
+        rewardLine: "> `💸` × **Wygrałeś:** `90k$ na Anarchia LF`",
         expiryTimestamp,
         instructionText: REWARD_CODE_USAGE_TEXT,
         guildId: interaction.guild?.id || null,
