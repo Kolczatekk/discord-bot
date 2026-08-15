@@ -2443,12 +2443,16 @@ function buildCodeDeliveryDmPayload({
     new TextDisplayBuilder().setContent(
       `> \`🏷️\` × **Kod:** \`${code}\`\n` +
       `${rewardLine}\n` +
-      `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>\n\n` +
+      `> \`⏰\` × **Kod wygaśnie za:** <t:${expiryTimestamp}:R>`
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
       `${instructionText}`
     )
   );
-
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
   appendBrandFooterToContainer(container, guildId);
 
   return {
