@@ -11874,7 +11874,7 @@ async function handleZnajdzTicketCommand(interaction) {
     }
 
     const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
-    const noEmoji = '<a:NO:1537166621527908382>';
+    const arrowEmoji = '<a:arrowwhite:1491476759290449984>';
 
     if (kodInput) {
       let ticketRecord = ticketHistoryStore.get(kodInput);
@@ -11913,14 +11913,14 @@ async function handleZnajdzTicketCommand(interaction) {
 
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `> ${noEmoji} × **Kod ID:** \`${ticketRecord.shortId}\`\n` +
-          `> ${noEmoji} × **Klient:** ${ticketRecord.ownerId ? `<@${ticketRecord.ownerId}> (\`${ticketRecord.ownerId}\`)` : "Nieznany"}\n` +
-          `> ${noEmoji} × **Typ ticketu:** \`${ticketRecord.type || "NIEZNANY"}\`\n` +
-          `> ${noEmoji} × **Status:** \`${ticketRecord.status || "NIEZNANY"}\`\n` +
-          `> ${noEmoji} × **Data utworzenia:** ${openedTimeStr}\n` +
-          `> ${noEmoji} × **Data zamknięcia:** ${closedTimeStr}\n` +
-          `> ${noEmoji} × **Powód zamknięcia:** \`${ticketRecord.closeReason || "brak"}\`\n` +
-          `> ${noEmoji} × **Obsługa:** ${ticketRecord.claimedBy ? `<@${ticketRecord.claimedBy}>` : "Brak"}`
+          `> ${arrowEmoji} × **Kod ID:** \`${ticketRecord.shortId}\`\n` +
+          `> ${arrowEmoji} × **Klient:** ${ticketRecord.ownerId ? `<@${ticketRecord.ownerId}> (\`${ticketRecord.ownerId}\`)` : "Nieznany"}\n` +
+          `> ${arrowEmoji} × **Typ ticketu:** \`${ticketRecord.type || "NIEZNANY"}\`\n` +
+          `> ${arrowEmoji} × **Status:** \`${ticketRecord.status || "NIEZNANY"}\`\n` +
+          `> ${arrowEmoji} × **Data utworzenia:** ${openedTimeStr}\n` +
+          `> ${arrowEmoji} × **Data zamknięcia:** ${closedTimeStr}\n` +
+          `> ${arrowEmoji} × **Powód zamknięcia:** \`${ticketRecord.closeReason || "brak"}\`\n` +
+          `> ${arrowEmoji} × **Obsługa:** ${ticketRecord.claimedBy ? `<@${ticketRecord.claimedBy}>` : "Brak"}`
         )
       );
 
@@ -11993,7 +11993,7 @@ async function handleZnajdzTicketCommand(interaction) {
 
       const lines = userTickets.slice(0, 15).map((t) => {
         const dateStr = t.openedAt ? `<t:${Math.floor(t.openedAt / 1000)}:R>` : "dawno";
-        return `> ${noEmoji} × **Kod:** \`${t.shortId}\` | **Typ:** \`${t.type || "Inny"}\` | **Status:** \`${t.status || "Zamknięty"}\` (${dateStr})`;
+        return `> ${arrowEmoji} × **Kod:** \`${t.shortId}\` | **Typ:** \`${t.type || "Inny"}\` | **Status:** \`${t.status || "Zamknięty"}\` (${dateStr})`;
       });
 
       container.addTextDisplayComponents(
