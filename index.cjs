@@ -17974,7 +17974,12 @@ function parsePLN(str) {
 
 const COMMAND_EXTERNAL_TIMEOUT_MS = 6000;
 
-async function runCommandExternal(operation, label, attempts = 2) {
+async function runCommandExternal(
+  operation,
+  label,
+  attempts = 2,
+  timeoutMs = COMMAND_EXTERNAL_TIMEOUT_MS,
+) {
   let lastError = null;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -17985,10 +17990,10 @@ async function runCommandExternal(operation, label, attempts = 2) {
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(() => {
           controller.abort();
-          const error = new Error(`${label}: timeout po ${COMMAND_EXTERNAL_TIMEOUT_MS}ms`);
+          const error = new Error(`${label}: timeout po ${timeoutMs}ms`);
           error.code = "COMMAND_EXTERNAL_TIMEOUT";
           reject(error);
-        }, COMMAND_EXTERNAL_TIMEOUT_MS);
+        }, timeoutMs);
       });
 
       return await Promise.race([operationPromise, timeoutPromise]);
@@ -18027,8 +18032,6 @@ async function handleWydaneCommand(interaction) {
     }
   }
 
-  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-
   try {
     console.log(
       `[/wydane] Start user=${interaction.user.id} target=${targetUser.id} guild=${interaction.guildId}`,
@@ -18037,6 +18040,7 @@ async function handleWydaneCommand(interaction) {
       (signal) => db.getUserSpent(targetUser.id, interaction.guildId || "default", { signal }),
       "/wydane: odczyt Supabase",
       1,
+      2000,
     );
     console.log(`[/wydane] Supabase zakończone target=${targetUser.id} spent=${spent}`);
     
@@ -18050,13 +18054,18 @@ async function handleWydaneCommand(interaction) {
         `<a:arrowwhite:1491476759290449984> Łączna kwota wydana w sklepie: **${spent.toFixed(2)} PLN**`
       );
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
     console.log(`[/wydane] Odpowiedź wysłana target=${targetUser.id}`);
   } catch (err) {
     console.error("Błąd w komendzie /wydane:", err);
-    await interaction.editReply({
+    const errorPayload = {
       content: "> `❌` Nie udało się teraz pobrać danych z bazy. Spróbuj ponownie za chwilę.",
-    }).catch((replyError) => {
+      flags: [MessageFlags.Ephemeral],
+    };
+    const responsePromise = interaction.deferred || interaction.replied
+      ? interaction.editReply(errorPayload)
+      : interaction.reply(errorPayload);
+    await responsePromise.catch((replyError) => {
       console.error("[/wydane] Nie udało się zakończyć odroczonej odpowiedzi:", replyError);
     });
   }
