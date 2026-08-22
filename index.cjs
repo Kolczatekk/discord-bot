@@ -51,6 +51,7 @@ app.get('/health', (req, res) => {
   res.status(200).json({
     status: discordConnected ? 'healthy' : 'degraded',
     discord_connected: discordConnected,
+    commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
     timestamp: new Date().toISOString(),
   });
 });
