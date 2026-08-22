@@ -6658,16 +6658,149 @@ client.on(Events.MessageCreate, (message) => {
   }
 });
 
+const INTERACTION_RESPONSE_TIMEOUT_MS = 7000;
+const INTERACTION_WATCHDOG_MS = 15000;
+
+function promiseWithTimeout(promise, timeoutMs, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(`${label}: timeout po ${timeoutMs}ms`);
+      error.code = "INTERACTION_RESPONSE_TIMEOUT";
+      reject(error);
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
+function toDiscordApiValue(value) {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object") return value;
+  if (typeof value.toJSON === "function") return toDiscordApiValue(value.toJSON());
+  if (Array.isArray(value)) return value.map(toDiscordApiValue);
+
+  const result = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const converted = toDiscordApiValue(nestedValue);
+    if (converted !== undefined) result[key] = converted;
+  }
+  return result;
+}
+
+function normalizeInteractionPayload(payload, forceEphemeral = false) {
+  if (payload === undefined || payload === null) return null;
+  const source = typeof payload === "string" ? { content: payload } : (payload || {});
+  if (source.files?.length) return null;
+
+  const normalized = {};
+  const directKeys = ["content", "embeds", "components", "attachments", "tts", "poll"];
+  for (const key of directKeys) {
+    if (source[key] !== undefined) normalized[key] = toDiscordApiValue(source[key]);
+  }
+
+  if (source.allowedMentions !== undefined) {
+    normalized.allowed_mentions = toDiscordApiValue(source.allowedMentions);
+  } else if (source.allowed_mentions !== undefined) {
+    normalized.allowed_mentions = toDiscordApiValue(source.allowed_mentions);
+  }
+
+  let flags = source.flags;
+  if (Array.isArray(flags)) flags = flags.reduce((sum, flag) => sum | Number(flag || 0), 0);
+  else if (flags && typeof flags === "object" && "bitfield" in flags) flags = Number(flags.bitfield);
+  else if (flags !== undefined) flags = Number(flags);
+  if (source.ephemeral || forceEphemeral) flags = Number(flags || 0) | MessageFlags.Ephemeral;
+  if (Number.isFinite(flags)) normalized.flags = flags;
+
+  return normalized;
+}
+
+async function rawInteractionRequest(interaction, method, path, payload) {
+  const applicationId = interaction.applicationId || client.application?.id || client.user?.id;
+  if (!applicationId || !interaction.token) {
+    throw new Error("Brak applicationId/token dla bezpośredniej odpowiedzi interakcji");
+  }
+
+  const url = `https://discord.com/api/v10/webhooks/${applicationId}/${interaction.token}${path}`;
+  let lastError;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), INTERACTION_RESPONSE_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const responseText = await response.text();
+
+      if (response.ok) {
+        console.log(
+          `[INTERACTION_RAW] Odpowiedź wysłana command=${interaction.commandName} method=${method} status=${response.status}`,
+        );
+        return responseText;
+      }
+
+      let retryAfterMs = 0;
+      if (response.status === 429) {
+        try {
+          const body = JSON.parse(responseText);
+          retryAfterMs = Math.ceil(Number(body.retry_after || 0) * 1000);
+        } catch (_) {
+          retryAfterMs = 0;
+        }
+      }
+
+      lastError = new Error(
+        `Discord webhook HTTP ${response.status}: ${responseText.slice(0, 500)}`,
+      );
+      if (attempt < 2 && response.status === 429) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(retryAfterMs, 250), 5000)));
+        continue;
+      }
+      throw lastError;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= 2 || error?.name !== "AbortError") throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  throw lastError || new Error("Nieznany błąd bezpośredniej odpowiedzi interakcji");
+}
+
 function trackChatCommandCompletion(interaction) {
   let finalized = Boolean(interaction.replied);
+  let lastAttempt = null;
 
-  for (const methodName of ["reply", "editReply", "followUp", "deleteReply"]) {
+  for (const methodName of ["deferReply", "reply", "editReply", "followUp", "deleteReply"]) {
     if (typeof interaction[methodName] !== "function") continue;
     const original = interaction[methodName].bind(interaction);
     interaction[methodName] = async (...args) => {
+      if (methodName !== "deferReply" && methodName !== "deleteReply") {
+        lastAttempt = { methodName, payload: args[0] };
+      }
+
+      const responsePromise = original(...args);
+      if (methodName !== "deferReply") {
+        responsePromise.then(
+          () => { finalized = true; },
+          () => {},
+        );
+      }
+
       try {
-        const result = await original(...args);
-        finalized = true;
+        const result = await promiseWithTimeout(
+          responsePromise,
+          INTERACTION_RESPONSE_TIMEOUT_MS,
+          `${interaction.commandName || interaction.id}.${methodName}`,
+        );
+        if (methodName !== "deferReply") finalized = true;
         return result;
       } catch (error) {
         console.error(
@@ -6681,29 +6814,37 @@ function trackChatCommandCompletion(interaction) {
 
   return {
     isFinalized: () => finalized,
+    markFinalized: () => { finalized = true; },
+    getLastAttempt: () => lastAttempt,
   };
 }
 
 async function finishUnansweredChatCommand(interaction, completion, reason) {
   if (!interaction.isChatInputCommand() || completion.isFinalized()) return;
 
-  const content =
-    "> `❌` × Komenda wykonała się, ale Discord nie przyjął jej odpowiedzi. Spróbuj ponownie za chwilę.";
+  const fallbackPayload = {
+    content: "> `❌` × Komenda nie otrzymała na czas danych potrzebnych do odpowiedzi. Spróbuj ponownie za chwilę.",
+  };
   console.error(
     `[INTERACTION_RESPONSE] Brak końcowej odpowiedzi command=${interaction.commandName} id=${interaction.id} reason=${reason}`,
   );
 
   try {
-    if (interaction.deferred) {
-      // POST follow-up korzysta z innej trasy niż PATCH odpowiedzi
-      // odroczonej. Dzięki temu użytkownik dostanie komunikat również wtedy,
-      // gdy Discord odrzuca samo editReply.
-      await interaction.followUp({ content, flags: [MessageFlags.Ephemeral] });
-      await interaction.deleteReply().catch(() => null);
-    } else if (interaction.replied) {
-      await interaction.followUp({ content, flags: [MessageFlags.Ephemeral] });
+    const lastAttempt = completion.getLastAttempt?.();
+    const isFollowUp = lastAttempt?.methodName === "followUp";
+    const attemptedPayload = normalizeInteractionPayload(lastAttempt?.payload, isFollowUp);
+
+    if (interaction.deferred || interaction.replied) {
+      const payload = attemptedPayload || normalizeInteractionPayload(fallbackPayload, interaction.deferred);
+      const path = isFollowUp ? "?wait=true" : "/messages/@original";
+      const method = isFollowUp ? "POST" : "PATCH";
+      // Efemeryczność oryginalnej odpowiedzi została już ustalona przez
+      // deferReply i nie może być ponownie ustawiana podczas PATCH wiadomości.
+      if (method === "PATCH") delete payload.flags;
+      await rawInteractionRequest(interaction, method, path, payload);
+      completion.markFinalized?.();
     } else if (interaction.isRepliable()) {
-      await interaction.reply({ content, flags: [MessageFlags.Ephemeral] });
+      await interaction.reply({ ...fallbackPayload, flags: [MessageFlags.Ephemeral] });
     }
   } catch (error) {
     console.error("[INTERACTION_RESPONSE] Nie udało się wysłać odpowiedzi zastępczej:", error);
@@ -6717,10 +6858,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     : { isFinalized: () => true };
   const watchdog = interaction.isChatInputCommand()
     ? setTimeout(() => {
-        finishUnansweredChatCommand(interaction, completion, "watchdog-30s").catch((error) => {
+        finishUnansweredChatCommand(interaction, completion, "watchdog-15s").catch((error) => {
           console.error("[INTERACTION_RESPONSE] Watchdog error:", error);
         });
-      }, 30000)
+      }, INTERACTION_WATCHDOG_MS)
     : null;
 
   if (interaction.isChatInputCommand()) {
@@ -17757,10 +17898,12 @@ async function runCommandExternal(operation, label, attempts = 2) {
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     let timeoutId;
+    const controller = new AbortController();
     try {
-      const operationPromise = Promise.resolve().then(operation);
+      const operationPromise = Promise.resolve().then(() => operation(controller.signal));
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(() => {
+          controller.abort();
           const error = new Error(`${label}: timeout po ${COMMAND_EXTERNAL_TIMEOUT_MS}ms`);
           error.code = "COMMAND_EXTERNAL_TIMEOUT";
           reject(error);
@@ -17810,9 +17953,11 @@ async function handleWydaneCommand(interaction) {
       `[/wydane] Start user=${interaction.user.id} target=${targetUser.id} guild=${interaction.guildId}`,
     );
     const spent = await runCommandExternal(
-      () => db.getUserSpent(targetUser.id, interaction.guildId || "default"),
+      (signal) => db.getUserSpent(targetUser.id, interaction.guildId || "default", { signal }),
       "/wydane: odczyt Supabase",
+      1,
     );
+    console.log(`[/wydane] Supabase zakończone target=${targetUser.id} spent=${spent}`);
     
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
@@ -18704,12 +18849,14 @@ async function handleAdminZaproszeniaCommand(interaction) {
         `[/zaproszenia] Start user=${interaction.user.id} target=${targetId} guild=${guild.id}`,
       );
       const { data, error } = await runCommandExternal(
-        () => db.supabase
+        (signal) => db.supabase
           .from("invites")
           .select("*")
           .eq("guild_id", guild.id)
-          .eq("inviter_id", targetId),
+          .eq("inviter_id", targetId)
+          .abortSignal(signal),
         "/zaproszenia: odczyt Supabase",
+        1,
       );
 
       if (!error && data) {

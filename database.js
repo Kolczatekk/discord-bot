@@ -578,13 +578,16 @@ async function addUserSpent(userId, amount, guildId = "default") {
   }
 }
 
-async function getUserSpent(userId, guildId = "default") {
-  const { data, error } = await supabase
+async function getUserSpent(userId, guildId = "default", options = {}) {
+  let query = supabase
     .from("user_spent")
     .select("amount")
     .eq("user_id", userId)
     .eq("guild_id", guildId)
     .maybeSingle();
+
+  if (options.signal) query = query.abortSignal(options.signal);
+  const { data, error } = await query;
 
   if (error) {
     console.error("[Supabase] Błąd odczytu user_spent:", error);
