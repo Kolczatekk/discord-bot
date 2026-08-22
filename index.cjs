@@ -47,11 +47,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+  const discordConnected = client.isReady();
+  res.status(200).json({
+    status: discordConnected ? 'healthy' : 'degraded',
+    discord_connected: discordConnected,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.get('/', (req, res) => {
-  res.send("Bot is running!");
+  const discordConnected = client.isReady();
+  res.status(200).send(
+    discordConnected
+      ? "Bot is running and connected to Discord!"
+      : "HTTP is running, but Discord is disconnected.",
+  );
 });
 
 app.listen(PORT, "0.0.0.0", () => {
@@ -76,6 +86,16 @@ const client = new Client({
     Partials.Reaction,
     Partials.User,
   ]
+});
+
+client.rest.on("rateLimited", (info) => {
+  console.warn("[DISCORD_REST] Rate limit:", {
+    global: Boolean(info?.global),
+    route: info?.route,
+    method: info?.method,
+    retryAfterMs: info?.timeToReset,
+    limit: info?.limit,
+  });
 });
 
 const NEWSHOP_EMOJI_ID = "1502672633026707667";
@@ -6638,7 +6658,77 @@ client.on(Events.MessageCreate, (message) => {
   }
 });
 
+function trackChatCommandCompletion(interaction) {
+  let finalized = Boolean(interaction.replied);
+
+  for (const methodName of ["reply", "editReply", "followUp", "deleteReply"]) {
+    if (typeof interaction[methodName] !== "function") continue;
+    const original = interaction[methodName].bind(interaction);
+    interaction[methodName] = async (...args) => {
+      try {
+        const result = await original(...args);
+        finalized = true;
+        return result;
+      } catch (error) {
+        console.error(
+          `[INTERACTION_RESPONSE] ${interaction.commandName || interaction.id}.${methodName} nie powiodło się:`,
+          error,
+        );
+        throw error;
+      }
+    };
+  }
+
+  return {
+    isFinalized: () => finalized,
+  };
+}
+
+async function finishUnansweredChatCommand(interaction, completion, reason) {
+  if (!interaction.isChatInputCommand() || completion.isFinalized()) return;
+
+  const content =
+    "> `❌` × Komenda wykonała się, ale Discord nie przyjął jej odpowiedzi. Spróbuj ponownie za chwilę.";
+  console.error(
+    `[INTERACTION_RESPONSE] Brak końcowej odpowiedzi command=${interaction.commandName} id=${interaction.id} reason=${reason}`,
+  );
+
+  try {
+    if (interaction.deferred) {
+      // POST follow-up korzysta z innej trasy niż PATCH odpowiedzi
+      // odroczonej. Dzięki temu użytkownik dostanie komunikat również wtedy,
+      // gdy Discord odrzuca samo editReply.
+      await interaction.followUp({ content, flags: [MessageFlags.Ephemeral] });
+      await interaction.deleteReply().catch(() => null);
+    } else if (interaction.replied) {
+      await interaction.followUp({ content, flags: [MessageFlags.Ephemeral] });
+    } else if (interaction.isRepliable()) {
+      await interaction.reply({ content, flags: [MessageFlags.Ephemeral] });
+    }
+  } catch (error) {
+    console.error("[INTERACTION_RESPONSE] Nie udało się wysłać odpowiedzi zastępczej:", error);
+  }
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
+  const startedAt = Date.now();
+  const completion = interaction.isChatInputCommand()
+    ? trackChatCommandCompletion(interaction)
+    : { isFinalized: () => true };
+  const watchdog = interaction.isChatInputCommand()
+    ? setTimeout(() => {
+        finishUnansweredChatCommand(interaction, completion, "watchdog-30s").catch((error) => {
+          console.error("[INTERACTION_RESPONSE] Watchdog error:", error);
+        });
+      }, 30000)
+    : null;
+
+  if (interaction.isChatInputCommand()) {
+    console.log(
+      `[INTERACTION] Start command=${interaction.commandName} id=${interaction.id} user=${interaction.user.id}`,
+    );
+  }
+
   try {
     if (interaction.isChatInputCommand()) {
       await handleSlashCommand(interaction);
@@ -6651,9 +6741,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   } catch (error) {
     if (error?.code === 10062 || error?.message?.includes("Unknown interaction")) {
+      console.error("[INTERACTION] Interakcja wygasła przed odpowiedzią:", interaction.id, error?.message || error);
       return;
     }
     console.error("Błąd obsługi interakcji:", error);
+    try {
+      const content = "> `❌` × Komenda nie została poprawnie zakończona. Spróbuj ponownie za chwilę.";
+      if (interaction.deferred) {
+        await interaction.editReply({ content });
+      } else if (interaction.replied) {
+        await interaction.followUp({ content, flags: [MessageFlags.Ephemeral] });
+      } else if (interaction.isRepliable()) {
+        await interaction.reply({ content, flags: [MessageFlags.Ephemeral] });
+      }
+    } catch (replyError) {
+      console.error("[INTERACTION] Nie udało się wysłać odpowiedzi awaryjnej:", replyError);
+    }
+  } finally {
+    if (watchdog) clearTimeout(watchdog);
+    if (interaction.isChatInputCommand()) {
+      await finishUnansweredChatCommand(interaction, completion, "handler-finished");
+      console.log(
+        `[INTERACTION] Koniec command=${interaction.commandName} id=${interaction.id} durationMs=${Date.now() - startedAt} deferred=${interaction.deferred} replied=${interaction.replied} finalized=${completion.isFinalized()}`,
+      );
+    }
   }
 });
 
@@ -17639,6 +17750,41 @@ function parsePLN(str) {
   return 0;
 }
 
+const COMMAND_EXTERNAL_TIMEOUT_MS = 6000;
+
+async function runCommandExternal(operation, label, attempts = 2) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let timeoutId;
+    try {
+      const operationPromise = Promise.resolve().then(operation);
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const error = new Error(`${label}: timeout po ${COMMAND_EXTERNAL_TIMEOUT_MS}ms`);
+          error.code = "COMMAND_EXTERNAL_TIMEOUT";
+          reject(error);
+        }, COMMAND_EXTERNAL_TIMEOUT_MS);
+      });
+
+      return await Promise.race([operationPromise, timeoutPromise]);
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `[COMMAND] ${label} nie powiodło się (próba ${attempt}/${attempts}):`,
+        error?.message || error,
+      );
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  }
+
+  throw lastError || new Error(`${label}: nieznany błąd`);
+}
+
 // ----------------- /wydane handler -----------------
 async function handleWydaneCommand(interaction) {
   const targetUser = interaction.options.getUser("gracz") || interaction.user;
@@ -17660,7 +17806,13 @@ async function handleWydaneCommand(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
   try {
-    const spent = await db.getUserSpent(targetUser.id, interaction.guildId || "default");
+    console.log(
+      `[/wydane] Start user=${interaction.user.id} target=${targetUser.id} guild=${interaction.guildId}`,
+    );
+    const spent = await runCommandExternal(
+      () => db.getUserSpent(targetUser.id, interaction.guildId || "default"),
+      "/wydane: odczyt Supabase",
+    );
     
     const embed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
@@ -17673,9 +17825,14 @@ async function handleWydaneCommand(interaction) {
       );
 
     await interaction.editReply({ embeds: [embed] });
+    console.log(`[/wydane] Odpowiedź wysłana target=${targetUser.id}`);
   } catch (err) {
     console.error("Błąd w komendzie /wydane:", err);
-    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas pobierania danych z bazy." });
+    await interaction.editReply({
+      content: "> `❌` Nie udało się teraz pobrać danych z bazy. Spróbuj ponownie za chwilę.",
+    }).catch((replyError) => {
+      console.error("[/wydane] Nie udało się zakończyć odroczonej odpowiedzi:", replyError);
+    });
   }
 }
 
@@ -18543,17 +18700,25 @@ async function handleAdminZaproszeniaCommand(interaction) {
   try {
     let allInvites = [];
     try {
-      const { data, error } = await db.supabase
-        .from("invites")
-        .select("*")
-        .eq("guild_id", guild.id)
-        .eq("inviter_id", targetId);
+      console.log(
+        `[/zaproszenia] Start user=${interaction.user.id} target=${targetId} guild=${guild.id}`,
+      );
+      const { data, error } = await runCommandExternal(
+        () => db.supabase
+          .from("invites")
+          .select("*")
+          .eq("guild_id", guild.id)
+          .eq("inviter_id", targetId),
+        "/zaproszenia: odczyt Supabase",
+      );
 
       if (!error && data) {
         allInvites = data;
       }
     } catch (e) {
-      console.error("Supabase fail in zaproszenia command:", e);
+      // Statystyki zaproszeń są także utrzymywane w pamięci bota, więc
+      // awaria Supabase nie może zatrzymać całej komendy.
+      console.error("Supabase fail in zaproszenia command; używam pamięci:", e);
     }
 
     const inMemoryInvited = new Set();
@@ -18574,7 +18739,14 @@ async function handleAdminZaproszeniaCommand(interaction) {
     for (const id of inMemoryInvited) allUserIds.add(id);
 
     // Patrzymy "do tyłu" używając Discord Invites API
-    const invites = await guild.invites.fetch().catch(() => new Map());
+    const invites = await runCommandExternal(
+      () => guild.invites.fetch(),
+      "/zaproszenia: Discord Invites API",
+      1,
+    ).catch((error) => {
+      console.error("[/zaproszenia] Discord Invites API niedostępne; używam pamięci:", error);
+      return new Map();
+    });
     let totalUses = 0;
     invites.forEach(inv => {
       if (inv.inviter?.id === targetId) {
@@ -18595,7 +18767,11 @@ async function handleAdminZaproszeniaCommand(interaction) {
         const userIdsArr = Array.from(allUserIds);
         for (let i = 0; i < userIdsArr.length; i += 100) {
           const chunk = userIdsArr.slice(i, i + 100);
-          const fetchedChunk = await guild.members.fetch({ user: chunk }).catch(() => new Map());
+          const fetchedChunk = await runCommandExternal(
+            () => guild.members.fetch({ user: chunk }),
+            "/zaproszenia: Discord Members API",
+            1,
+          ).catch(() => new Map());
           fetchedChunk.forEach(m => members.set(m.id, m));
         }
       } catch (fetchErr) {
@@ -18681,10 +18857,13 @@ async function handleAdminZaproszeniaCommand(interaction) {
       );
 
     await interaction.editReply({ embeds: [embed] });
+    console.log(`[/zaproszenia] Odpowiedź wysłana target=${targetId}`);
   } catch (err) {
     console.error("Zaproszenia logs error:", err);
     await interaction.editReply({
       content: `> \`❌\` × Wystąpił błąd podczas pobierania zaproszeń: ${err.message}`,
+    }).catch((replyError) => {
+      console.error("[/zaproszenia] Nie udało się zakończyć odroczonej odpowiedzi:", replyError);
     });
   }
 }
@@ -26594,26 +26773,34 @@ client.on("messageCreate", async (message) => {
 // Prosta funkcja retry z backoffem i obsługą 429 + diagnostyka
 async function loginWithRetry(maxRetries = 5) {
   for (let i = 0; i < maxRetries; i++) {
+    let slowLoginWarning = null;
+    let hardTimeoutId = null;
     try {
       const attempt = i + 1;
       console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
 
-      const slowLoginWarning = setTimeout(() => {
+      slowLoginWarning = setTimeout(() => {
         console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
       }, 30000);
 
-      const hardTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000));
+      const hardTimeout = new Promise((_, reject) => {
+        hardTimeoutId = setTimeout(() => reject(new Error('LOGIN_HARD_TIMEOUT_90S')), 90000);
+      });
 
       await Promise.race([
         client.login(process.env.BOT_TOKEN), hardTimeout]);
 
-      clearTimeout(slowLoginWarning);
-
       console.log("[LOGIN] Sukces! Bot połączony z Discord.");
-      return;
+      return true;
     } catch (err) {
-      const is429 = err?.code === 429 || /429/.test(err?.message || "");
-      const retryAfterHeader = Number(err?.data?.retry_after || err?.retry_after || 0) * 1000;
+      const retryAfterSeconds = Number(
+        err?.data?.retry_after || err?.rawError?.retry_after || err?.retry_after || 0,
+      );
+      const is429 = err?.status === 429
+        || err?.code === 429
+        || retryAfterSeconds > 0
+        || /429|rate.?limit/i.test(err?.message || "");
+      const retryAfterHeader = retryAfterSeconds * 1000;
       const backoff = is429 ? Math.max(retryAfterHeader, 30000) : 10000 * (i + 1);
 
       console.error(`[LOGIN] Błąd próby ${i + 1}:`, err?.message || err);
@@ -26625,10 +26812,17 @@ async function loginWithRetry(maxRetries = 5) {
         console.error('[LOGIN] rawError:', err.rawError);
       }
 
+      if (err?.message === 'LOGIN_HARD_TIMEOUT_90S') {
+        client.destroy();
+      }
+
       if (i < maxRetries - 1) {
         console.log(`[LOGIN] Czekam ${Math.round(backoff / 1000)}s przed kolejną próbą...`);
         await new Promise(resolve => setTimeout(resolve, backoff));
       }
+    } finally {
+      if (slowLoginWarning) clearTimeout(slowLoginWarning);
+      if (hardTimeoutId) clearTimeout(hardTimeoutId);
     }
   }
 
@@ -26657,10 +26851,24 @@ async function loginWithRetry(maxRetries = 5) {
   } catch (err) {
     console.error("[NETWORK] Błąd sprawdzania połączenia:", err.message);
   }
+
+  return false;
 }
 
 // Start login
-validateBotToken().finally(() => loginWithRetry());
+async function startDiscordLoginLoop() {
+  while (!client.isReady()) {
+    const connected = await loginWithRetry();
+    if (connected || client.isReady()) return;
+
+    console.error("[LOGIN] Bot nadal offline. Kolejna seria prób za 5 minut.");
+    await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+  }
+}
+
+startDiscordLoginLoop().catch((error) => {
+  console.error("[LOGIN] Nieoczekiwany błąd pętli logowania:", error);
+});
 
 function getVideoContentType(filePath) {
   const ext = path.extname(filePath || "").toLowerCase();
