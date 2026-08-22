@@ -6671,7 +6671,11 @@ const INTERACTION_WORKING_CONTENT = "> `⏳` × Przetwarzam komendę…";
 
 function setInteractionDiagnostic(interaction, stage, details = {}) {
   lastInteractionDiagnostic = {
-    command: interaction?.commandName || null,
+    command:
+      interaction?.commandName ||
+      interaction?.customId ||
+      interaction?.constructor?.name ||
+      null,
     stage,
     ...details,
     timestamp: new Date().toISOString(),
@@ -6799,18 +6803,28 @@ function trackChatCommandCompletion(interaction) {
   let finalized = Boolean(interaction.replied);
   let lastAttempt = null;
   const originalMethods = {};
+  const responseMethods = [
+    "deferReply",
+    "deferUpdate",
+    "reply",
+    "editReply",
+    "followUp",
+    "deleteReply",
+    "update",
+    "showModal",
+  ];
 
-  for (const methodName of ["deferReply", "reply", "editReply", "followUp", "deleteReply"]) {
+  for (const methodName of responseMethods) {
     if (typeof interaction[methodName] === "function") {
       originalMethods[methodName] = interaction[methodName].bind(interaction);
     }
   }
 
-  for (const methodName of ["deferReply", "reply", "editReply", "followUp", "deleteReply"]) {
+  for (const methodName of responseMethods) {
     const original = originalMethods[methodName];
     if (!original) continue;
     interaction[methodName] = async (...args) => {
-      if (methodName !== "deferReply" && methodName !== "deleteReply") {
+      if (["reply", "editReply", "followUp", "update"].includes(methodName)) {
         lastAttempt = { methodName, payload: args[0] };
       }
 
@@ -6867,7 +6881,7 @@ function trackChatCommandCompletion(interaction) {
 }
 
 async function finishUnansweredChatCommand(interaction, completion, reason) {
-  if (!interaction.isChatInputCommand() || completion.isFinalized()) return;
+  if (!interaction.isRepliable?.() || completion.isFinalized()) return;
 
   const fallbackPayload = {
     content: "> `❌` × Komenda nie otrzymała na czas danych potrzebnych do odpowiedzi. Spróbuj ponownie za chwilę.",
@@ -6926,11 +6940,12 @@ async function finishUnansweredChatCommand(interaction, completion, reason) {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   const startedAt = Date.now();
-  if (interaction.isChatInputCommand()) setInteractionDiagnostic(interaction, "started");
-  const completion = interaction.isChatInputCommand()
+  const shouldTrackResponse = Boolean(interaction.isRepliable?.());
+  if (shouldTrackResponse) setInteractionDiagnostic(interaction, "started");
+  const completion = shouldTrackResponse
     ? trackChatCommandCompletion(interaction)
     : { isFinalized: () => true };
-  const watchdog = interaction.isChatInputCommand()
+  const watchdog = shouldTrackResponse
     ? setTimeout(() => {
         finishUnansweredChatCommand(interaction, completion, "watchdog-15s").catch((error) => {
           console.error("[INTERACTION_RESPONSE] Watchdog error:", error);
@@ -6938,9 +6953,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }, INTERACTION_WATCHDOG_MS)
     : null;
 
-  if (interaction.isChatInputCommand()) {
+  if (shouldTrackResponse) {
     console.log(
-      `[INTERACTION] Start command=${interaction.commandName} id=${interaction.id} user=${interaction.user.id}`,
+      `[INTERACTION] Start kind=${interaction.commandName || interaction.customId || interaction.constructor?.name} id=${interaction.id} user=${interaction.user.id}`,
     );
   }
 
@@ -6974,7 +6989,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   } finally {
     if (watchdog) clearTimeout(watchdog);
-    if (interaction.isChatInputCommand()) {
+    if (shouldTrackResponse) {
       await finishUnansweredChatCommand(interaction, completion, "handler-finished");
       const previousDiagnostic = lastInteractionDiagnostic;
       setInteractionDiagnostic(interaction, completion.isFinalized() ? "finished" : "finished-without-response", {
@@ -6984,7 +6999,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         http_status: previousDiagnostic?.http_status || null,
       });
       console.log(
-        `[INTERACTION] Koniec command=${interaction.commandName} id=${interaction.id} durationMs=${Date.now() - startedAt} deferred=${interaction.deferred} replied=${interaction.replied} finalized=${completion.isFinalized()}`,
+        `[INTERACTION] Koniec kind=${interaction.commandName || interaction.customId || interaction.constructor?.name} id=${interaction.id} durationMs=${Date.now() - startedAt} deferred=${interaction.deferred} replied=${interaction.replied} finalized=${completion.isFinalized()}`,
       );
     }
   }
@@ -24569,8 +24584,17 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   }
   sprawdzZaproszeniaCooldowns.set(interaction.user.id, nowTs);
 
-  // Uruchamiamy cichy (ephemeral) deferReply dla natychmiastowego potwierdzenia interakcji
-  await interaction.deferReply({ ephemeral: true }).catch(() => null);
+  const openedFromButton = interaction.isButton?.() === true;
+  if (openedFromButton) {
+    // Przycisk tylko potwierdzamy. Wynik pojawia się jako publiczna wiadomość,
+    // więc nie tworzymy osobnej efemerycznej odpowiedzi „myśli…”.
+    await interaction.deferUpdate();
+  } else {
+    await interaction.reply({
+      content: "> `✅` × Ładuję informacje o zaproszeniach na ten kanał.",
+      flags: [MessageFlags.Ephemeral],
+    });
+  }
 
   // ===== SPRAWDZ-ZAPROSZENIA – PEŁNY SCRIPT =====
 
@@ -24669,9 +24693,6 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
       lastInviteInstruction.set(targetChannel.id, sent.id);
       scheduleSavePersistentState();
     }
-
-    // Usuwamy nasz cichy, tymczasowy ephemeral, aby nie zostawiać żadnych śladów na ekranie klikającego
-    await interaction.deleteReply().catch(() => null);
 
   } catch (err) {
     console.error("Błąd przy publikacji sprawdz-zaproszenia:", err);
