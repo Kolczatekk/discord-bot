@@ -45,6 +45,11 @@ const db = require("./database.js");
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
+let lastInteractionDiagnostic = {
+  command: null,
+  stage: 'none',
+  timestamp: null,
+};
 
 app.get('/health', (req, res) => {
   const discordConnected = client.isReady();
@@ -52,6 +57,7 @@ app.get('/health', (req, res) => {
     status: discordConnected ? 'healthy' : 'degraded',
     discord_connected: discordConnected,
     commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
+    last_interaction: lastInteractionDiagnostic,
     timestamp: new Date().toISOString(),
   });
 });
@@ -6661,6 +6667,16 @@ client.on(Events.MessageCreate, (message) => {
 
 const INTERACTION_RESPONSE_TIMEOUT_MS = 7000;
 const INTERACTION_WATCHDOG_MS = 15000;
+const INTERACTION_WORKING_CONTENT = "> `⏳` × Przetwarzam komendę…";
+
+function setInteractionDiagnostic(interaction, stage, details = {}) {
+  lastInteractionDiagnostic = {
+    command: interaction?.commandName || null,
+    stage,
+    ...details,
+    timestamp: new Date().toISOString(),
+  };
+}
 
 function promiseWithTimeout(promise, timeoutMs, label) {
   let timeoutId;
@@ -6740,6 +6756,10 @@ async function rawInteractionRequest(interaction, method, path, payload) {
       const responseText = await response.text();
 
       if (response.ok) {
+        setInteractionDiagnostic(interaction, "raw-response-success", {
+          http_status: response.status,
+          method,
+        });
         console.log(
           `[INTERACTION_RAW] Odpowiedź wysłana command=${interaction.commandName} method=${method} status=${response.status}`,
         );
@@ -6778,16 +6798,35 @@ async function rawInteractionRequest(interaction, method, path, payload) {
 function trackChatCommandCompletion(interaction) {
   let finalized = Boolean(interaction.replied);
   let lastAttempt = null;
+  const originalMethods = {};
 
   for (const methodName of ["deferReply", "reply", "editReply", "followUp", "deleteReply"]) {
-    if (typeof interaction[methodName] !== "function") continue;
-    const original = interaction[methodName].bind(interaction);
+    if (typeof interaction[methodName] === "function") {
+      originalMethods[methodName] = interaction[methodName].bind(interaction);
+    }
+  }
+
+  for (const methodName of ["deferReply", "reply", "editReply", "followUp", "deleteReply"]) {
+    const original = originalMethods[methodName];
+    if (!original) continue;
     interaction[methodName] = async (...args) => {
       if (methodName !== "deferReply" && methodName !== "deleteReply") {
         lastAttempt = { methodName, payload: args[0] };
       }
 
-      const responsePromise = original(...args);
+      setInteractionDiagnostic(interaction, `${methodName}-start`);
+
+      let responsePromise;
+      if (methodName === "deferReply" && originalMethods.reply) {
+        const deferOptions = args[0] || {};
+        const workingPayload = { content: INTERACTION_WORKING_CONTENT };
+        if (deferOptions.flags !== undefined) workingPayload.flags = deferOptions.flags;
+        else if (deferOptions.ephemeral) workingPayload.flags = [MessageFlags.Ephemeral];
+        responsePromise = Promise.resolve().then(() => originalMethods.reply(workingPayload));
+      } else {
+        responsePromise = Promise.resolve().then(() => original(...args));
+      }
+
       if (methodName !== "deferReply") {
         responsePromise.then(
           () => { finalized = true; },
@@ -6802,8 +6841,15 @@ function trackChatCommandCompletion(interaction) {
           `${interaction.commandName || interaction.id}.${methodName}`,
         );
         if (methodName !== "deferReply") finalized = true;
+        setInteractionDiagnostic(
+          interaction,
+          methodName === "deferReply" ? "working-message-sent" : `${methodName}-success`,
+        );
         return result;
       } catch (error) {
+        setInteractionDiagnostic(interaction, `${methodName}-error`, {
+          error_code: error?.code || error?.status || error?.name || "unknown",
+        });
         console.error(
           `[INTERACTION_RESPONSE] ${interaction.commandName || interaction.id}.${methodName} nie powiodło się:`,
           error,
@@ -6826,12 +6872,12 @@ async function finishUnansweredChatCommand(interaction, completion, reason) {
   const fallbackPayload = {
     content: "> `❌` × Komenda nie otrzymała na czas danych potrzebnych do odpowiedzi. Spróbuj ponownie za chwilę.",
   };
+  const lastAttempt = completion.getLastAttempt?.();
   console.error(
     `[INTERACTION_RESPONSE] Brak końcowej odpowiedzi command=${interaction.commandName} id=${interaction.id} reason=${reason}`,
   );
 
   try {
-    const lastAttempt = completion.getLastAttempt?.();
     const isFollowUp = lastAttempt?.methodName === "followUp";
     const attemptedPayload = normalizeInteractionPayload(lastAttempt?.payload, isFollowUp);
 
@@ -6848,12 +6894,39 @@ async function finishUnansweredChatCommand(interaction, completion, reason) {
       await interaction.reply({ ...fallbackPayload, flags: [MessageFlags.Ephemeral] });
     }
   } catch (error) {
+    setInteractionDiagnostic(interaction, "fallback-error", {
+      error_code: error?.code || error?.status || error?.name || "unknown",
+    });
     console.error("[INTERACTION_RESPONSE] Nie udało się wysłać odpowiedzi zastępczej:", error);
+
+    try {
+      const source = lastAttempt?.payload;
+      const dmPayload = typeof source === "string"
+        ? { content: source }
+        : {
+            content: source?.content,
+            embeds: source?.embeds,
+          };
+      if (!dmPayload.content && !dmPayload.embeds?.length) Object.assign(dmPayload, fallbackPayload);
+      await promiseWithTimeout(
+        interaction.user.send(dmPayload),
+        INTERACTION_RESPONSE_TIMEOUT_MS,
+        `${interaction.commandName}.dmFallback`,
+      );
+      completion.markFinalized?.();
+      setInteractionDiagnostic(interaction, "dm-fallback-success");
+    } catch (dmError) {
+      setInteractionDiagnostic(interaction, "dm-fallback-error", {
+        error_code: dmError?.code || dmError?.status || dmError?.name || "unknown",
+      });
+      console.error("[INTERACTION_RESPONSE] Nie udało się wysłać odpowiedzi na PV:", dmError);
+    }
   }
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
   const startedAt = Date.now();
+  if (interaction.isChatInputCommand()) setInteractionDiagnostic(interaction, "started");
   const completion = interaction.isChatInputCommand()
     ? trackChatCommandCompletion(interaction)
     : { isFinalized: () => true };
@@ -6903,6 +6976,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (watchdog) clearTimeout(watchdog);
     if (interaction.isChatInputCommand()) {
       await finishUnansweredChatCommand(interaction, completion, "handler-finished");
+      const previousDiagnostic = lastInteractionDiagnostic;
+      setInteractionDiagnostic(interaction, completion.isFinalized() ? "finished" : "finished-without-response", {
+        duration_ms: Date.now() - startedAt,
+        previous_stage: previousDiagnostic?.stage || null,
+        error_code: previousDiagnostic?.error_code || null,
+        http_status: previousDiagnostic?.http_status || null,
+      });
       console.log(
         `[INTERACTION] Koniec command=${interaction.commandName} id=${interaction.id} durationMs=${Date.now() - startedAt} deferred=${interaction.deferred} replied=${interaction.replied} finalized=${completion.isFinalized()}`,
       );
