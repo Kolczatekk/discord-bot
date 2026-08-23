@@ -152,6 +152,60 @@ client.rest.get = async (route, options) => {
   return originalClientRestGet(route, options);
 };
 
+function isInteractionResponseRoute(route) {
+  const value = String(route || "");
+  return (
+    /^\/interactions\/\d+\/[^/]+\/callback$/.test(value) ||
+    /^\/webhooks\/\d+\/[^/]+(?:\/messages\/[^/?]+)?$/.test(value)
+  );
+}
+
+async function directInteractionRestRequest(method, route, options = {}) {
+  const query = options.query ? `?${new URLSearchParams(options.query).toString()}` : "";
+  const controller = new AbortController();
+  const isInitialResponse = /^\/interactions\/\d+\/[^/]+\/callback$/.test(String(route || ""));
+  // Discord wymaga pierwszej odpowiedzi w ok. 3 sekundy. Nie pozwalamy,
+  // żeby pojedyncza zawieszona próba udawała sukces przez dłuższy czas.
+  const timeoutId = setTimeout(() => controller.abort(), isInitialResponse ? 2_500 : 5_000);
+  try {
+    const response = await fetch(`${DISCORD_API_BASE}/v10${route}${query}`, {
+      method,
+      headers: options.body === undefined ? undefined : { "content-type": "application/json" },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        data = text;
+      }
+    }
+    if (!response.ok) {
+      const error = new Error(`Discord interaction HTTP ${response.status}`);
+      error.status = response.status;
+      error.code = data?.code || response.status;
+      throw error;
+    }
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+for (const methodName of ["post", "patch", "delete"]) {
+  const originalMethod = client.rest[methodName].bind(client.rest);
+  client.rest[methodName] = (route, options = {}) => {
+    // Pliki wymagają multipart i pozostają w standardowym kliencie REST.
+    if (isInteractionResponseRoute(route) && !options.files?.length) {
+      return directInteractionRestRequest(methodName.toUpperCase(), route, options);
+    }
+    return originalMethod(route, options);
+  };
+}
+
 client.rest.on("rateLimited", (info) => {
   console.warn("[DISCORD_REST] Rate limit:", {
     global: Boolean(info?.global),
