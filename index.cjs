@@ -6665,9 +6665,7 @@ client.on(Events.MessageCreate, (message) => {
   }
 });
 
-const INTERACTION_RESPONSE_TIMEOUT_MS = 7000;
-const INTERACTION_WATCHDOG_MS = 15000;
-const INTERACTION_WORKING_CONTENT = "> `⏳` × Przetwarzam komendę…";
+const INTERACTION_WATCHDOG_MS = 30000;
 
 function setInteractionDiagnostic(interaction, stage, details = {}) {
   lastInteractionDiagnostic = {
@@ -6682,126 +6680,10 @@ function setInteractionDiagnostic(interaction, stage, details = {}) {
   };
 }
 
-function promiseWithTimeout(promise, timeoutMs, label) {
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const error = new Error(`${label}: timeout po ${timeoutMs}ms`);
-      error.code = "INTERACTION_RESPONSE_TIMEOUT";
-      reject(error);
-    }, timeoutMs);
-  });
-
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    if (timeoutId) clearTimeout(timeoutId);
-  });
-}
-
-function toDiscordApiValue(value) {
-  if (value === undefined) return undefined;
-  if (value === null || typeof value !== "object") return value;
-  if (typeof value.toJSON === "function") return toDiscordApiValue(value.toJSON());
-  if (Array.isArray(value)) return value.map(toDiscordApiValue);
-
-  const result = {};
-  for (const [key, nestedValue] of Object.entries(value)) {
-    const converted = toDiscordApiValue(nestedValue);
-    if (converted !== undefined) result[key] = converted;
-  }
-  return result;
-}
-
-function normalizeInteractionPayload(payload, forceEphemeral = false) {
-  if (payload === undefined || payload === null) return null;
-  const source = typeof payload === "string" ? { content: payload } : (payload || {});
-  if (source.files?.length) return null;
-
-  const normalized = {};
-  const directKeys = ["content", "embeds", "components", "attachments", "tts", "poll"];
-  for (const key of directKeys) {
-    if (source[key] !== undefined) normalized[key] = toDiscordApiValue(source[key]);
-  }
-
-  if (source.allowedMentions !== undefined) {
-    normalized.allowed_mentions = toDiscordApiValue(source.allowedMentions);
-  } else if (source.allowed_mentions !== undefined) {
-    normalized.allowed_mentions = toDiscordApiValue(source.allowed_mentions);
-  }
-
-  let flags = source.flags;
-  if (Array.isArray(flags)) flags = flags.reduce((sum, flag) => sum | Number(flag || 0), 0);
-  else if (flags && typeof flags === "object" && "bitfield" in flags) flags = Number(flags.bitfield);
-  else if (flags !== undefined) flags = Number(flags);
-  if (source.ephemeral || forceEphemeral) flags = Number(flags || 0) | MessageFlags.Ephemeral;
-  if (Number.isFinite(flags)) normalized.flags = flags;
-
-  return normalized;
-}
-
-async function rawInteractionRequest(interaction, method, path, payload) {
-  const applicationId = interaction.applicationId || client.application?.id || client.user?.id;
-  if (!applicationId || !interaction.token) {
-    throw new Error("Brak applicationId/token dla bezpośredniej odpowiedzi interakcji");
-  }
-
-  const url = `https://discord.com/api/v10/webhooks/${applicationId}/${interaction.token}${path}`;
-  let lastError;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), INTERACTION_RESPONSE_TIMEOUT_MS);
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      const responseText = await response.text();
-
-      if (response.ok) {
-        setInteractionDiagnostic(interaction, "raw-response-success", {
-          http_status: response.status,
-          method,
-        });
-        console.log(
-          `[INTERACTION_RAW] Odpowiedź wysłana command=${interaction.commandName} method=${method} status=${response.status}`,
-        );
-        return responseText;
-      }
-
-      let retryAfterMs = 0;
-      if (response.status === 429) {
-        try {
-          const body = JSON.parse(responseText);
-          retryAfterMs = Math.ceil(Number(body.retry_after || 0) * 1000);
-        } catch (_) {
-          retryAfterMs = 0;
-        }
-      }
-
-      lastError = new Error(
-        `Discord webhook HTTP ${response.status}: ${responseText.slice(0, 500)}`,
-      );
-      if (attempt < 2 && response.status === 429) {
-        await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(retryAfterMs, 250), 5000)));
-        continue;
-      }
-      throw lastError;
-    } catch (error) {
-      lastError = error;
-      if (attempt >= 2 || error?.name !== "AbortError") throw error;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  throw lastError || new Error("Nieznany błąd bezpośredniej odpowiedzi interakcji");
-}
-
 function trackChatCommandCompletion(interaction) {
   let finalized = Boolean(interaction.replied);
-  let lastAttempt = null;
+  let pendingResponses = 0;
+  let finalResponseAttempted = false;
   const originalMethods = {};
   const responseMethods = [
     "deferReply",
@@ -6824,41 +6706,18 @@ function trackChatCommandCompletion(interaction) {
     const original = originalMethods[methodName];
     if (!original) continue;
     interaction[methodName] = async (...args) => {
-      if (["reply", "editReply", "followUp", "update"].includes(methodName)) {
-        lastAttempt = { methodName, payload: args[0] };
-      }
-
       setInteractionDiagnostic(interaction, `${methodName}-start`);
-
-      let responsePromise;
-      if (methodName === "deferReply" && originalMethods.reply) {
-        const deferOptions = args[0] || {};
-        const workingPayload = { content: INTERACTION_WORKING_CONTENT };
-        if (deferOptions.flags !== undefined) workingPayload.flags = deferOptions.flags;
-        else if (deferOptions.ephemeral) workingPayload.flags = [MessageFlags.Ephemeral];
-        responsePromise = Promise.resolve().then(() => originalMethods.reply(workingPayload));
-      } else {
-        responsePromise = Promise.resolve().then(() => original(...args));
-      }
-
-      if (methodName !== "deferReply") {
-        responsePromise.then(
-          () => { finalized = true; },
-          () => {},
-        );
-      }
+      const isDeferredAck = methodName === "deferReply" || methodName === "deferUpdate";
+      if (!isDeferredAck) finalResponseAttempted = true;
+      pendingResponses++;
 
       try {
-        const result = await promiseWithTimeout(
-          responsePromise,
-          INTERACTION_RESPONSE_TIMEOUT_MS,
-          `${interaction.commandName || interaction.id}.${methodName}`,
-        );
-        if (methodName !== "deferReply") finalized = true;
-        setInteractionDiagnostic(
-          interaction,
-          methodName === "deferReply" ? "working-message-sent" : `${methodName}-success`,
-        );
+        // Discord.js posiada własną kolejkę i respektuje retry_after. Nie nakładamy
+        // krótkiego Promise.race, bo ono nie anuluje żądania i wcześniej uruchamiało
+        // równoległe editReply/followUp oraz surowe webhooki.
+        const result = await original(...args);
+        if (!isDeferredAck) finalized = true;
+        setInteractionDiagnostic(interaction, `${methodName}-success`);
         return result;
       } catch (error) {
         setInteractionDiagnostic(interaction, `${methodName}-error`, {
@@ -6869,6 +6728,8 @@ function trackChatCommandCompletion(interaction) {
           error,
         );
         throw error;
+      } finally {
+        pendingResponses--;
       }
     };
   }
@@ -6876,65 +6737,42 @@ function trackChatCommandCompletion(interaction) {
   return {
     isFinalized: () => finalized,
     markFinalized: () => { finalized = true; },
-    getLastAttempt: () => lastAttempt,
+    hasPendingResponse: () => pendingResponses > 0,
+    hasFinalResponseAttempt: () => finalResponseAttempted,
   };
 }
 
 async function finishUnansweredChatCommand(interaction, completion, reason) {
-  if (!interaction.isRepliable?.() || completion.isFinalized()) return;
+  if (
+    !interaction.isRepliable?.() ||
+    completion.isFinalized() ||
+    completion.hasPendingResponse?.() ||
+    completion.hasFinalResponseAttempt?.()
+  ) return;
 
   const fallbackPayload = {
     content: "> `❌` × Komenda nie otrzymała na czas danych potrzebnych do odpowiedzi. Spróbuj ponownie za chwilę.",
   };
-  const lastAttempt = completion.getLastAttempt?.();
   console.error(
-    `[INTERACTION_RESPONSE] Brak końcowej odpowiedzi command=${interaction.commandName} id=${interaction.id} reason=${reason}`,
+    `[INTERACTION_RESPONSE] Brak końcowej odpowiedzi kind=${interaction.commandName || interaction.customId} id=${interaction.id} reason=${reason}`,
   );
 
   try {
-    const isFollowUp = lastAttempt?.methodName === "followUp";
-    const attemptedPayload = normalizeInteractionPayload(lastAttempt?.payload, isFollowUp);
-
-    if (interaction.deferred || interaction.replied) {
-      const payload = attemptedPayload || normalizeInteractionPayload(fallbackPayload, interaction.deferred);
-      const path = isFollowUp ? "?wait=true" : "/messages/@original";
-      const method = isFollowUp ? "POST" : "PATCH";
-      // Efemeryczność oryginalnej odpowiedzi została już ustalona przez
-      // deferReply i nie może być ponownie ustawiana podczas PATCH wiadomości.
-      if (method === "PATCH") delete payload.flags;
-      await rawInteractionRequest(interaction, method, path, payload);
+    if (interaction.deferred) {
+      await interaction.editReply(fallbackPayload);
+      completion.markFinalized?.();
+    } else if (interaction.replied) {
+      // Odpowiedź już istnieje; dokładanie followUp tylko zwiększało rate limit.
       completion.markFinalized?.();
     } else if (interaction.isRepliable()) {
       await interaction.reply({ ...fallbackPayload, flags: [MessageFlags.Ephemeral] });
+      completion.markFinalized?.();
     }
   } catch (error) {
     setInteractionDiagnostic(interaction, "fallback-error", {
       error_code: error?.code || error?.status || error?.name || "unknown",
     });
     console.error("[INTERACTION_RESPONSE] Nie udało się wysłać odpowiedzi zastępczej:", error);
-
-    try {
-      const source = lastAttempt?.payload;
-      const dmPayload = typeof source === "string"
-        ? { content: source }
-        : {
-            content: source?.content,
-            embeds: source?.embeds,
-          };
-      if (!dmPayload.content && !dmPayload.embeds?.length) Object.assign(dmPayload, fallbackPayload);
-      await promiseWithTimeout(
-        interaction.user.send(dmPayload),
-        INTERACTION_RESPONSE_TIMEOUT_MS,
-        `${interaction.commandName}.dmFallback`,
-      );
-      completion.markFinalized?.();
-      setInteractionDiagnostic(interaction, "dm-fallback-success");
-    } catch (dmError) {
-      setInteractionDiagnostic(interaction, "dm-fallback-error", {
-        error_code: dmError?.code || dmError?.status || dmError?.name || "unknown",
-      });
-      console.error("[INTERACTION_RESPONSE] Nie udało się wysłać odpowiedzi na PV:", dmError);
-    }
   }
 }
 
@@ -6947,7 +6785,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     : { isFinalized: () => true };
   const watchdog = shouldTrackResponse
     ? setTimeout(() => {
-        finishUnansweredChatCommand(interaction, completion, "watchdog-15s").catch((error) => {
+        finishUnansweredChatCommand(interaction, completion, "watchdog-30s").catch((error) => {
           console.error("[INTERACTION_RESPONSE] Watchdog error:", error);
         });
       }, INTERACTION_WATCHDOG_MS)
@@ -6975,6 +6813,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
     console.error("Błąd obsługi interakcji:", error);
+    if (completion.hasPendingResponse?.() || completion.hasFinalResponseAttempt?.()) {
+      console.error(
+        `[INTERACTION] Pomijam kolejną odpowiedź awaryjną dla ${interaction.id}; odpowiedź końcowa była już wysyłana.`,
+      );
+      return;
+    }
     try {
       const content = "> `❌` × Komenda nie została poprawnie zakończona. Spróbuj ponownie za chwilę.";
       if (interaction.deferred) {
@@ -18538,15 +18382,15 @@ async function syncUserSpentRoles(guild, userId) {
 async function handleSprawdzBonusyButton(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-  try {
-    const guild = interaction.guild;
-    const userId = interaction.user.id;
-    
-    if (!guild) {
-      await interaction.editReply({ content: "> `❌` Ta komenda działa jedynie na serwerach." });
-      return;
-    }
+  const guild = interaction.guild;
+  const userId = interaction.user.id;
+  if (!guild) {
+    await interaction.editReply({ content: "> `❌` Ta komenda działa jedynie na serwerach." });
+    return;
+  }
 
+  let responsePayload;
+  try {
     const spent = await db.getUserSpent(userId, guild.id);
 
     const roleTiers = [
@@ -18601,14 +18445,19 @@ async function handleSprawdzBonusyButton(interaction) {
     );
     appendBrandFooterToContainer(container, guild.id);
 
-    await interaction.editReply({
+    responsePayload = {
       components: [container],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-    });
+      // Ephemeral zostało już ustawione przez deferReply.
+      flags: MessageFlags.IsComponentsV2,
+    };
   } catch (err) {
     console.error("Błąd w handleSprawdzBonusyButton:", err);
-    await interaction.editReply({ content: "> `❌` Wystąpił błąd podczas sprawdzania Twoich bonusów." });
+    responsePayload = { content: "> `❌` Wystąpił błąd podczas sprawdzania Twoich bonusów." };
   }
+
+  // Dokładnie jedna próba końcowej odpowiedzi. Błąd sieci/API przekazujemy do
+  // wspólnej obsługi zamiast natychmiast wysyłać drugi editReply.
+  await interaction.editReply(responsePayload);
 }
 
 // ----------------- /legit-check-ustaw handler -----------------
