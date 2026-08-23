@@ -56,6 +56,16 @@ let lastDiscordLoginDiagnostic = {
   attempt: 0,
   timestamp: null,
 };
+let discordApplicationDiagnostic = {
+  rest_authenticated: false,
+  interactions_http_endpoint_configured: null,
+  command_registration: 'not_started',
+  timestamp: null,
+};
+let lastGatewayEventDiagnostic = {
+  event: null,
+  timestamp: null,
+};
 
 app.get('/health', (req, res) => {
   const discordConnected = client.isReady();
@@ -67,6 +77,8 @@ app.get('/health', (req, res) => {
     guilds: client.guilds?.cache?.size || 0,
     gateway_ping_ms: Number.isFinite(client.ws?.ping) ? client.ws.ping : null,
     discord_api_base: DISCORD_API_BASE,
+    discord_application: discordApplicationDiagnostic,
+    last_gateway_event: lastGatewayEventDiagnostic,
     commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
     discord_login: lastDiscordLoginDiagnostic,
     last_interaction: lastInteractionDiagnostic,
@@ -150,6 +162,14 @@ client.rest.on("rateLimited", (info) => {
 
 client.on(Events.Error, (error) => {
   console.error("[DISCORD_CLIENT] Błąd klienta:", error);
+});
+
+client.on(Events.Raw, (packet) => {
+  if (!packet?.t) return;
+  lastGatewayEventDiagnostic = {
+    event: packet.t,
+    timestamp: new Date().toISOString(),
+  };
 });
 
 process.on("unhandledRejection", (error) => {
@@ -6396,8 +6416,19 @@ async function registerCommands() {
           body: commands,
         },
       );
+      discordApplicationDiagnostic = {
+        ...discordApplicationDiagnostic,
+        command_registration: 'guild_success',
+        timestamp: new Date().toISOString(),
+      };
       console.log(`Komendy zarejestrowane dla guild ${DEFAULT_GUILD_ID}`);
     } catch (e) {
+      discordApplicationDiagnostic = {
+        ...discordApplicationDiagnostic,
+        command_registration: 'guild_error',
+        command_registration_error: e?.code || e?.status || e?.name || 'unknown',
+        timestamp: new Date().toISOString(),
+      };
       console.warn(
         "Nie udało się zarejestrować komend na serwerze:",
         e.message || e,
@@ -6507,6 +6538,26 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[READY] Bot zalogowany jako ${c.user.tag}`);
   console.log(`[READY] Bot jest na ${c.guilds.cache.size} serwerach`);
   console.log(`[READY] Bot jest online i gotowy do pracy!`);
+
+  Promise.all([
+    client.rest.get('/users/@me'),
+    client.rest.get('/oauth2/applications/@me'),
+  ]).then(([, application]) => {
+    discordApplicationDiagnostic = {
+      ...discordApplicationDiagnostic,
+      rest_authenticated: true,
+      interactions_http_endpoint_configured: Boolean(application?.interactions_endpoint_url),
+      timestamp: new Date().toISOString(),
+    };
+  }).catch((error) => {
+    discordApplicationDiagnostic = {
+      ...discordApplicationDiagnostic,
+      rest_authenticated: false,
+      rest_error: error?.code || error?.status || error?.name || 'unknown',
+      timestamp: new Date().toISOString(),
+    };
+    console.error('[DISCORD_DIAGNOSTIC] Nie udało się odczytać aplikacji:', error);
+  });
 
   for (const guild of c.guilds.cache.values()) {
     const botMember = guild.members.me;
