@@ -101,6 +101,32 @@ const client = new Client({
   ]
 });
 
+// Render potrafi zawiesić samo GET /gateway/bot, mimo że WebSocket gateway jest
+// osiągalny. Dla jednego, nieszardowanego procesu odpowiedź jest deterministyczna,
+// więc omijamy wyłącznie ten request startowy. Cały pozostały REST nadal obsługuje
+// discord.js wraz z jego kolejką i respektowaniem retry_after.
+const originalClientRestGet = client.rest.get.bind(client.rest);
+client.rest.get = async (route, options) => {
+  if (route === Routes.gatewayBot()) {
+    lastDiscordLoginDiagnostic = {
+      stage: 'gateway_fallback',
+      attempt: lastDiscordLoginDiagnostic.attempt || 1,
+      timestamp: new Date().toISOString(),
+    };
+    return {
+      url: 'wss://gateway.discord.gg',
+      shards: 1,
+      session_start_limit: {
+        total: 1000,
+        remaining: 1000,
+        reset_after: 60_000,
+        max_concurrency: 1,
+      },
+    };
+  }
+  return originalClientRestGet(route, options);
+};
+
 client.rest.on("rateLimited", (info) => {
   console.warn("[DISCORD_REST] Rate limit:", {
     global: Boolean(info?.global),
