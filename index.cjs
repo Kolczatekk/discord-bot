@@ -50,6 +50,11 @@ let lastInteractionDiagnostic = {
   stage: 'none',
   timestamp: null,
 };
+let lastDiscordLoginDiagnostic = {
+  stage: 'not_started',
+  attempt: 0,
+  timestamp: null,
+};
 
 app.get('/health', (req, res) => {
   const discordConnected = client.isReady();
@@ -57,6 +62,7 @@ app.get('/health', (req, res) => {
     status: discordConnected ? 'healthy' : 'degraded',
     discord_connected: discordConnected,
     commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
+    discord_login: lastDiscordLoginDiagnostic,
     last_interaction: lastInteractionDiagnostic,
     timestamp: new Date().toISOString(),
   });
@@ -26816,6 +26822,11 @@ async function loginWithRetry(maxRetries = 5) {
     try {
       const attempt = i + 1;
       console.log(`[LOGIN] Próba ${attempt}/${maxRetries}...`);
+      lastDiscordLoginDiagnostic = {
+        stage: 'connecting',
+        attempt,
+        timestamp: new Date().toISOString(),
+      };
 
       slowLoginWarning = setTimeout(() => {
         console.warn(`[LOGIN] Logowanie trwa długo (>30s) — czekam na odpowiedź Discorda...`);
@@ -26829,6 +26840,11 @@ async function loginWithRetry(maxRetries = 5) {
         client.login(process.env.BOT_TOKEN), hardTimeout]);
 
       console.log("[LOGIN] Sukces! Bot połączony z Discord.");
+      lastDiscordLoginDiagnostic = {
+        stage: 'connected',
+        attempt,
+        timestamp: new Date().toISOString(),
+      };
       return true;
     } catch (err) {
       const retryAfterSeconds = Number(
@@ -26840,6 +26856,15 @@ async function loginWithRetry(maxRetries = 5) {
         || /429|rate.?limit/i.test(err?.message || "");
       const retryAfterHeader = retryAfterSeconds * 1000;
       const backoff = is429 ? Math.max(retryAfterHeader, 30000) : 10000 * (i + 1);
+      lastDiscordLoginDiagnostic = {
+        stage: 'retry_wait',
+        attempt: i + 1,
+        error_code: err?.code || null,
+        http_status: err?.status || null,
+        rate_limited: is429,
+        retry_in_seconds: Math.round(backoff / 1000),
+        timestamp: new Date().toISOString(),
+      };
 
       console.error(`[LOGIN] Błąd próby ${i + 1}:`, err?.message || err);
       if (err?.code) console.error(`[LOGIN] err.code=${err.code}`);
@@ -26865,6 +26890,11 @@ async function loginWithRetry(maxRetries = 5) {
   }
 
   console.error("[LOGIN] Wszystkie próby nieudane!");
+  lastDiscordLoginDiagnostic = {
+    stage: 'series_failed',
+    attempt: maxRetries,
+    timestamp: new Date().toISOString(),
+  };
 
   // Sprawdź połączenie sieciowe
   console.log("[NETWORK] Sprawdzam połączenie z Discord API...");
