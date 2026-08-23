@@ -26725,46 +26725,6 @@ async function checkBotStatus() {
   };
 }
 
-// Szybka weryfikacja tokena przed logowaniem (REST /users/@me)
-async function validateBotToken() {
-  return new Promise((resolve) => {
-    try {
-      const req = https.request({
-        method: 'GET',
-        hostname: 'discord.com',
-        path: '/api/v10/users/@me',
-        headers: {
-          Authorization: `Bot ${process.env.BOT_TOKEN}`,
-        },
-      }, (res) => {
-        let body = '';
-        res.on('data', (chunk) => body += chunk);
-        res.on('end', () => {
-          console.log(`[TOKEN_CHECK] status=${res.statusCode}`);
-          if (body) console.log(`[TOKEN_CHECK] body=${body.slice(0, 200)}`);
-          resolve(res.statusCode);
-        });
-      });
-
-      req.on('error', (err) => {
-        console.error('[TOKEN_CHECK] error:', err.message);
-        resolve(null);
-      });
-
-      req.setTimeout(5000, () => {
-        console.error('[TOKEN_CHECK] timeout');
-        req.destroy();
-        resolve(null);
-      });
-
-      req.end();
-    } catch (err) {
-      console.error('[TOKEN_CHECK] unexpected error:', err.message);
-      resolve(null);
-    }
-  });
-}
-
 // 8. Komenda statusu (opcjonalnie - można dodać do slash commands)
 async function sendStatusReport(channel) {
   const status = await checkBotStatus();
@@ -26794,35 +26754,6 @@ console.log("🟢 FULL MONITORING MODE aktywowany - heartbeat co 5min, alerty b�
 console.log("[DEBUG] Próba połączenia z Discord...");
 console.log("[DEBUG] BOT_TOKEN exists:", !!process.env.BOT_TOKEN);
 console.log("[DEBUG] BOT_TOKEN length:", process.env.BOT_TOKEN?.length || 0);
-
-// Test WebSocket połączenia
-console.log("[WS_TEST] Testuję połączenie WebSocket z Discord...");
-try {
-  const WebSocket = require('ws');
-  const ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
-
-  const wsTimeout = setTimeout(() => {
-    console.error("[WS_TEST] WebSocket timeout - Render.com blokuje połączenia!");
-    ws.terminate();
-  }, 10000);
-
-  ws.on('open', () => {
-    console.log("[WS_TEST] WebSocket połączony pomyślnie!");
-    clearTimeout(wsTimeout);
-    ws.close();
-  });
-
-  ws.on('error', (err) => {
-    console.error("[WS_TEST] WebSocket error:", err.message);
-    clearTimeout(wsTimeout);
-  });
-
-  ws.on('close', () => {
-    console.log("[WS_TEST] WebSocket zamknięty");
-  });
-} catch (err) {
-  console.error("[WS_TEST] Błąd tworzenia WebSocket:", err.message);
-}
 
 client.on("messageDelete", async (message) => {
   if (!message.guild || message.author?.bot) return;
