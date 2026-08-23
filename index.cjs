@@ -33,6 +33,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const DISCORD_API_BASE = process.env.DISCORD_API_BASE || "https://canary.discord.com/api";
+const ENABLE_HEAVY_STARTUP_SYNC = process.env.ENABLE_HEAVY_STARTUP_SYNC === "true";
 
 // Load local .env when running on a PC (Render ma własne env vars)
 try {
@@ -77,6 +78,7 @@ app.get('/health', (req, res) => {
     guilds: client.guilds?.cache?.size || 0,
     gateway_ping_ms: Number.isFinite(client.ws?.ping) ? client.ws.ping : null,
     discord_api_base: DISCORD_API_BASE,
+    startup_mode: ENABLE_HEAVY_STARTUP_SYNC ? 'full' : 'core',
     discord_application: discordApplicationDiagnostic,
     last_gateway_event: lastGatewayEventDiagnostic,
     commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
@@ -6538,6 +6540,30 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[READY] Bot zalogowany jako ${c.user.tag}`);
   console.log(`[READY] Bot jest na ${c.guilds.cache.size} serwerach`);
   console.log(`[READY] Bot jest online i gotowy do pracy!`);
+
+  await persistentStateReady;
+
+  if (!ENABLE_HEAVY_STARTUP_SYNC) {
+    // Najpierw dostępność komend. Pełne skanowanie historii wiadomości i paneli
+    // wykonywało setki GET-ów, wpadało w globalny rate limit i blokowało reply.
+    try {
+      c.user.setActivity(`LegitChecki: ${legitRepCount} 🛒`, { type: 0 });
+      setInterval(
+        () => c.user.setActivity(`LegitChecki: ${legitRepCount} 🛒`, { type: 0 }),
+        60_000,
+      );
+    } catch (_) {
+      // Obecność nie jest krytyczna dla obsługi komend.
+    }
+    scheduleDailyLegitMidnightRollover();
+    discordApplicationDiagnostic = {
+      ...discordApplicationDiagnostic,
+      command_registration: 'skipped_existing_commands',
+      timestamp: new Date().toISOString(),
+    };
+    console.log('[READY] Tryb core: pomijam ciężkie skanowanie historii i paneli przy starcie.');
+    return;
+  }
 
   Promise.all([
     client.rest.get('/users/@me'),
