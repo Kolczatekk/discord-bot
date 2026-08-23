@@ -61,6 +61,10 @@ app.get('/health', (req, res) => {
   res.status(200).json({
     status: discordConnected ? 'healthy' : 'degraded',
     discord_connected: discordConnected,
+    bot_id: client.user?.id || null,
+    bot_tag: client.user?.tag || null,
+    guilds: client.guilds?.cache?.size || 0,
+    gateway_ping_ms: Number.isFinite(client.ws?.ping) ? client.ws.ping : null,
     commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
     discord_login: lastDiscordLoginDiagnostic,
     last_interaction: lastInteractionDiagnostic,
@@ -6482,6 +6486,7 @@ async function applyDefaultsForGuild(guildId) {
 }
 
 client.once(Events.ClientReady, async (c) => {
+  c.user.setPresence({ status: "online" });
   console.log(`[READY] Bot zalogowany jako ${c.user.tag}`);
   console.log(`[READY] Bot jest na ${c.guilds.cache.size} serwerach`);
   console.log(`[READY] Bot jest online i gotowy do pracy!`);
