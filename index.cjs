@@ -32,6 +32,7 @@ const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const DISCORD_API_BASE = process.env.DISCORD_API_BASE || "https://canary.discord.com/api";
 
 // Load local .env when running on a PC (Render ma własne env vars)
 try {
@@ -65,6 +66,7 @@ app.get('/health', (req, res) => {
     bot_tag: client.user?.tag || null,
     guilds: client.guilds?.cache?.size || 0,
     gateway_ping_ms: Number.isFinite(client.ws?.ping) ? client.ws.ping : null,
+    discord_api_base: DISCORD_API_BASE,
     commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
     discord_login: lastDiscordLoginDiagnostic,
     last_interaction: lastInteractionDiagnostic,
@@ -87,6 +89,11 @@ app.listen(PORT, "0.0.0.0", () => {
 // ===============================================
 
 const client = new Client({
+  rest: {
+    api: DISCORD_API_BASE,
+    timeout: 15_000,
+    retries: 2,
+  },
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
@@ -139,6 +146,16 @@ client.rest.on("rateLimited", (info) => {
     retryAfterMs: info?.timeToReset,
     limit: info?.limit,
   });
+});
+
+client.on(Events.Error, (error) => {
+  console.error("[DISCORD_CLIENT] Błąd klienta:", error);
+});
+
+process.on("unhandledRejection", (error) => {
+  // Błąd pojedynczego zadania asynchronicznego (np. chwilowo niedostępny REST)
+  // nie może wyłączać całego gateway i restartować usługi.
+  console.error("[UNHANDLED_REJECTION]", error);
 });
 
 const NEWSHOP_EMOJI_ID = "1502672633026707667";
@@ -5679,7 +5696,7 @@ const commands = [
     .toJSON(),
 ];
 
-const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN);
+const rest = new REST({ version: "10", api: DISCORD_API_BASE }).setToken(process.env.BOT_TOKEN);
 
 // Helper: human-readable ms
 function humanizeMs(ms) {
