@@ -164,49 +164,35 @@ async function directInteractionRestRequest(method, route, options = {}) {
   const query = options.query ? `?${new URLSearchParams(options.query).toString()}` : "";
   const controller = new AbortController();
   const isInitialResponse = /^\/interactions\/\d+\/[^/]+\/callback$/.test(String(route || ""));
-  const apiBases = [
-    DISCORD_API_BASE,
-    "https://ptb.discord.com/api",
-    "https://discord.com/api",
-  ].filter((value, index, values) => values.indexOf(value) === index);
   // Discord wymaga pierwszej odpowiedzi w ok. 3 sekundy. Nie pozwalamy,
   // żeby pojedyncza zawieszona próba udawała sukces przez dłuższy czas.
   const timeoutId = setTimeout(() => controller.abort(), isInitialResponse ? 2_500 : 5_000);
   try {
-    let lastError = null;
-    for (const apiBase of apiBases) {
-      const response = await fetch(`${apiBase}/v10${route}${query}`, {
+    const response = await fetch(`${DISCORD_API_BASE}/v10${route}${query}`, {
         method,
         headers: options.body === undefined ? undefined : { "content-type": "application/json" },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         signal: controller.signal,
-      });
-      const text = await response.text();
-      let data = null;
-      if (text) {
-        try {
-          data = JSON.parse(text);
-        } catch (_) {
-          data = text;
-        }
+    });
+    const text = await response.text();
+    let data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        data = text;
       }
-      if (response.ok) return data;
-
+    }
+    if (!response.ok) {
       const error = new Error(
-        `Discord interaction HTTP ${response.status} via ${new URL(apiBase).hostname}`,
+        `Discord interaction HTTP ${response.status} via ${new URL(DISCORD_API_BASE).hostname}`,
       );
       error.status = response.status;
       error.code = data?.code || response.status;
       error.responseBody = typeof data === "string" ? data.slice(0, 200) : data;
-      lastError = error;
-
-      // Odrzucenie przez konkretny edge Cloudflare nie powinno blokować
-      // sprawdzenia następnego oficjalnego hosta. Błędów treści żądania nie ponawiamy.
-      if (response.status !== 429 && response.status !== 403 && response.status !== 502) {
-        throw error;
-      }
+      throw error;
     }
-    throw lastError || new Error("Discord interaction request failed");
+    return data;
   } finally {
     clearTimeout(timeoutId);
   }
