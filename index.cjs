@@ -17889,12 +17889,11 @@ async function handleTestPvCommand(interaction) {
   }
 }
 
-// ===== Auto Legit Check (bot sam wystawia LC, żeby licznik rósł) =====
+// ===== Auto Legit Check (3-5 legit checków dziennie o losowych godzinach) =====
 const AUTO_LC_SELLER_ID = "1305200545979437129"; // @Kolczasty
 const AUTO_LC_BLACKOUT_START_HOUR = 0;   // od 00:00 nie wystawiamy
 const AUTO_LC_BLACKOUT_END_HOUR = 7;     // do 07:00 (włącznie) przerwa nocna
-const AUTO_LC_MIN_INTERVAL_MS = 3 * 60 * 60 * 1000;   // min 3h między LC
-const AUTO_LC_MAX_INTERVAL_MS = 8 * 60 * 60 * 1000;   // max 8h
+
 // Kwoty okrągłe z wagami (częstość w realnych wpisach: 10 najczęstsze itd.)
 const AUTO_LC_ROUND_AMOUNTS = [
   10, 10, 10, 10, 10,
@@ -17905,13 +17904,13 @@ const AUTO_LC_ROUND_AMOUNTS = [
 ];
 let autoLcTimer = null;
 let autoLcNextFireAt = 0;
+let autoLcDailyQueue = [];
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function pickAutoLcAmount() {
-  // ~85% okrągłe, ~15% nietypowe z 5..100
   if (Math.random() < 0.85) {
     return AUTO_LC_ROUND_AMOUNTS[randomInt(0, AUTO_LC_ROUND_AMOUNTS.length - 1)];
   }
@@ -17919,12 +17918,10 @@ function pickAutoLcAmount() {
 }
 
 function pickAutoLcServer() {
-  // 95% ANARCHIA LIFESTEAL, 5% MINESTAR SKYPVP
   return Math.random() < 0.95 ? "ANARCHIA LIFESTEAL" : "MINESTAR SKYPVP";
 }
 
 function pickAutoLcVerb() {
-  // 90% ZAKUP, 10% SPRZEDAŻ (jak w realnych wpisach)
   return Math.random() < 0.9 ? "ZAKUP" : "SPRZEDAŻ";
 }
 
@@ -17936,40 +17933,81 @@ function isAutoLcInBlackout(now = new Date()) {
   return hour >= AUTO_LC_BLACKOUT_START_HOUR || hour <= AUTO_LC_BLACKOUT_END_HOUR;
 }
 
-// Kolejny slot wystawienia: losowy odstęp 3-8h, przesunięty poza nocną przerwę.
-function computeAutoLcDelay(now = new Date(), targetOverrides = null) {
-  const delay = randomInt(AUTO_LC_MIN_INTERVAL_MS, AUTO_LC_MAX_INTERVAL_MS);
-  const target = new Date(now.getTime() + delay);
-  if (isAutoLcInBlackout(target)) {
-    // Wypadło w nocy -> przesuń na losową godzinę 08:00-23:00 (czas warszawski)
-    // następnego dnia. Liczymy w strefie Europe/Warsaw, nie lokalnej serwera,
-    // żeby Render (UTC) nie przesuwał godziny.
-    const dayMs = 24 * 60 * 60 * 1000;
-    // nextWarsawDayKey = dateKey "jutro" w strefie warszawskiej
-    const nowKey = getWarsawDateParts(now).dateKey;
-    let probe = new Date(now.getTime() + dayMs);
-    for (let i = 0; i < 3; i++) {
-      const key = getWarsawDateParts(probe).dateKey;
-      if (key !== nowKey) break;
-      probe = new Date(probe.getTime() + dayMs);
+function getWarsawDateString(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Warsaw",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function getWarsawEpochForDate(dateStr, hour, minute, seconds = 0) {
+  const baseUtc = Date.parse(`${dateStr}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(seconds).padStart(2, "0")}Z`);
+  for (let offsetHours = -4; offsetHours <= 4; offsetHours++) {
+    const testTs = baseUtc + offsetHours * 3600000;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Warsaw",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(testTs));
+    const v = (t) => parts.find((p) => p.type === t)?.value;
+    if (
+      `${v("year")}-${v("month")}-${v("day")}` === dateStr &&
+      Number(v("hour")) === hour &&
+      Number(v("minute")) === minute &&
+      Number(v("second")) === seconds
+    ) {
+      return testTs;
     }
-    const targetKey = getWarsawDateParts(probe).dateKey;
-    // Znajdź moment 08:00 (warszawskie) dnia targetKey. Skanujemy godzinowymi
-    // krokami od teraz aż trafimy dateKey==targetKey i hour==8 (max ~72 iteracje).
-    let scan = now.getTime();
-    let eightAmTs = now.getTime() + 3 * dayMs;
-    for (let i = 0; i < 96; i++) {
-      const d = getWarsawDateParts(new Date(scan));
-      if (d.dateKey === targetKey && d.hour === 8) {
-        eightAmTs = scan;
-        break;
-      }
-      scan += 3600000;
-    }
-    const pick = eightAmTs + randomInt(0, 15 * 3600000);
-    return Math.max(1000, pick - now.getTime());
   }
-  return delay;
+  return null;
+}
+
+// Generuje losowo od 3 do 5 legit checków w ciągu dnia (w godz. 08:00 - 22:45)
+function generateDailyAutoLcTimes(dateStr) {
+  const count = randomInt(3, 5); // 3 do 5 LC na dzień
+  const startMin = 8 * 60; // 08:00 (poza nocną przerwą 00:00-07:00)
+  const endMin = 22 * 60 + 45; // 22:45
+  const totalMin = endMin - startMin;
+  const slotSize = totalMin / count;
+
+  const times = [];
+  for (let i = 0; i < count; i++) {
+    const slotStart = startMin + i * slotSize;
+    const slotEnd = startMin + (i + 1) * slotSize;
+    const pickMin = Math.floor(slotStart + 5 + Math.random() * (slotEnd - slotStart - 10));
+    const hour = Math.floor(pickMin / 60);
+    const minute = pickMin % 60;
+    const sec = Math.floor(Math.random() * 60);
+    const epoch = getWarsawEpochForDate(dateStr, hour, minute, sec);
+    if (epoch) times.push(epoch);
+  }
+  times.sort((a, b) => a - b);
+  return times;
+}
+
+function getNextScheduledAutoLcTimestamp() {
+  const now = Date.now();
+  autoLcDailyQueue = autoLcDailyQueue.filter((ts) => ts > now + 1000);
+  if (autoLcDailyQueue.length > 0) {
+    return autoLcDailyQueue[0];
+  }
+  const todayStr = getWarsawDateString(new Date());
+  const todayTimes = generateDailyAutoLcTimes(todayStr).filter((ts) => ts > now + 1000);
+  if (todayTimes.length > 0) {
+    autoLcDailyQueue = todayTimes;
+    return autoLcDailyQueue[0];
+  }
+  const tomorrow = new Date(now + 24 * 60 * 60 * 1000);
+  const tomorrowStr = getWarsawDateString(tomorrow);
+  autoLcDailyQueue = generateDailyAutoLcTimes(tomorrowStr);
+  return autoLcDailyQueue[0] || null;
 }
 
 async function postAutoLegitCheck() {
@@ -18084,14 +18122,18 @@ function scheduleAutoLcTestOnce() {
 
 function scheduleRandomAutoLegitCheck() {
   if (autoLcTimer) clearTimeout(autoLcTimer);
-  const delay = computeAutoLcDelay();
-  autoLcNextFireAt = Date.now() + delay;
+  const nextTargetTs = getNextScheduledAutoLcTimestamp();
+  if (!nextTargetTs) {
+    console.error("[auto-lc] Nie udało się wygenerować kolejnego terminu LC.");
+    return;
+  }
+  autoLcNextFireAt = nextTargetTs;
+  const delay = Math.max(1000, nextTargetTs - Date.now());
   const hours = (delay / 3600000).toFixed(1);
-  console.log(`[auto-lc] Następny automatyczny legit check za ${hours} h (${new Date(autoLcNextFireAt).toLocaleString("pl-PL")}).`);
+  console.log(`[auto-lc] Następny automatyczny legit check za ${hours} h (${new Date(autoLcNextFireAt).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" })}).`);
   autoLcTimer = setTimeout(async () => {
     autoLcNextFireAt = 0;
-    // Najpierw zaplanuj następny LC, żeby nawet gdy wysyłka się zawiesi
-    // (zawieszenie Discord API itp.), timer nie umarł na zawsze.
+    // Zaplanuj kolejny
     scheduleRandomAutoLegitCheck();
     try {
       await postAutoLegitCheck();
@@ -18101,7 +18143,6 @@ function scheduleRandomAutoLegitCheck() {
   }, delay);
 }
 
-// Helper for closing ticket anonymously (used by /anonim and button)
 async function closeTicketAnonymously(channel, guild, executorId) {
   const ticketData = pendingTicketClose.get(channel.id);
   if (!ticketData || !ticketData.awaitingRep) {
@@ -24181,7 +24222,7 @@ async function handleAutoLcTimerCommand(interaction) {
     const nextTime = autoLcNextFireAt > 0 ? new Date(autoLcNextFireAt) : null;
     const nextTimeStr = nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "wkrótce";
     await interaction.editReply({
-      content: `> \`✅\` × **Timer auto LC:** włączony.\n> **Następny legit check:** \`${nextTimeStr}\`${isTest ? " *(jednorazowy test, potem powrót do trybu 3–8h)*" : " *(losowo co 3–8 h, przerwa nocna 00:00–07:00)*"}`,
+      content: `> \`✅\` × **Timer auto LC:** włączony.\n> **Następny legit check:** \`${nextTimeStr}\`${isTest ? " *(jednorazowy test, potem powrót do trybu 3–8h)*" : " *(losowo 3–5 LC dziennie w godz. 08:00–23:00, bez nocy 00:00–07:00)*"}`,
     });
     return;
   }
@@ -24227,18 +24268,13 @@ async function handleAutoLcStatusCommand(interaction) {
       `Licznik legit checków: ${legitRepCount}\n` +
       `W czarnej strefie (00:00-07:00): ${blackout}\n` +
       `Następny auto LC: ${nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "BRAK (timer nie uruchomiony)"}\n` +
+      `Tryb: 3–5 legit checków dziennie (w godz. 08:00–23:00)\n` +
       `Serwery: 95% ANARCHIA LIFESTEAL, 5% MINESTAR SKYPVP\n` +
       `Kwoty (przykłady losowania): ${sampleAmounts.join(", ")}\n` +
       "```",
   });
 }
 
-/*
-  NEW: /resetlc handler
-  - Admin-only command (default member permission set)
-  - Resets legitRepCount to 0 and attempts to rename the counter channel.
-  - If rename cannot be performed immediately due to cooldown, it will be scheduled.
-*/
 async function handleResetLCCommand(interaction) {
   // ensure command used in guild
   if (!interaction.guild) {
