@@ -6732,8 +6732,11 @@ client.once(Events.ClientReady, async (c) => {
       scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
     }
 
-    // Try to find previously sent rep info message so we can reuse it
-    if (repChannel) {
+    // Start automatycznego wystawiania legit checków (bot sam podbija licznik).
+    scheduleRandomAutoLegitCheck();
+
+  // Try to find previously sent rep info message so we can reuse it
+  if (repChannel) {
       const found = await findBotMessageWithEmbed(repChannel, (emb) => {
         return (
           emb.description &&
@@ -17840,6 +17843,116 @@ async function handleTestPvCommand(interaction) {
       content: "> `❌` × **Nie udało się wysłać prywatnej wiadomości!** Upewnij się, że masz włączone wiadomości prywatne (DM) z członkami serwera w ustawieniach prywatności Discorda.",
     });
   }
+}
+
+// ===== Auto Legit Check (bot sam wystawia LC, żeby licznik rósł) =====
+const AUTO_LC_SELLER_ID = "1305200545979437129"; // @Kolczasty
+const AUTO_LC_BLACKOUT_START_HOUR = 0;   // od 00:00 nie wystawiamy
+const AUTO_LC_BLACKOUT_END_HOUR = 7;     // do 07:00 (włącznie) przerwa nocna
+const AUTO_LC_MIN_INTERVAL_MS = 3 * 60 * 60 * 1000;   // min 3h między LC
+const AUTO_LC_MAX_INTERVAL_MS = 8 * 60 * 60 * 1000;   // max 8h
+// Kwoty okrągłe z wagami (częstość w realnych wpisach: 10 najczęstsze itd.)
+const AUTO_LC_ROUND_AMOUNTS = [
+  10, 10, 10, 10, 10,
+  20, 20, 20, 20,
+  30, 30, 30, 30,
+  50, 50, 50, 50,
+  5, 5, 100, 100,
+];
+let autoLcTimer = null;
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function pickAutoLcAmount() {
+  // ~85% okrągłe, ~15% nietypowe z 5..100
+  if (Math.random() < 0.85) {
+    return AUTO_LC_ROUND_AMOUNTS[randomInt(0, AUTO_LC_ROUND_AMOUNTS.length - 1)];
+  }
+  return randomInt(5, 100);
+}
+
+function pickAutoLcServer() {
+  // 95% ANARCHIA LIFESTEAL, 5% MINESTAR SKYPVP
+  return Math.random() < 0.95 ? "ANARCHIA LIFESTEAL" : "MINESTAR SKYPVP";
+}
+
+function pickAutoLcVerb() {
+  // 90% ZAKUP, 10% SPRZEDAŻ (jak w realnych wpisach)
+  return Math.random() < 0.9 ? "ZAKUP" : "SPRZEDAŻ";
+}
+
+function isAutoLcInBlackout(now = new Date()) {
+  const hour = getWarsawDateParts(now).hour;
+  if (AUTO_LC_BLACKOUT_START_HOUR <= AUTO_LC_BLACKOUT_END_HOUR) {
+    return hour >= AUTO_LC_BLACKOUT_START_HOUR && hour <= AUTO_LC_BLACKOUT_END_HOUR;
+  }
+  return hour >= AUTO_LC_BLACKOUT_START_HOUR || hour <= AUTO_LC_BLACKOUT_END_HOUR;
+}
+
+// Kolejny slot wystawienia: losowy odstęp 3-8h, przesunięty poza nocną przerwę.
+function computeAutoLcDelay(now = new Date()) {
+  const delay = randomInt(AUTO_LC_MIN_INTERVAL_MS, AUTO_LC_MAX_INTERVAL_MS);
+  const target = new Date(now.getTime() + delay);
+  if (isAutoLcInBlackout(target)) {
+    // Wypadło w nocy -> wrzuć losowo między 08:00 a 23:00 następnego dnia (Warszawa).
+    const tomorrow8am = new Date(
+      target.getFullYear(), target.getMonth(), target.getDate(), 8, 0, 0, 0,
+    );
+    // przybliżone do czasu warszawskiego; przesunięcie o offset strefy
+    const nowOffset = -now.getTimezoneOffset() * 60000;
+    const warsawTarget = new Date(tomorrow8am.getTime() + nowOffset + 2 * 3600000);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const pick = warsawTarget.getTime() + randomInt(0, 15 * 3600000);
+    return Math.max(1000, pick - now.getTime());
+  }
+  return delay;
+}
+
+async function postAutoLegitCheck() {
+  try {
+    const repChannel = await client.channels.fetch(REP_CHANNEL_ID).catch(() => null);
+    if (!repChannel) {
+      console.error("[auto-lc] Nie znaleziono kanału legit-check.");
+      return;
+    }
+
+    const amount = pickAutoLcAmount();
+    const verb = pickAutoLcVerb();
+    const server = pickAutoLcServer();
+    const repText = `+rep <@${AUTO_LC_SELLER_ID}> ${verb} ${amount} PLN ${server}`;
+
+    console.log(`[auto-lc] Wystawiam automatyczny legit check: ${repText}`);
+    const sentAnonRep = await sendAnonRep(repChannel, repText);
+
+    if (legitRepHistoryInitialized && sentAnonRep?.id) {
+      legitRepMessageIds.add(sentAnonRep.id);
+      legitRepCount = legitRepMessageIds.size;
+    } else {
+      legitRepCount++;
+    }
+
+    const dailyTransactionAmount = isDailyLegitMoneyTransaction(verb.toLowerCase()) ? amount : 0;
+    recordDailyLegitRep("anonimowy", dailyTransactionAmount);
+    scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
+    scheduleSavePersistentState();
+
+    console.log(`[auto-lc] +rep wystawione przez bota, licznik: ${legitRepCount}`);
+  } catch (err) {
+    console.error("[auto-lc] Błąd wystawiania auto legit checka:", err);
+  }
+}
+
+function scheduleRandomAutoLegitCheck() {
+  if (autoLcTimer) clearTimeout(autoLcTimer);
+  const delay = computeAutoLcDelay();
+  const hours = (delay / 3600000).toFixed(1);
+  console.log(`[auto-lc] Następny automatyczny legit check za ${hours} h.`);
+  autoLcTimer = setTimeout(async () => {
+    await postAutoLegitCheck();
+    scheduleRandomAutoLegitCheck();
+  }, delay);
 }
 
 // Helper for closing ticket anonymously (used by /anonim and button)
