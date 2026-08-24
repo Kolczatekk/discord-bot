@@ -6776,9 +6776,9 @@ client.once(Events.ClientReady, async (c) => {
       const recent = await repChannel.messages.fetch({ limit: 50 }).catch(() => null);
       if (recent) {
         for (const msg of recent.values()) {
-          if (msg.author?.id === client.user.id) {
-            const rawStr = JSON.stringify(msg.components || []) + " " + JSON.stringify(msg.embeds || []) + " " + (msg.content || "");
-            if (rawStr.includes("LEGIT CHECK") || rawStr.includes("Jak napisać") || rawStr.includes("ZAKUP/SPRZEDAŻ")) {
+          if (msg.author?.id === client.user.id && (msg.components?.length > 0 || msg.embeds?.length > 0)) {
+            const rawStr = JSON.stringify(msg.components || []) + " " + JSON.stringify(msg.embeds || []);
+            if (rawStr.includes("Jak napisać") || rawStr.includes("LEGIT CHECKI")) {
               repLastInfoMessage.set(repChannel.id, msg.id);
               console.log(`[ready] Znalazłem istniejącą wiadomość info-rep: ${msg.id}`);
               break;
@@ -18275,9 +18275,10 @@ async function sendLegitCheckInfoMessage(channel) {
     const recent = await channel.messages.fetch({ limit: 30 }).catch(() => null);
     if (recent) {
       for (const msg of recent.values()) {
-        if (msg.author?.id === client.user.id) {
-          const rawStr = JSON.stringify(msg.components || []) + " " + JSON.stringify(msg.embeds || []) + " " + (msg.content || "");
-          if (rawStr.includes("LEGIT CHECK") || rawStr.includes("Jak napisać") || rawStr.includes("ZAKUP/SPRZEDAŻ")) {
+        // Tylko wiadomości bota posiadające komponenty/embed z instrukcją (nigdy zwykłe wiadomości +rep)
+        if (msg.author?.id === client.user.id && (msg.components?.length > 0 || msg.embeds?.length > 0)) {
+          const rawStr = JSON.stringify(msg.components || []) + " " + JSON.stringify(msg.embeds || []);
+          if (rawStr.includes("Jak napisać") || rawStr.includes("LEGIT CHECKI")) {
             oldPanels.push(msg);
           }
         }
