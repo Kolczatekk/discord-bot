@@ -18016,7 +18016,7 @@ async function postAutoLegitCheck() {
 // dalsza praca toczy się normalnym losowaniem.
 let autoLcTestPending = true;
 const AUTO_LC_TEST_HOUR = 21;
-const AUTO_LC_TEST_MINUTE = 45;
+const AUTO_LC_TEST_MINUTE = 56;
 
 function warsawEpochAt(hour, minute, lookAheadHours = 30) {
   const now = Date.now();
