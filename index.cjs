@@ -7985,10 +7985,15 @@ async function handleModalSubmit(interaction) {
       guildId: interaction.guild?.id,
     });
 
-    await channel.send({
-      content: "<@&1350786945944391733>",
-      allowedMentions: { roles: ["1350786945944391733"] },
-    }).catch(() => null);
+    {
+      const _pingRoles = getPingRolesForTicketType(ticketType);
+      if (_pingRoles.length > 0) {
+        await channel.send({
+          content: _pingRoles.map(id => `<@&${id}>`).join(" "),
+          allowedMentions: { roles: _pingRoles },
+        }).catch(() => null);
+      }
+    }
 
     const sentMsg = await channel.send(payload);
 
@@ -20183,6 +20188,24 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
   }
 }
 
+function getPingRolesForTicketType(ticketType) {
+  const R20 = "1449448705563557918";
+  const R50 = "1449448702925209651";
+  const R100 = "1449448686156255333";
+  const R200 = "1449448860517798061";
+  const R400 = "1541553589833695393";
+  const R_NOLIMIT = "1541553994000891984";
+  switch (ticketType) {
+    case "zakup-0-20":   return [R20, R50, R100, R200, R400, R_NOLIMIT];
+    case "zakup-20-50":  return [R50, R100, R200, R400, R_NOLIMIT];
+    case "zakup-50-100": return [R100, R200, R400, R_NOLIMIT];
+    case "zakup-100-200": return [R200, R400, R_NOLIMIT];
+    case "zakup-200-400": return [R400, R_NOLIMIT];
+    case "zakup-400-999": return [R_NOLIMIT];
+    default: return [];
+  }
+}
+
 function getLimitRolePermissionsForCategory(categoryId, categories = {}) {
   const R20 = "1449448705563557918";
   const R50 = "1449448702925209651";
@@ -20664,10 +20687,15 @@ async function openRewardClaimTicket(interaction) {
     guildId: interaction.guild?.id,
   });
 
-  await channel.send({
-    content: "<@&1350786945944391733>",
-    allowedMentions: { roles: ["1350786945944391733"] },
-  }).catch(() => null);
+  {
+    const _pingRoles = getPingRolesForTicketType(ticketType);
+    if (_pingRoles.length > 0) {
+      await channel.send({
+        content: _pingRoles.map(id => `<@&${id}>`).join(" "),
+        allowedMentions: { roles: _pingRoles },
+      }).catch(() => null);
+    }
+  }
 
   const sentMsg = await channel.send(payload);
 
@@ -22727,10 +22755,15 @@ async function handleModalSubmit(interaction) {
           guildId: interaction.guild?.id,
         });
 
-        await channel.send({
-          content: "<@&1350786945944391733>",
-          allowedMentions: { roles: ["1350786945944391733"] },
-        }).catch(() => null);
+        {
+          const _pingRoles = getPingRolesForTicketType(ticketType);
+          if (_pingRoles.length > 0) {
+            await channel.send({
+              content: _pingRoles.map(id => `<@&${id}>`).join(" "),
+              allowedMentions: { roles: _pingRoles },
+            }).catch(() => null);
+          }
+        }
 
         const sentMsg = await channel.send(payload);
 
@@ -23013,10 +23046,15 @@ async function handleModalSubmit(interaction) {
       guildId: interaction.guild?.id,
     });
 
-    await channel.send({
-      content: "<@&1350786945944391733>",
-      allowedMentions: { roles: ["1350786945944391733"] },
-    }).catch(() => null);
+    {
+      const _pingRoles = getPingRolesForTicketType(ticketType);
+      if (_pingRoles.length > 0) {
+        await channel.send({
+          content: _pingRoles.map(id => `<@&${id}>`).join(" "),
+          allowedMentions: { roles: _pingRoles },
+        }).catch(() => null);
+      }
+    }
 
     const sentMsg = await channel.send(payload);
 
