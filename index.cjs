@@ -17956,6 +17956,12 @@ async function postAutoLegitCheck() {
     scheduleRepChannelRename(repChannel, legitRepCount).catch(() => null);
     scheduleSavePersistentState();
 
+    // Tak jak przy anonimowym LC z ticketu: prześlij nowy panel "LEGIT CHECKI"
+    // na dół kanału i usuń stary (żeby wiadomości wyglądały jak od prawdziwego gracza).
+    await sendLegitCheckInfoMessage(repChannel).catch((error) =>
+      console.error("[auto-lc] Błąd wysyłania panelu legit-check:", error),
+    );
+
     console.log(`[auto-lc] +rep wystawione przez bota, licznik: ${legitRepCount}`);
   } catch (err) {
     console.error("[auto-lc] Błąd wystawiania auto legit checka:", err);
