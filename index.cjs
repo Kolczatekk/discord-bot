@@ -17898,6 +17898,7 @@ const AUTO_LC_ROUND_AMOUNTS = [
   5, 5, 100, 100,
 ];
 let autoLcTimer = null;
+let autoLcNextFireAt = 0;
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -17930,7 +17931,7 @@ function isAutoLcInBlackout(now = new Date()) {
 }
 
 // Kolejny slot wystawienia: losowy odstęp 3-8h, przesunięty poza nocną przerwę.
-function computeAutoLcDelay(now = new Date()) {
+function computeAutoLcDelay(now = new Date(), targetOverrides = null) {
   const delay = randomInt(AUTO_LC_MIN_INTERVAL_MS, AUTO_LC_MAX_INTERVAL_MS);
   const target = new Date(now.getTime() + delay);
   if (isAutoLcInBlackout(target)) {
@@ -18008,10 +18009,16 @@ async function postAutoLegitCheck() {
 function scheduleRandomAutoLegitCheck() {
   if (autoLcTimer) clearTimeout(autoLcTimer);
   const delay = computeAutoLcDelay();
+  autoLcNextFireAt = Date.now() + delay;
   const hours = (delay / 3600000).toFixed(1);
-  console.log(`[auto-lc] Następny automatyczny legit check za ${hours} h.`);
+  console.log(`[auto-lc] Następny automatyczny legit check za ${hours} h (${new Date(autoLcNextFireAt).toLocaleString("pl-PL")}).`);
   autoLcTimer = setTimeout(async () => {
-    await postAutoLegitCheck();
+    autoLcNextFireAt = 0;
+    try {
+      await postAutoLegitCheck();
+    } catch (err) {
+      console.error("[auto-lc] Błąd w callbacku timera:", err);
+    }
     scheduleRandomAutoLegitCheck();
   }, delay);
 }
@@ -24106,7 +24113,7 @@ async function handleAutoLcTimerCommand(interaction) {
 
   // status
   const now = new Date();
-  const nextTime = autoLcTimer ? new Date(now.getTime() + autoLcTimer._idleTimeout) : null;
+  const nextTime = autoLcNextFireAt > 0 ? new Date(autoLcNextFireAt) : null;
   await interaction.editReply({
     content:
       "```\n" +
@@ -24123,7 +24130,7 @@ async function handleAutoLcTimerCommand(interaction) {
 async function handleAutoLcStatusCommand(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
   const now = new Date();
-  const nextTime = autoLcTimer ? new Date(now.getTime() + autoLcTimer._idleTimeout) : null;
+  const nextTime = autoLcNextFireAt > 0 ? new Date(autoLcNextFireAt) : null;
   const blackout = isAutoLcInBlackout(now) ? "TAK (teraz przerwa nocna)" : "nie";
   const sampleAmounts = [];
   for (let i = 0; i < 6; i++) sampleAmounts.push(pickAutoLcAmount());
