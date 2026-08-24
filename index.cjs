@@ -18016,39 +18016,58 @@ async function postAutoLegitCheck() {
 // dalsza praca toczy się normalnym losowaniem.
 let autoLcTestPending = true;
 const AUTO_LC_TEST_HOUR = 22;
-const AUTO_LC_TEST_MINUTE = 2;
+const AUTO_LC_TEST_MINUTE = 25;
 
-function warsawEpochAt(hour, minute, lookAheadHours = 30) {
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-  for (let t = now; t < now + lookAheadHours * 3600000; t += 60000) {
-    const d = getWarsawDateParts(new Date(t));
-    // getWarsawDateParts daje tylko godzinę - szukamy godziny i dojazdu do minuty
-    // (przybliżenie co 1 min jest dokładne, bo data po minucie się nie skacze)
-    if (d.hour === hour && new Date(t).getMinutes() === minute) {
-      return t;
+function getWarsawEpochForToday(hour, minute, seconds = 0) {
+  const now = new Date();
+  const dateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Warsaw",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+
+  const baseUtc = Date.parse(`${dateStr}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(seconds).padStart(2, "0")}Z`);
+  for (let offsetHours = -4; offsetHours <= 4; offsetHours++) {
+    const testTs = baseUtc + offsetHours * 3600000;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Warsaw",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(testTs));
+    const v = (t) => parts.find((p) => p.type === t)?.value;
+    if (
+      `${v("year")}-${v("month")}-${v("day")}` === dateStr &&
+      Number(v("hour")) === hour &&
+      Number(v("minute")) === minute &&
+      Number(v("second")) === seconds
+    ) {
+      return testTs;
     }
   }
   return null;
 }
 
 function scheduleAutoLcTestOnce() {
-  const today = getWarsawDateParts().dateKey;
-  const at = warsawEpochAt(AUTO_LC_TEST_HOUR, AUTO_LC_TEST_MINUTE, 30);
-  const sameDay = at ? getWarsawDateParts(new Date(at)).dateKey === today : false;
-  if (!at || !sameDay) {
-    console.log("[auto-lc] TEST: dzisiejszy slot 21:45 już minął — losowanie normalne.");
+  const at = getWarsawEpochForToday(AUTO_LC_TEST_HOUR, AUTO_LC_TEST_MINUTE, 0);
+  if (!at) {
     autoLcTestPending = false;
     return false;
   }
   const delay = at - Date.now();
   if (delay <= 1000) {
+    console.log(`[auto-lc] TEST: dzisiejszy slot ${AUTO_LC_TEST_HOUR}:${AUTO_LC_TEST_MINUTE} już minął — losowanie normalne.`);
     autoLcTestPending = false;
     return false;
   }
   if (autoLcTimer) clearTimeout(autoLcTimer);
   autoLcNextFireAt = at;
-  console.log(`[auto-lc] TEST: jednorazowy legit check o ${new Date(at).toLocaleString("pl-PL")} (za ${(delay / 60000).toFixed(1)} min).`);
+  console.log(`[auto-lc] TEST: jednorazowy legit check o ${new Date(at).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" })} (za ${(delay / 60000).toFixed(1)} min).`);
   autoLcTimer = setTimeout(async () => {
     autoLcNextFireAt = 0;
     autoLcTestPending = false;
@@ -24152,9 +24171,17 @@ async function handleAutoLcTimerCommand(interaction) {
   const action = interaction.options.getString("akcja");
 
   if (action === "start") {
-    scheduleRandomAutoLegitCheck();
+    let isTest = false;
+    if (autoLcTestPending) {
+      isTest = scheduleAutoLcTestOnce();
+    }
+    if (!isTest) {
+      scheduleRandomAutoLegitCheck();
+    }
+    const nextTime = autoLcNextFireAt > 0 ? new Date(autoLcNextFireAt) : null;
+    const nextTimeStr = nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "wkrótce";
     await interaction.editReply({
-      content: "> `✅` × **Timer auto LC:** włączony. Następny legit check zostanie wystawiony automatycznie (co 3–8 h, z przerwą nocną 00:00–07:00).",
+      content: `> \`✅\` × **Timer auto LC:** włączony.\n> **Następny legit check:** \`${nextTimeStr}\`${isTest ? " *(jednorazowy test, potem powrót do trybu 3–8h)*" : " *(losowo co 3–8 h, przerwa nocna 00:00–07:00)*"}`,
     });
     return;
   }
