@@ -17934,15 +17934,32 @@ function computeAutoLcDelay(now = new Date()) {
   const delay = randomInt(AUTO_LC_MIN_INTERVAL_MS, AUTO_LC_MAX_INTERVAL_MS);
   const target = new Date(now.getTime() + delay);
   if (isAutoLcInBlackout(target)) {
-    // Wypadło w nocy -> wrzuć losowo między 08:00 a 23:00 następnego dnia (Warszawa).
-    const tomorrow8am = new Date(
-      target.getFullYear(), target.getMonth(), target.getDate(), 8, 0, 0, 0,
-    );
-    // przybliżone do czasu warszawskiego; przesunięcie o offset strefy
-    const nowOffset = -now.getTimezoneOffset() * 60000;
-    const warsawTarget = new Date(tomorrow8am.getTime() + nowOffset + 2 * 3600000);
+    // Wypadło w nocy -> przesuń na losową godzinę 08:00-23:00 (czas warszawski)
+    // następnego dnia. Liczymy w strefie Europe/Warsaw, nie lokalnej serwera,
+    // żeby Render (UTC) nie przesuwał godziny.
     const dayMs = 24 * 60 * 60 * 1000;
-    const pick = warsawTarget.getTime() + randomInt(0, 15 * 3600000);
+    // nextWarsawDayKey = dateKey "jutro" w strefie warszawskiej
+    const nowKey = getWarsawDateParts(now).dateKey;
+    let probe = new Date(now.getTime() + dayMs);
+    for (let i = 0; i < 3; i++) {
+      const key = getWarsawDateParts(probe).dateKey;
+      if (key !== nowKey) break;
+      probe = new Date(probe.getTime() + dayMs);
+    }
+    const targetKey = getWarsawDateParts(probe).dateKey;
+    // Znajdź moment 08:00 (warszawskie) dnia targetKey. Skanujemy godzinowymi
+    // krokami od teraz aż trafimy dateKey==targetKey i hour==8 (max ~72 iteracje).
+    let scan = now.getTime();
+    let eightAmTs = now.getTime() + 3 * dayMs;
+    for (let i = 0; i < 96; i++) {
+      const d = getWarsawDateParts(new Date(scan));
+      if (d.dateKey === targetKey && d.hour === 8) {
+        eightAmTs = scan;
+        break;
+      }
+      scan += 3600000;
+    }
+    const pick = eightAmTs + randomInt(0, 15 * 3600000);
     return Math.max(1000, pick - now.getTime());
   }
   return delay;
