@@ -1694,6 +1694,7 @@ function syncInviteRewardThresholds() {
   }
 }
 const BASE_SELLER_ROLE_ID = "1350786945944391733";
+const SELLER_PING_ROLE_ID = "1541562950509264946";
 const ROLE_LIMIT_20 = "1449448705563557918";
 const ROLE_LIMIT_50 = "1449448702925209651";
 const ROLE_LIMIT_100 = "1449448686156255333";
@@ -20189,21 +20190,11 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
 }
 
 function getPingRolesForTicketType(ticketType) {
-  const R20 = "1449448705563557918";
-  const R50 = "1449448702925209651";
-  const R100 = "1449448686156255333";
-  const R200 = "1449448860517798061";
-  const R400 = "1541553589833695393";
-  const R_NOLIMIT = "1541553994000891984";
-  switch (ticketType) {
-    case "zakup-0-20":   return [R20, R50, R100, R200, R400, R_NOLIMIT];
-    case "zakup-20-50":  return [R50, R100, R200, R400, R_NOLIMIT];
-    case "zakup-50-100": return [R100, R200, R400, R_NOLIMIT];
-    case "zakup-100-200": return [R200, R400, R_NOLIMIT];
-    case "zakup-200-400": return [R400, R_NOLIMIT];
-    case "zakup-400-999": return [R_NOLIMIT];
-    default: return [];
+  const SELLER_PING_ROLE_ID = "1541562950509264946";
+  if (ticketType === "inne") {
+    return ["1519069239254974475"]; // helper
   }
+  return [SELLER_PING_ROLE_ID];
 }
 
 function getLimitRolePermissions(ticketType, categoryId, categories = {}) {
