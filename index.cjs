@@ -1694,7 +1694,7 @@ function syncInviteRewardThresholds() {
   }
 }
 const BASE_SELLER_ROLE_ID = "1350786945944391733";
-const SELLER_PING_ROLE_ID = "1541562950509264946";
+const SELLER_PING_ROLE_ID = "1350786945944391733";
 const ROLE_LIMIT_20 = "1449448705563557918";
 const ROLE_LIMIT_50 = "1449448702925209651";
 const ROLE_LIMIT_100 = "1449448686156255333";
@@ -20190,7 +20190,7 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
 }
 
 function getPingRolesForTicketType(ticketType) {
-  const SELLER_PING_ROLE_ID = "1541562950509264946";
+  const SELLER_PING_ROLE_ID = "1350786945944391733";
   if (ticketType === "inne") {
     return ["1519069239254974475"]; // helper
   }
