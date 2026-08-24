@@ -5296,6 +5296,23 @@ const commands = [
     .setDescription("Test: pokazuje kiedy zaplanowany jest następny auto legit check")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
+  // NEW: /autolc-timer command - start/stop/status timera auto legit checka
+  new SlashCommandBuilder()
+    .setName("autolc-timer")
+    .setDescription("Start/stop/status timera automatycznych legit checków")
+    .addStringOption((option) =>
+      option
+        .setName("akcja")
+        .setDescription("Co zrobić z timerem")
+        .setRequired(true)
+        .addChoices(
+          { name: "start", value: "start" },
+          { name: "stop", value: "stop" },
+          { name: "status", value: "status" }
+        ),
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for core public actions
   new SlashCommandBuilder()
     .setName("zco")
@@ -9597,6 +9614,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "autolc-status":
       await handleAutoLcStatusCommand(interaction);
+      break;
+    case "autolc-timer":
+      await handleAutoLcTimerCommand(interaction);
       break;
     case "zco":
       await handleZresetujCzasCommand(interaction);
@@ -24039,6 +24059,45 @@ async function handleAutoLcTestCommand(interaction) {
       content: `> \`❌\` × Błąd: ${err.message}`,
     });
   }
+}
+
+/*
+  NEW: /autolc-timer handler - start/stop/status timera auto legit checka
+*/
+async function handleAutoLcTimerCommand(interaction) {
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const action = interaction.options.getString("akcja");
+
+  if (action === "start") {
+    scheduleRandomAutoLegitCheck();
+    await interaction.editReply({
+      content: "> `✅` × **Timer auto LC:** włączony. Następny legit check zostanie wystawiony automatycznie (co 3–8 h, z przerwą nocną 00:00–07:00).",
+    });
+    return;
+  }
+
+  if (action === "stop") {
+    if (autoLcTimer) {
+      clearTimeout(autoLcTimer);
+      autoLcTimer = null;
+    }
+    await interaction.editReply({
+      content: "> `⏹️` × **Timer auto LC:** zatrzymany. Żaden automatyczny legit check nie zostanie wystawiony, dopóki nie włączysz go ponownie (`/autolc-timer start`).",
+    });
+    return;
+  }
+
+  // status
+  const now = new Date();
+  const nextTime = autoLcTimer ? new Date(now.getTime() + autoLcTimer._idleTimeout) : null;
+  await interaction.editReply({
+    content:
+      "```\n" +
+      "[Auto LC - timer]\n" +
+      `Status: ${autoLcTimer ? "AKTYWNY" : "ZATRZYMANY"}\n` +
+      `Następny: ${nextTime ? nextTime.toLocaleString("pl-PL") : "BRAK"}\n` +
+      "```",
+  });
 }
 
 /*
