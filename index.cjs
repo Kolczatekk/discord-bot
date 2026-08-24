@@ -6613,9 +6613,13 @@ client.once(Events.ClientReady, async (c) => {
       // Obecność nie jest krytyczna dla obsługi komend.
     }
     scheduleDailyLegitMidnightRollover();
+    // Rejestracja slash commands jest lekka i musi wykonać się również w trybie
+    // core. Bez tego Discord zachowuje poprzedni schemat opcji (np. Integer
+    // zamiast Number dla /cennik), mimo że uruchomiony kod jest już nowszy.
+    await registerCommands();
     discordApplicationDiagnostic = {
       ...discordApplicationDiagnostic,
-      command_registration: 'skipped_existing_commands',
+      command_registration: 'core_registration_finished',
       timestamp: new Date().toISOString(),
     };
     console.log('[READY] Tryb core: pomijam ciężkie skanowanie historii i paneli przy starcie.');
