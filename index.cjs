@@ -20206,7 +20206,7 @@ function getPingRolesForTicketType(ticketType) {
   }
 }
 
-function getLimitRolePermissionsForCategory(categoryId, categories = {}) {
+function getLimitRolePermissions(ticketType, categoryId, categories = {}) {
   const R20 = "1449448705563557918";
   const R50 = "1449448702925209651";
   const R100 = "1449448686156255333";
@@ -20214,39 +20214,47 @@ function getLimitRolePermissionsForCategory(categoryId, categories = {}) {
   const R400 = "1541553589833695393";
   const R_NOLIMIT = "1541553994000891984";
 
-  const is0_20 = categoryId === categories["zakup-0-20"] || categoryId === "1449526840942268526";
-  const is20_50 = categoryId === categories["zakup-20-50"] || categoryId === "1449526958508474409";
-  const is50_100 = categoryId === categories["zakup-50-100"] || categoryId === "1449451716129984595";
-  const is100_200 = categoryId === categories["zakup-100-200"] || categoryId === "1449452354201190485";
-  const is200_400 = categoryId === categories["zakup-200-400"];
-  const is400_999 = categoryId === categories["zakup-400-999"];
-  const isSprzedaz = categoryId === categories["sprzedaz"] || categoryId === "1449455848043708426";
+  const allLimitRoles = [R20, R50, R100, R200, R400, R_NOLIMIT];
 
-  const allowRoles = [];
-  if (is0_20 || isSprzedaz) {
-    allowRoles.push(R20, R50, R100, R200, R400, R_NOLIMIT);
-  } else if (is20_50) {
-    allowRoles.push(R50, R100, R200, R400, R_NOLIMIT);
-  } else if (is50_100) {
-    allowRoles.push(R100, R200, R400, R_NOLIMIT);
-  } else if (is100_200) {
-    allowRoles.push(R200, R400, R_NOLIMIT);
-  } else if (is200_400) {
-    allowRoles.push(R400, R_NOLIMIT);
-  } else if (is400_999) {
-    allowRoles.push(R_NOLIMIT);
+  let allowed = [];
+  if (ticketType === "zakup-0-20" || categoryId === categories["zakup-0-20"] || categoryId === "1449526840942268526") {
+    allowed = [R20, R50, R100, R200, R400, R_NOLIMIT];
+  } else if (ticketType === "zakup-20-50" || categoryId === categories["zakup-20-50"] || categoryId === "1449526958508474409") {
+    allowed = [R50, R100, R200, R400, R_NOLIMIT];
+  } else if (ticketType === "zakup-50-100" || categoryId === categories["zakup-50-100"] || categoryId === "1449451716129984595") {
+    allowed = [R100, R200, R400, R_NOLIMIT];
+  } else if (ticketType === "zakup-100-200" || categoryId === categories["zakup-100-200"] || categoryId === "1449452354201190485") {
+    allowed = [R200, R400, R_NOLIMIT];
+  } else if (ticketType === "zakup-200-400" || categoryId === categories["zakup-200-400"]) {
+    allowed = [R400, R_NOLIMIT];
+  } else if (ticketType === "zakup-400-999" || categoryId === categories["zakup-400-999"]) {
+    allowed = [R_NOLIMIT];
+  } else if (ticketType === "sprzedaz" || categoryId === categories["sprzedaz"] || categoryId === "1449455848043708426") {
+    allowed = [R20, R50, R100, R200, R400, R_NOLIMIT];
   } else {
-    allowRoles.push(R20, R50, R100, R200, R400, R_NOLIMIT);
+    allowed = [R20, R50, R100, R200, R400, R_NOLIMIT];
   }
 
-  return allowRoles.map((id) => ({
-    id,
-    allow: [
-      PermissionsBitField.Flags.ViewChannel,
-      PermissionsBitField.Flags.SendMessages,
-      PermissionsBitField.Flags.ReadMessageHistory,
-    ],
-  }));
+  const overwrites = [];
+  for (const roleId of allLimitRoles) {
+    if (allowed.includes(roleId)) {
+      overwrites.push({
+        id: roleId,
+        allow: [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.SendMessages,
+          PermissionsBitField.Flags.ReadMessageHistory,
+        ],
+      });
+    } else {
+      overwrites.push({
+        id: roleId,
+        deny: [PermissionsBitField.Flags.ViewChannel],
+      });
+    }
+  }
+
+  return overwrites;
 }
 
 async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null, reason = "Brak podanego powodu") {
@@ -20342,7 +20350,7 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     if (ticketData.originalCategoryId) {
       const categoryId = ticketData.originalCategoryId;
       const categories = ticketCategories.get(interaction.guildId) || {};
-      const limitOverwrites = getLimitRolePermissionsForCategory(categoryId, categories);
+      const limitOverwrites = getLimitRolePermissions(ticketType, categoryId, categories);
       const overwritesToSet = [
         { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
         ...limitOverwrites,
@@ -22985,7 +22993,7 @@ async function handleModalSubmit(interaction) {
             { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
           );
         } else {
-          const limitOverwrites = getLimitRolePermissionsForCategory(categoryId, categories);
+          const limitOverwrites = getLimitRolePermissions(ticketType, categoryId, categories);
           createOptions.permissionOverwrites.push(...limitOverwrites);
         }
       }
@@ -23003,11 +23011,10 @@ async function handleModalSubmit(interaction) {
     const autoClaimCfg = autoPrzejmijSettings.get(interaction.guildId);
     const hasAutoClaim = autoClaimCfg && autoClaimCfg.enabled && autoClaimCfg.ownerId;
 
-    if (forceOwnerOnlyVisibility || ticketType === "sprzedaz" || ticketType === "inne" || (hasAutoClaim && isPurchaseTicket)) {
-      await channel.permissionOverwrites
-        .set(createOptions.permissionOverwrites)
-        .catch(() => null);
-    }
+    // Zawsze jawnie ustaw uprawnienia, aby Discord nie dziedziczył niechcianych ról z kategorii
+    await channel.permissionOverwrites
+      .set(createOptions.permissionOverwrites)
+      .catch(() => null);
 
     const headerText = `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\``;
     const bodyText =
