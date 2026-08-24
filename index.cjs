@@ -5284,6 +5284,18 @@ const commands = [
     .setDescription("Reset liczby legitchecków do zera")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .toJSON(),
+  // NEW: /autolc command - natychmiast wystawia auto legit check (test)
+  new SlashCommandBuilder()
+    .setName("autolc")
+    .setDescription("Test: natychmiast wystawia automatyczny legit check")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  // NEW: /autolc-status command - pokazuje stan auto legit checka (test)
+  new SlashCommandBuilder()
+    .setName("autolc-status")
+    .setDescription("Test: pokazuje kiedy zaplanowany jest następny auto legit check")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
   // NEW: /zresetujczasoczekiwania command - clear cooldowns for core public actions
   new SlashCommandBuilder()
     .setName("zco")
@@ -9579,6 +9591,12 @@ async function handleSlashCommand(interaction) {
       break;
     case "resetlc":
       await handleResetLCCommand(interaction);
+      break;
+    case "autolc":
+      await handleAutoLcTestCommand(interaction);
+      break;
+    case "autolc-status":
+      await handleAutoLcStatusCommand(interaction);
       break;
     case "zco":
       await handleZresetujCzasCommand(interaction);
@@ -23997,6 +24015,47 @@ async function scheduleRepChannelRename(channel, count) {
       }
     }, delay);
   }
+}
+
+/*
+  NEW: /autolc handler - natychmiast wystawia automatyczny legit check
+*/
+async function handleAutoLcTestCommand(interaction) {
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  try {
+    await postAutoLegitCheck();
+    await interaction.editReply({
+      content: `> \`✅\` × **Auto LC:** wystawiono automatyczny legit check na kanale <#${REP_CHANNEL_ID}>. Licznik: **${legitRepCount}**`,
+    });
+  } catch (err) {
+    console.error("[autolc] Błąd:", err);
+    await interaction.editReply({
+      content: `> \`❌\` × Błąd: ${err.message}`,
+    });
+  }
+}
+
+/*
+  NEW: /autolc-status handler - pokazuje stan harmonogramu auto legit checka
+*/
+async function handleAutoLcStatusCommand(interaction) {
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const now = new Date();
+  const nextTime = autoLcTimer ? new Date(now.getTime() + autoLcTimer._idleTimeout) : null;
+  const blackout = isAutoLcInBlackout(now) ? "TAK (teraz przerwa nocna)" : "nie";
+  const sampleAmounts = [];
+  for (let i = 0; i < 6; i++) sampleAmounts.push(pickAutoLcAmount());
+  await interaction.editReply({
+    content:
+      "```\n" +
+      "[Auto LC - status]\n" +
+      `Licznik legit checków: ${legitRepCount}\n` +
+      `W czarnej strefie (00:00-07:00): ${blackout}\n` +
+      `Następny auto LC: ${nextTime ? nextTime.toLocaleString("pl-PL") : "BRAK (timer nie uruchomiony)"}\n` +
+      `Serwery: 95% ANARCHIA LIFESTEAL, 5% MINESTAR SKYPVP\n` +
+      `Kwoty (przykłady losowania): ${sampleAmounts.join(", ")}\n` +
+      "```",
+  });
 }
 
 /*
