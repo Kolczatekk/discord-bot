@@ -1694,11 +1694,20 @@ function syncInviteRewardThresholds() {
   }
 }
 const BASE_SELLER_ROLE_ID = "1350786945944391733";
+const ROLE_LIMIT_20 = "1449448705563557918";
+const ROLE_LIMIT_50 = "1449448702925209651";
+const ROLE_LIMIT_100 = "1449448686156255333";
+const ROLE_LIMIT_200 = "1449448860517798061";
+const ROLE_LIMIT_400 = "1541553589833695393";
+const ROLE_NO_LIMIT = "1541553994000891984";
+
 const PURCHASE_STAFF_ROLE_IDS = [
-  "1449448705563557918",
-  "1449448702925209651",
-  "1449448686156255333",
-  "1449448860517798061",
+  ROLE_LIMIT_20,
+  ROLE_LIMIT_50,
+  ROLE_LIMIT_100,
+  ROLE_LIMIT_200,
+  ROLE_LIMIT_400,
+  ROLE_NO_LIMIT,
 ];
 const PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID = "1491435227866857483";
 const ownerInviteCountingSettings = new Map(); // guildId -> boolean
@@ -4780,7 +4789,9 @@ const DEFAULT_NAMES = {
     "zakup-0-20": "zakup 0-20",
     "zakup-20-50": "zakup 20-50",
     "zakup-50-100": "zakup 50-100",
-    "zakup-100-200": "zakup 100-200+",
+    "zakup-100-200": "zakup 100-200",
+    "zakup-200-400": "zakup 200-400",
+    "zakup-400-999": "zakup 400-999",
     sprzedaz: "sprzedaz",
     "odbior-nagrody": "odbierz nagrode",
     inne: "inne",
@@ -9971,6 +9982,8 @@ async function executeSundayReset00(guild) {
   if (!guild) return 0;
   isSundayResetTriggered = true;
   const LIMIT_ROLE_IDS = [
+    "1541553994000891984", // NO LIMIT
+    "1541553589833695393", // limit 400
     "1449448860517798061", // limit 200
     "1449448686156255333", // limit 100
     "1449448702925209651", // limit 50
@@ -11915,12 +11928,14 @@ async function handleOstrzezenieCommand(interaction) {
 
     // Jeśli sprzedawca osiągnął 3/3 – odbierz mu wszystkie role limitu zakupu i nadaj rolę zawieszony
     if (currentCount >= 3 && interaction.guild) {
-      const LIMIT_ROLE_IDS = [
-        "1449448860517798061", // dostep.zakup.max.200
-        "1449448686156255333", // dostep.zakup.max.100
-        "1449448702925209651", // dostep.zakup.max.50
-        "1449448705563557918", // dostep.zakup.max.20
-      ];
+  const LIMIT_ROLE_IDS = [
+    "1541553994000891984", // NO LIMIT
+    "1541553589833695393", // limit 400
+    "1449448860517798061", // limit 200
+    "1449448686156255333", // limit 100
+    "1449448702925209651", // limit 50
+    "1449448705563557918", // limit 20
+  ];
       const SUSPENDED_ROLE_ID = "1537090439239442483";
       const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
       if (member) {
@@ -20168,6 +20183,49 @@ async function ticketClaimCommon(interaction, channelId, opts = {}) {
   }
 }
 
+function getLimitRolePermissionsForCategory(categoryId, categories = {}) {
+  const R20 = "1449448705563557918";
+  const R50 = "1449448702925209651";
+  const R100 = "1449448686156255333";
+  const R200 = "1449448860517798061";
+  const R400 = "1541553589833695393";
+  const R_NOLIMIT = "1541553994000891984";
+
+  const is0_20 = categoryId === categories["zakup-0-20"] || categoryId === "1449526840942268526";
+  const is20_50 = categoryId === categories["zakup-20-50"] || categoryId === "1449526958508474409";
+  const is50_100 = categoryId === categories["zakup-50-100"] || categoryId === "1449451716129984595";
+  const is100_200 = categoryId === categories["zakup-100-200"] || categoryId === "1449452354201190485";
+  const is200_400 = categoryId === categories["zakup-200-400"];
+  const is400_999 = categoryId === categories["zakup-400-999"];
+  const isSprzedaz = categoryId === categories["sprzedaz"] || categoryId === "1449455848043708426";
+
+  const allowRoles = [];
+  if (is0_20 || isSprzedaz) {
+    allowRoles.push(R20, R50, R100, R200, R400, R_NOLIMIT);
+  } else if (is20_50) {
+    allowRoles.push(R50, R100, R200, R400, R_NOLIMIT);
+  } else if (is50_100) {
+    allowRoles.push(R100, R200, R400, R_NOLIMIT);
+  } else if (is100_200) {
+    allowRoles.push(R200, R400, R_NOLIMIT);
+  } else if (is200_400) {
+    allowRoles.push(R400, R_NOLIMIT);
+  } else if (is400_999) {
+    allowRoles.push(R_NOLIMIT);
+  } else {
+    allowRoles.push(R20, R50, R100, R200, R400, R_NOLIMIT);
+  }
+
+  return allowRoles.map((id) => ({
+    id,
+    allow: [
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.SendMessages,
+      PermissionsBitField.Flags.ReadMessageHistory,
+    ],
+  }));
+}
+
 async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = null, reason = "Brak podanego powodu") {
   const isBtn = typeof interaction.isButton === "function" && interaction.isButton();
 
@@ -20260,67 +20318,18 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     // Przywróć uprawnienia w zależności od oryginalnej kategorii
     if (ticketData.originalCategoryId) {
       const categoryId = ticketData.originalCategoryId;
-
-      // Zakup 0-20 - wszystkie rangi widzą
-      if (categoryId === "1449526840942268526") {
-        await ch.permissionOverwrites.set([
-          { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
-          { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
-          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
-        ]);
+      const categories = ticketCategories.get(interaction.guildId) || {};
+      const limitOverwrites = getLimitRolePermissionsForCategory(categoryId, categories);
+      const overwritesToSet = [
+        { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
+        ...limitOverwrites,
+      ];
+      if (categoryId === "1449527585271976131" || categoryId === categories["inne"]) {
+        overwritesToSet.push({ id: "1519069239254974475", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
+      } else {
+        overwritesToSet.push({ id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] });
       }
-      // Zakup 20-50 - limit 20 nie widzi
-      else if (categoryId === "1449526958508474409") {
-        await ch.permissionOverwrites.set([
-          { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
-          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
-        ]);
-      }
-      // Zakup 50-100 - limit 20 i 50 nie widzą
-      else if (categoryId === "1449451716129984595") {
-        await ch.permissionOverwrites.set([
-          { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
-          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
-        ]);
-      }
-      // Zakup 100-200 - tylko limit 200 widzi
-      else if (categoryId === "1449452354201190485") {
-        await ch.permissionOverwrites.set([
-          { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
-          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
-        ]);
-      }
-      // Sprzedaż - wszystkie rangi widzą
-      else if (categoryId === "1449455848043708426") {
-        await ch.permissionOverwrites.set([
-          { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
-          { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
-          { id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] }
-        ]);
-      }
-      // Inne - wszystkie rangi widzą
-      else if (categoryId === "1449527585271976131") {
-        await ch.permissionOverwrites.set([
-          { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
-          { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-          { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-          { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 200
-          { id: "1519069239254974475", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
-        ]);
-      }
+      await ch.permissionOverwrites.set(overwritesToSet);
     }
 
     // Przywróć dostęp właścicielowi ticketu - zawsze musi widzieć
@@ -22326,9 +22335,15 @@ async function handleModalSubmit(interaction) {
       } else if (kwotaNum <= 100) {
         categoryId = categories["zakup-50-100"];
         ticketType = "zakup-50-100";
-      } else {
+      } else if (kwotaNum <= 200) {
         categoryId = categories["zakup-100-200"];
         ticketType = "zakup-100-200";
+      } else if (kwotaNum <= 400) {
+        categoryId = categories["zakup-200-400"];
+        ticketType = "zakup-200-400";
+      } else {
+        categoryId = categories["zakup-400-999"];
+        ticketType = "zakup-400-999";
       }
 
       const serverLabel = getShopServerLabel(selectedServer);
@@ -22820,10 +22835,12 @@ async function handleModalSubmit(interaction) {
       parentToUse = categoryId;
     } else {
       const preferNames = {
-        "zakup-0-20": "zakup",
-        "zakup-20-50": "zakup",
-        "zakup-50-100": "zakup",
-        "zakup-100-200": "zakup",
+        "zakup-0-20": "zakup 0-20",
+        "zakup-20-50": "zakup 20-50",
+        "zakup-50-100": "zakup 50-100",
+        "zakup-100-200": "zakup 100-200",
+        "zakup-200-400": "zakup 200-400",
+        "zakup-400-999": "zakup 400-999",
         "zakup-mody": "zakup",
         "zakup-autorynku": "zakup",
         sprzedaz: "sprzedaz",
@@ -22904,6 +22921,7 @@ async function handleModalSubmit(interaction) {
     // Dodaj rangi limitów w zależności od kategorii
     if (parentToUse && !forceOwnerOnlyVisibility) {
       const categoryId = parentToUse;
+      const categories = ticketCategories.get(interaction.guildId) || {};
 
       const autoClaimCfg = autoPrzejmijSettings.get(interaction.guildId);
       const hasAutoClaim = autoClaimCfg && autoClaimCfg.enabled && autoClaimCfg.ownerId;
@@ -22917,6 +22935,8 @@ async function handleModalSubmit(interaction) {
           { id: "1449448702925209651", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 50
           { id: "1449448686156255333", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 100
           { id: "1449448860517798061", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 200
+          { id: "1541553589833695393", deny: [PermissionsBitField.Flags.ViewChannel] }, // limit 400
+          { id: "1541553994000891984", deny: [PermissionsBitField.Flags.ViewChannel] }, // NO LIMIT
           {
             id: autoClaimCfg.ownerId,
             allow: [
@@ -22927,50 +22947,13 @@ async function handleModalSubmit(interaction) {
           }
         );
       } else {
-        // Zakup 0-20 - wszystkie rangi widzą
-        if (categoryId === "1449526840942268526") {
+        if (categoryId === "1449527585271976131" || categoryId === categories["inne"]) {
           createOptions.permissionOverwrites.push(
-            { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
-            { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
+            { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
           );
-        }
-        // Zakup 20-50 - limit 20 nie widzi
-        else if (categoryId === "1449526958508474409") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Zakup 50-100 - limit 20 i 50 nie widzą
-        else if (categoryId === "1449451716129984595") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Zakup 100-200 - tylko limit 200 widzi
-        else if (categoryId === "1449452354201190485") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Sprzedaż - wszystkie rangi widzą
-        else if (categoryId === "1449455848043708426") {
-          createOptions.permissionOverwrites.push(
-            { id: "1449448705563557918", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 20
-            { id: "1449448702925209651", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 50
-            { id: "1449448686156255333", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }, // limit 100
-            { id: "1449448860517798061", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }  // limit 200
-          );
-        }
-        // Inne - tylko właściciel serwera widzi (oprócz właściciela ticketu)
-        else if (categoryId === "1449527585271976131") {
-          createOptions.permissionOverwrites.push(
-            { id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] } // właściciel serwera
-          );
+        } else {
+          const limitOverwrites = getLimitRolePermissionsForCategory(categoryId, categories);
+          createOptions.permissionOverwrites.push(...limitOverwrites);
         }
       }
     }
@@ -26594,6 +26577,8 @@ function guessTicketTypeLabel(ticketChannel, ticketMeta = null) {
     cats["zakup-20-50"],
     cats["zakup-50-100"],
     cats["zakup-100-200"],
+    cats["zakup-200-400"],
+    cats["zakup-400-999"],
   ].filter(Boolean);
 
   if (zakupCategoryIds.includes(ticketChannel.parentId) || isModernPurchaseTicketChannelName(ticketChannel.name)) {
