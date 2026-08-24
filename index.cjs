@@ -6772,24 +6772,26 @@ client.once(Events.ClientReady, async (c) => {
 
   // Try to find previously sent rep info message so we can reuse it
   if (repChannel) {
-      const found = await findBotMessageWithEmbed(repChannel, (emb) => {
-        return (
-          emb.description &&
-          typeof emb.description === "string" &&
-          emb.description.includes("New Shop × LEGIT CHECK")
-        );
-      });
-      if (found) {
-        repLastInfoMessage.set(repChannel.id, found.id);
-        console.log(
-          `[ready] Znalazłem istniejącą wiadomość info-rep: ${found.id}`,
-        );
+    try {
+      const recent = await repChannel.messages.fetch({ limit: 50 }).catch(() => null);
+      if (recent) {
+        for (const msg of recent.values()) {
+          if (msg.author?.id === client.user.id) {
+            const rawStr = JSON.stringify(msg.components || []) + " " + JSON.stringify(msg.embeds || []) + " " + (msg.content || "");
+            if (rawStr.includes("LEGIT CHECK") || rawStr.includes("Jak napisać") || rawStr.includes("ZAKUP/SPRZEDAŻ")) {
+              repLastInfoMessage.set(repChannel.id, msg.id);
+              console.log(`[ready] Znalazłem istniejącą wiadomość info-rep: ${msg.id}`);
+              break;
+            }
+          }
+        }
       }
-      // Przy restarcie tylko zapamiętujemy istniejący wzór. Nie wysyłamy go
-      // ponownie, aby restart bota nie przesuwał ani nie dublował wiadomości.
+    } catch (e) {
+      console.warn("[ready] Błąd wyszukiwania info-rep:", e?.message);
     }
+  }
 
-    // Try to find previously sent opinion instruction messages in cached guilds
+  // Try to find previously sent opinion instruction messages in cached guilds
     client.guilds.cache.forEach(async (g) => {
       const opinId = opinieChannels.get(g.id);
       if (opinId) {
@@ -18267,10 +18269,30 @@ async function sendLegitCheckInfoMessage(channel) {
   );
   appendBrandFooterToContainer(container, channel.guildId);
 
+  // Znajdź wszystkie stare panele wysłane przez bota (niezależnie od restartów)
+  const oldPanels = [];
+  try {
+    const recent = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+    if (recent) {
+      for (const msg of recent.values()) {
+        if (msg.author?.id === client.user.id) {
+          const rawStr = JSON.stringify(msg.components || []) + " " + JSON.stringify(msg.embeds || []) + " " + (msg.content || "");
+          if (rawStr.includes("LEGIT CHECK") || rawStr.includes("Jak napisać") || rawStr.includes("ZAKUP/SPRZEDAŻ")) {
+            oldPanels.push(msg);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[legit-panel] Błąd pobierania starych paneli:", err);
+  }
+
   const previousId = repLastInfoMessage.get(channel.id);
-  const previousMessage = previousId
-    ? await channel.messages.fetch(previousId).catch(() => null)
-    : null;
+  if (previousId && !oldPanels.some((m) => m.id === previousId)) {
+    const prev = await channel.messages.fetch(previousId).catch(() => null);
+    if (prev) oldPanels.push(prev);
+  }
+
   const newInfoMessage = await channel.send({
     components: [container],
     flags: MessageFlags.IsComponentsV2,
@@ -18279,8 +18301,11 @@ async function sendLegitCheckInfoMessage(channel) {
   repLastInfoMessage.set(channel.id, newInfoMessage.id);
   scheduleSavePersistentState(true);
 
-  if (previousMessage?.deletable) {
-    await previousMessage.delete().catch(() => null);
+  // Usuń wszystkie stare panele, aby zawsze na dole był tylko 1 aktualny
+  for (const oldMsg of oldPanels) {
+    if (oldMsg.id !== newInfoMessage.id && oldMsg.deletable) {
+      await oldMsg.delete().catch(() => null);
+    }
   }
   return newInfoMessage;
 }
