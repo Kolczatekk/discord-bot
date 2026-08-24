@@ -24178,7 +24178,7 @@ async function handleAutoLcTimerCommand(interaction) {
       "```\n" +
       "[Auto LC - timer]\n" +
       `Status: ${autoLcTimer ? "AKTYWNY" : "ZATRZYMANY"}\n` +
-      `Następny: ${nextTime ? nextTime.toLocaleString("pl-PL") : "BRAK"}\n` +
+      `Następny: ${nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "BRAK"}\n` +
       "```",
   });
 }
@@ -24199,7 +24199,7 @@ async function handleAutoLcStatusCommand(interaction) {
       "[Auto LC - status]\n" +
       `Licznik legit checków: ${legitRepCount}\n` +
       `W czarnej strefie (00:00-07:00): ${blackout}\n` +
-      `Następny auto LC: ${nextTime ? nextTime.toLocaleString("pl-PL") : "BRAK (timer nie uruchomiony)"}\n` +
+      `Następny auto LC: ${nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "BRAK (timer nie uruchomiony)"}\n` +
       `Serwery: 95% ANARCHIA LIFESTEAL, 5% MINESTAR SKYPVP\n` +
       `Kwoty (przykłady losowania): ${sampleAmounts.join(", ")}\n` +
       "```",
