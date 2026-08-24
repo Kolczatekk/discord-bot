@@ -6762,7 +6762,13 @@ client.once(Events.ClientReady, async (c) => {
     }
 
     // Start automatycznego wystawiania legit checków (bot sam podbija licznik).
-    scheduleRandomAutoLegitCheck();
+    if (autoLcTestPending) {
+      if (!scheduleAutoLcTestOnce()) {
+        scheduleRandomAutoLegitCheck();
+      }
+    } else {
+      scheduleRandomAutoLegitCheck();
+    }
 
   // Try to find previously sent rep info message so we can reuse it
   if (repChannel) {
@@ -18004,6 +18010,57 @@ async function postAutoLegitCheck() {
   } catch (err) {
     console.error("[auto-lc] Błąd wystawiania auto legit checka:", err);
   }
+}
+
+// Jednorazowy test LC o zadanej godzinie (czas warszawski). Po jego wysłaniu
+// dalsza praca toczy się normalnym losowaniem.
+let autoLcTestPending = true;
+const AUTO_LC_TEST_HOUR = 21;
+const AUTO_LC_TEST_MINUTE = 45;
+
+function warsawEpochAt(hour, minute, lookAheadHours = 30) {
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  for (let t = now; t < now + lookAheadHours * 3600000; t += 60000) {
+    const d = getWarsawDateParts(new Date(t));
+    // getWarsawDateParts daje tylko godzinę - szukamy godziny i dojazdu do minuty
+    // (przybliżenie co 1 min jest dokładne, bo data po minucie się nie skacze)
+    if (d.hour === hour && new Date(t).getMinutes() === minute) {
+      return t;
+    }
+  }
+  return null;
+}
+
+function scheduleAutoLcTestOnce() {
+  const today = getWarsawDateParts().dateKey;
+  const at = warsawEpochAt(AUTO_LC_TEST_HOUR, AUTO_LC_TEST_MINUTE, 30);
+  const sameDay = at ? getWarsawDateParts(new Date(at)).dateKey === today : false;
+  if (!at || !sameDay) {
+    console.log("[auto-lc] TEST: dzisiejszy slot 21:45 już minął — losowanie normalne.");
+    autoLcTestPending = false;
+    return false;
+  }
+  const delay = at - Date.now();
+  if (delay <= 1000) {
+    autoLcTestPending = false;
+    return false;
+  }
+  if (autoLcTimer) clearTimeout(autoLcTimer);
+  autoLcNextFireAt = at;
+  console.log(`[auto-lc] TEST: jednorazowy legit check o ${new Date(at).toLocaleString("pl-PL")} (za ${(delay / 60000).toFixed(1)} min).`);
+  autoLcTimer = setTimeout(async () => {
+    autoLcNextFireAt = 0;
+    autoLcTestPending = false;
+    // Po teście wznawiamy normalne losowanie
+    scheduleRandomAutoLegitCheck();
+    try {
+      await postAutoLegitCheck();
+    } catch (err) {
+      console.error("[auto-lc] Błąd w callbacku testu:", err);
+    }
+  }, delay);
+  return true;
 }
 
 function scheduleRandomAutoLegitCheck() {
