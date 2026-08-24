@@ -18014,12 +18014,14 @@ function scheduleRandomAutoLegitCheck() {
   console.log(`[auto-lc] Następny automatyczny legit check za ${hours} h (${new Date(autoLcNextFireAt).toLocaleString("pl-PL")}).`);
   autoLcTimer = setTimeout(async () => {
     autoLcNextFireAt = 0;
+    // Najpierw zaplanuj następny LC, żeby nawet gdy wysyłka się zawiesi
+    // (zawieszenie Discord API itp.), timer nie umarł na zawsze.
+    scheduleRandomAutoLegitCheck();
     try {
       await postAutoLegitCheck();
     } catch (err) {
       console.error("[auto-lc] Błąd w callbacku timera:", err);
     }
-    scheduleRandomAutoLegitCheck();
   }, delay);
 }
 
