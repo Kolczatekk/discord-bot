@@ -4809,12 +4809,12 @@ const commands = [
           { name: "Donut SMP", value: "donut_smp" }
         )
     )
-    .addIntegerOption((option) =>
+    .addNumberOption((option) =>
       option
         .setName("stawka")
-        .setDescription("Nowa wartość stawki (ilość waluty za 1zł)")
+        .setDescription("Nowa stawka za 1 zł, może być ułamkowa (np. 2,5)")
         .setRequired(false)
-        .setMinValue(1)
+        .setMinValue(0.01)
     )
     .toJSON(),
   new SlashCommandBuilder()
@@ -6188,7 +6188,7 @@ function formatShortWaluta(n) {
 
   if (abs >= 1_000_000) return `${fmt(v / 1_000_000)}m`;
   if (abs >= 1_000) return `${fmt(v / 1_000)}k`;
-  return `${Math.floor(v)}`;
+  return fmt(v).replace(".", ",");
 }
 
 function getPaymentFeePercent(methodRaw) {
@@ -10831,9 +10831,7 @@ function getKalkulatorRateDescription(rate, serverRaw) {
   } else if (rate >= 1000) {
     const val = rate / 1000;
     rateStr = val.toFixed(1).replace(".", ",").replace(",0", "") + "k";
-  } else {
-    rateStr = rate.toString();
-  }
+  } else rateStr = formatRateShort(rate);
 
   const unitStr = isSky ? " odłamki" : "";
   let desc = `Obliczone z cennika **${rateStr}${unitStr}** za **1zł**`;
@@ -10867,12 +10865,12 @@ function buildKalkulatorResultMessage({ typ, kwota, waluta, tryb, metoda }) {
     const { fee, feeLabel } = calculateFeePln(kwota, metoda);
     const effectivePln = kwota - fee;
     const rate = getRateForPlnAmount(kwota, tryb);
-    const calculatedWaluta = Math.floor(effectivePln * rate);
+    const calculatedWaluta = round2(effectivePln * rate);
     const kwotaZl = Math.trunc(Number(kwota) || 0);
     const walutaShort = formatShortWaluta(calculatedWaluta);
 
     return {
-      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${calculatedWaluta}${currencyUnit})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
+      message: `> \`🔢\` × **Płacąc nam ${kwotaZl}zł (${metoda} prowizja: ${feeLabel}) otrzymasz:** \`${walutaShort}\` **(${formatRateShort(calculatedWaluta)}${currencyUnit})**\n> \`💵\` × ${getKalkulatorRateDescription(rate, tryb)}`,
     };
   }
 
@@ -18823,7 +18821,8 @@ function formatRateShort(rate) {
     const v = rate / 1_000;
     return v.toFixed(1).replace(".", ",").replace(",0", "") + "k";
   }
-  return rate.toString();
+  const rounded = Math.round((Number(rate) + Number.EPSILON) * 1_000_000) / 1_000_000;
+  return String(rounded).replace(".", ",");
 }
 
 // Helper: replace every occurrence of oldRate (number & formatted) in cashBody
@@ -18860,7 +18859,7 @@ async function handleCennikCommand(interaction) {
     }
 
     const serwer = interaction.options.getString("serwer");
-    const stawka = interaction.options.getInteger("stawka");
+    const stawka = interaction.options.getNumber("stawka");
 
     // ── VIEW mode ───────────────────────────────────────
     if (!serwer || stawka === null || stawka === undefined) {
@@ -18909,6 +18908,11 @@ async function handleCennikCommand(interaction) {
     const entry = RATE_MAP[serwer];
     if (!entry) {
       await interaction.editReply({ content: "> `❌` × Nieznany serwer.", flags: [MessageFlags.Ephemeral] });
+      return;
+    }
+
+    if (!Number.isFinite(stawka) || stawka <= 0) {
+      await interaction.editReply({ content: "> `❌` × Stawka musi być liczbą większą od zera.", flags: [MessageFlags.Ephemeral] });
       return;
     }
 
