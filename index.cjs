@@ -6774,13 +6774,7 @@ client.once(Events.ClientReady, async (c) => {
     }
 
     // Start automatycznego wystawiania legit checków (bot sam podbija licznik).
-    if (autoLcTestPending) {
-      if (!scheduleAutoLcTestOnce()) {
-        scheduleRandomAutoLegitCheck();
-      }
-    } else {
-      scheduleRandomAutoLegitCheck();
-    }
+    scheduleRandomAutoLegitCheck();
 
   // Try to find previously sent rep info message so we can reuse it
   if (repChannel) {
@@ -18073,76 +18067,6 @@ async function postAutoLegitCheck() {
   }
 }
 
-// Jednorazowy test LC o zadanej godzinie (czas warszawski). Po jego wysłaniu
-// dalsza praca toczy się normalnym losowaniem.
-let autoLcTestPending = true;
-const AUTO_LC_TEST_HOUR = 22;
-const AUTO_LC_TEST_MINUTE = 40;
-
-function getWarsawEpochForToday(hour, minute, seconds = 0) {
-  const now = new Date();
-  const dateStr = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Warsaw",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-
-  const baseUtc = Date.parse(`${dateStr}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(seconds).padStart(2, "0")}Z`);
-  for (let offsetHours = -4; offsetHours <= 4; offsetHours++) {
-    const testTs = baseUtc + offsetHours * 3600000;
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Europe/Warsaw",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(new Date(testTs));
-    const v = (t) => parts.find((p) => p.type === t)?.value;
-    if (
-      `${v("year")}-${v("month")}-${v("day")}` === dateStr &&
-      Number(v("hour")) === hour &&
-      Number(v("minute")) === minute &&
-      Number(v("second")) === seconds
-    ) {
-      return testTs;
-    }
-  }
-  return null;
-}
-
-function scheduleAutoLcTestOnce() {
-  const at = getWarsawEpochForToday(AUTO_LC_TEST_HOUR, AUTO_LC_TEST_MINUTE, 0);
-  if (!at) {
-    autoLcTestPending = false;
-    return false;
-  }
-  const delay = at - Date.now();
-  if (delay <= 1000) {
-    console.log(`[auto-lc] TEST: dzisiejszy slot ${AUTO_LC_TEST_HOUR}:${AUTO_LC_TEST_MINUTE} już minął — losowanie normalne.`);
-    autoLcTestPending = false;
-    return false;
-  }
-  if (autoLcTimer) clearTimeout(autoLcTimer);
-  autoLcNextFireAt = at;
-  console.log(`[auto-lc] TEST: jednorazowy legit check o ${new Date(at).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" })} (za ${(delay / 60000).toFixed(1)} min).`);
-  autoLcTimer = setTimeout(async () => {
-    autoLcNextFireAt = 0;
-    autoLcTestPending = false;
-    // Po teście wznawiamy normalne losowanie
-    scheduleRandomAutoLegitCheck();
-    try {
-      await postAutoLegitCheck();
-    } catch (err) {
-      console.error("[auto-lc] Błąd w callbacku testu:", err);
-    }
-  }, delay);
-  return true;
-}
-
 function scheduleRandomAutoLegitCheck() {
   if (autoLcTimer) clearTimeout(autoLcTimer);
   const nextTargetTs = getNextScheduledAutoLcTimestamp();
@@ -24257,17 +24181,11 @@ async function handleAutoLcTimerCommand(interaction) {
   const action = interaction.options.getString("akcja");
 
   if (action === "start") {
-    let isTest = false;
-    if (autoLcTestPending) {
-      isTest = scheduleAutoLcTestOnce();
-    }
-    if (!isTest) {
-      scheduleRandomAutoLegitCheck();
-    }
+    scheduleRandomAutoLegitCheck();
     const nextTime = autoLcNextFireAt > 0 ? new Date(autoLcNextFireAt) : null;
     const nextTimeStr = nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "wkrótce";
     await interaction.editReply({
-      content: `> \`✅\` × **Timer auto LC:** włączony.\n> **Następny legit check:** \`${nextTimeStr}\`${isTest ? " *(jednorazowy test, potem powrót do trybu 3–8h)*" : " *(losowo 3–5 LC dziennie w godz. 08:00–23:00, bez nocy 00:00–07:00)*"}`,
+      content: `> \`✅\` × **Timer auto LC:** włączony.\n> **Następny legit check:** \`${nextTimeStr}\` *(losowo 3–5 LC dziennie w godz. 08:00–23:00, bez nocy 00:00–07:00)*`,
     });
     return;
   }
