@@ -823,16 +823,14 @@ function normalizeLegitRepVerb(value) {
 }
 
 function parseLegitRepContent(content) {
-  const normalized = String(content || "").trim().replace(/\s+/g, " ");
-  if (!normalized.startsWith("+rep ")) return null;
-  const serverPattern = LEGIT_REP_SERVERS.join("|").replace(/\s+/g, "\\s+");
+  const raw = String(content || "");
+  if (!raw.startsWith("+rep ")) return null;
+  const serverPattern = LEGIT_REP_SERVERS.join("|");
   const pattern = new RegExp(
-    `^\\+rep\\s+(<@!?\\d+>|@[^\\s]+)\\s+` +
-      `(zakup|sprzedaż|sprzedaz|wręczył\\s+nagrodę|wreczyl\\s+nagrode)\\s+` +
-      `(\\d+)\\s+pln\\s+(${serverPattern})$`,
-    "iu",
+    `^\\+rep (<@!?\\d+>|@[^\\s]+) (ZAKUP|SPRZEDAŻ|SPRZEDAZ|WRĘCZYŁ NAGRODĘ|WRECZYL NAGRODE) (\\d+) PLN (${serverPattern})$`,
+    "u",
   );
-  const match = normalized.match(pattern);
+  const match = raw.match(pattern);
   if (!match) return null;
 
   return {
