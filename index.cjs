@@ -930,12 +930,13 @@ async function getSellerTicketCount(userId, forceRecalculate = false) {
       if (!batch.size) break;
 
       for (const message of batch.values()) {
-        const parsed = parseLegitRepContent(String(message.content || "").trim());
-        if (!parsed) continue;
+        const repMatch = String(message.content || "").trim().match(/^\+rep\s+(\S+)/i);
+        if (!repMatch) continue;
 
-        const sellerMention = parsed.seller.match(/^<@!?(\d+)>$/);
+        const sellerToken = repMatch[1];
+        const sellerMention = sellerToken.match(/^<@!?(\d+)>$/);
         const sellerId = sellerMention?.[1] || null;
-        const sellerAlias = parsed.seller.toLocaleLowerCase("pl-PL");
+        const sellerAlias = sellerToken.toLocaleLowerCase("pl-PL");
         if (sellerId === String(userId) || (!sellerId && sellerAliases.has(sellerAlias))) count++;
       }
 
@@ -20280,6 +20281,9 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     if (ticketData.originalCategoryId) {
       const categoryId = ticketData.originalCategoryId;
       const categories = ticketCategories.get(interaction.guildId) || {};
+      const ticketType = Object.entries(categories).find(
+        ([, configuredCategoryId]) => String(configuredCategoryId) === String(categoryId),
+      )?.[0] || null;
       const limitOverwrites = getLimitRolePermissions(ticketType, categoryId, categories);
       const overwritesToSet = [
         { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
