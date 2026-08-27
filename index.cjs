@@ -20412,11 +20412,12 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
     const publicEmbed = new EmbedBuilder()
       .setColor(COLOR_BLUE)
       .setDescription(description);
-    const SELLER_ROLE_ID = "1350786945944391733";
+    const isHelpTicket = ticketData.ticketTypeLabel === "PYTANIE";
+    const notifyRoleId = isHelpTicket ? "1519069239254974475" : BASE_SELLER_ROLE_ID;
     const sentUnclaim = await ch.send({
-      content: `<@&${SELLER_ROLE_ID}>`,
+      content: `<@&${notifyRoleId}>`,
       embeds: [publicEmbed],
-      allowedMentions: { roles: [SELLER_ROLE_ID] },
+      allowedMentions: { roles: [notifyRoleId] },
     }).catch(() => null);
     if (sentUnclaim && sentUnclaim.id) {
       ticketData.lastUnclaimMsgId = sentUnclaim.id;
