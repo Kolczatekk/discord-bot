@@ -18436,11 +18436,7 @@ async function handleShopTotalsCommand(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
   try {
-    const totals = await db.getShopTotals(interaction.guildId || "default");
-    const sales = await getLegitChannelSalesTotals();
-    totals.saleAmount = sales.amount;
-    totals.saleCount = sales.count;
-    totals.transactionAmount = totals.purchaseAmount + totals.saleAmount;
+    const totals = await getLegitChannelTotals();
     const formatPln = (value) =>
       Number(value || 0).toLocaleString("pl-PL", {
         minimumFractionDigits: 2,
@@ -18453,8 +18449,8 @@ async function handleShopTotalsCommand(interaction) {
         "```\n" +
         "💰 New Shop × WYDATKI CAŁEGO SHOPA\n" +
         "```\n" +
-        `> \`💸\` × **Łącznie wydane przez klientów:** ${formatPln(totals.customerSpent)} PLN\n` +
-        `> \`🛒\` × **Zakupy:** ${formatPln(totals.purchaseAmount)} PLN\n` +
+        `> \`✅\` × **Wszystkie legit checki:** ${totals.legitCount}\n` +
+        `> \`🛒\` × **Zakupy:** ${totals.purchaseCount} transakcji — ${formatPln(totals.purchaseAmount)} PLN\n` +
         `> \`📦\` × **Sprzedaże:** ${totals.saleCount} transakcji — ${formatPln(totals.saleAmount)} PLN\n` +
         `> \`📊\` × **Łączny obrót:** ${formatPln(totals.transactionAmount)} PLN`,
       )
@@ -18470,15 +18466,21 @@ async function handleShopTotalsCommand(interaction) {
   }
 }
 
-async function getLegitChannelSalesTotals() {
+async function getLegitChannelTotals() {
   const channel = await client.channels.fetch(REP_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased?.()) {
     throw new Error(`Nie znaleziono kanału legit-check ${REP_CHANNEL_ID}.`);
   }
 
   let before;
-  let count = 0;
-  let amount = 0;
+  const totals = {
+    legitCount: 0,
+    purchaseCount: 0,
+    purchaseAmount: 0,
+    saleCount: 0,
+    saleAmount: 0,
+    transactionAmount: 0,
+  };
 
   while (true) {
     const options = { limit: 100 };
@@ -18487,23 +18489,34 @@ async function getLegitChannelSalesTotals() {
     if (!messages.size) break;
 
     for (const message of messages.values()) {
+      if (!isLegitRepMessage(message)) continue;
+      totals.legitCount += 1;
+
       const normalized = String(message.content || "")
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
-      if (!/^\s*\+rep\b/i.test(normalized)) continue;
+      const transaction = normalized.match(
+        /\b(ZAKUP|SPRZEDAZ)\s+(\d+(?:[.,]\d+)?)\s*PLN\b/i,
+      );
+      if (!transaction) continue;
 
-      const match = normalized.match(/\bSPRZEDAZ\s+(\d+(?:[.,]\d+)?)\s*PLN\b/i);
-      if (!match) continue;
-
-      amount += Number(match[1].replace(",", ".")) || 0;
-      count += 1;
+      const type = transaction[1].toUpperCase();
+      const amount = Number(transaction[2].replace(",", ".")) || 0;
+      if (type === "ZAKUP") {
+        totals.purchaseCount += 1;
+        totals.purchaseAmount += amount;
+      } else {
+        totals.saleCount += 1;
+        totals.saleAmount += amount;
+      }
     }
 
     before = messages.last()?.id;
     if (messages.size < 100 || !before) break;
   }
 
-  return { amount, count };
+  totals.transactionAmount = totals.purchaseAmount + totals.saleAmount;
+  return totals;
 }
 
 // ----------------- /usunzakup handler -----------------
