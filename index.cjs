@@ -916,6 +916,12 @@ async function getSellerTicketCount(userId, forceRecalculate = false) {
 
   let count = 0;
   let before;
+  const targetUser = await client.users.fetch(userId).catch(() => null);
+  const sellerAliases = new Set(
+    [targetUser?.username, targetUser?.globalName]
+      .filter(Boolean)
+      .map((name) => `@${name}`.toLocaleLowerCase("pl-PL")),
+  );
   try {
     while (true) {
       const options = { limit: 100 };
@@ -924,15 +930,13 @@ async function getSellerTicketCount(userId, forceRecalculate = false) {
       if (!batch.size) break;
 
       for (const message of batch.values()) {
-        const mentionsUser = message.mentions?.users?.has(userId);
-        const contentHasId = message.content && (
-          message.content.includes(`<@${userId}>`) ||
-          message.content.includes(`<@!${userId}>`) ||
-          message.content.includes(userId)
-        );
-        if (mentionsUser || contentHasId) {
-          count++;
-        }
+        const parsed = parseLegitRepContent(String(message.content || "").trim());
+        if (!parsed) continue;
+
+        const sellerMention = parsed.seller.match(/^<@!?(\d+)>$/);
+        const sellerId = sellerMention?.[1] || null;
+        const sellerAlias = parsed.seller.toLocaleLowerCase("pl-PL");
+        if (sellerId === String(userId) || (!sellerId && sellerAliases.has(sellerAlias))) count++;
       }
 
       before = batch.last()?.id;
@@ -23472,16 +23476,6 @@ client.on(Events.MessageCreate, async (message) => {
   ) {
     console.log(`[+rep] Otrzymano wiadomość na kanale legit-check: ${message.content} od ${message.author.tag}`);
     try {
-      if (message.mentions.users.size > 0) {
-        let changed = false;
-        for (const user of message.mentions.users.values()) {
-          const current = sellerTicketCounts.get(user.id) || 0;
-          sellerTicketCounts.set(user.id, current + 1);
-          changed = true;
-        }
-        if (changed) scheduleSavePersistentState();
-      }
-
       // ignore empty messages or slash-like content
       if (!message.content || message.content.trim().length === 0) return;
       if (message.content.trim().startsWith("/")) return;
@@ -23593,6 +23587,12 @@ client.on(Events.MessageCreate, async (message) => {
         legitRepCount++;
       }
       const pendingTicketData = pendingTicketEntry?.[1];
+      const creditedSellerId = String(pendingTicketData?.commandUserId || "");
+      if (creditedSellerId) {
+        const currentSellerCount = sellerTicketCounts.get(creditedSellerId) || 0;
+        sellerTicketCounts.set(creditedSellerId, currentSellerCount + 1);
+        scheduleSavePersistentState();
+      }
       const dailyTransactionAmount = isDailyLegitMoneyTransaction(pendingTicketData?.typ)
         ? parsePLN(pendingTicketData.co)
         : 0;
