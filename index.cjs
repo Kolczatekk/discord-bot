@@ -20148,7 +20148,11 @@ function getLimitRolePermissions(ticketType, categoryId, categories = {}) {
   const allLimitRoles = [R20, R50, R100, R200, R400, R_NOLIMIT];
 
   let allowed = [];
-  if (ticketType === "zakup-0-20" || categoryId === categories["zakup-0-20"] || categoryId === "1449526840942268526") {
+  const helpCategoryId = categories["inne"];
+  if (ticketType === "inne" || categoryId === "1449527585271976131" || (helpCategoryId && categoryId === helpCategoryId)) {
+    // Tickets pomoc/innen są prywatne: sprzedawcy nie mogą ich widzieć.
+    allowed = [];
+  } else if (ticketType === "zakup-0-20" || categoryId === categories["zakup-0-20"] || categoryId === "1449526840942268526") {
     allowed = [R20, R50, R100, R200, R400, R_NOLIMIT];
   } else if (ticketType === "zakup-20-50" || categoryId === categories["zakup-20-50"] || categoryId === "1449526958508474409") {
     allowed = [R50, R100, R200, R400, R_NOLIMIT];
@@ -20277,24 +20281,39 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
       }
     }
 
-    // Przywróć uprawnienia w zależności od oryginalnej kategorii
-    if (ticketData.originalCategoryId) {
-      const categoryId = ticketData.originalCategoryId;
+    // Przywróć uprawnienia w zależności od oryginalnej kategorii.
+    // Dla starszych ticketów bez zapisanego parenta rozpoznaj prywatny ticket
+    // po etykiecie PYTANIE, aby nie przywrócić dostępu sprzedawcom.
+    {
+      const categoryId = ticketData.originalCategoryId || null;
       const categories = ticketCategories.get(interaction.guildId) || {};
-      const ticketType = Object.entries(categories).find(
+      const configuredTicketType = Object.entries(categories).find(
         ([, configuredCategoryId]) => String(configuredCategoryId) === String(categoryId),
       )?.[0] || null;
-      const limitOverwrites = getLimitRolePermissions(ticketType, categoryId, categories);
-      const overwritesToSet = [
-        { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-        ...limitOverwrites,
-      ];
-      if (categoryId === "1449527585271976131" || categoryId === categories["inne"]) {
-        overwritesToSet.push({ id: "1519069239254974475", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
-      } else {
-        overwritesToSet.push({ id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] });
+      const isHelpTicket =
+        configuredTicketType === "inne" ||
+        ticketData.ticketTypeLabel === "PYTANIE" ||
+        categoryId === "1449527585271976131" ||
+        (categories["inne"] && categoryId === categories["inne"]);
+      if (categoryId || isHelpTicket) {
+        const ticketType = configuredTicketType || (isHelpTicket ? "inne" : null);
+        const limitOverwrites = getLimitRolePermissions(ticketType, categoryId, categories);
+        const overwritesToSet = [
+          { id: interaction.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
+          ...limitOverwrites,
+        ];
+        if (isHelpTicket) {
+          // Oprócz rang limitów zablokuj też bazową rangę sprzedawcy.
+          overwritesToSet.push({ id: BASE_SELLER_ROLE_ID, deny: [PermissionsBitField.Flags.ViewChannel] });
+          overwritesToSet.push({ id: "1519069239254974475", allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
+          if (interaction.guild.ownerId) {
+            overwritesToSet.push({ id: interaction.guild.ownerId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
+          }
+        } else {
+          overwritesToSet.push({ id: "1519069239254974475", deny: [PermissionsBitField.Flags.ViewChannel] });
+        }
+        await ch.permissionOverwrites.set(overwritesToSet);
       }
-      await ch.permissionOverwrites.set(overwritesToSet);
     }
 
     // Przywróć dostęp właścicielowi ticketu - zawsze musi widzieć
