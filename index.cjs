@@ -4888,7 +4888,8 @@ const commands = [
           { name: "ANARCHIA BOXPVP", value: "ANARCHIA BOXPVP" },
           { name: "MINESTAR LIFESTEAL", value: "MINESTAR LIFESTEAL" },
           { name: "MINESTAR SKYPVP", value: "MINESTAR SKYPVP" },
-          { name: "DONUT SMP", value: "DONUT SMP" }
+          { name: "DONUT SMP", value: "DONUT SMP" },
+          { name: "INNE", value: "INNE" }
         )
     )
     .toJSON(),
