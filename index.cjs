@@ -9829,11 +9829,7 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
 
     const activeSalesCount = Array.from(weeklySales.values()).filter((data) => data.amount > 0).length;
     if (activeSalesCount === 0) {
-      const isSunday = new Date().getDay() === 0;
-      const isBefore20 = new Date().getHours() < 20;
-      const timerLine = (isSunday && isBefore20)
-        ? `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`
-        : `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getNextSundayTimestamp()}:R>`;
+      const timerLine = `> \`⏳\` × **Do kolejnych rozliczeń:** <t:${getNextSundayTimestamp()}:R>`;
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
@@ -9932,9 +9928,9 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
     } else {
       const isSunday = dayOfWeek === 0;
       const isBefore20 = hour < 20;
-      const timerLine = (isSunday && isBefore20)
+      const timerLine = (isSunday && isBefore20 && hasUnpaidSales)
         ? `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`
-        : `> \`⏳\` × **Rozliczenia rozpoczynają się:** <t:${getNextSundayTimestamp()}:R>`;
+        : `> \`⏳\` × **Do kolejnych rozliczeń:** <t:${getNextSundayTimestamp()}:R>`;
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
@@ -10107,13 +10103,12 @@ async function handleRozliczenieZaplacilCommand(interaction) {
     }
   }
 
-  // Sprawdź czy wszyscy użytkownicy zapłacili Swoje rozliczenia
+  // Po opłaceniu wszystkich rozliczeń zachowaj dane do końca tygodnia,
+  // aby raport nadal pokazywał statystyki i czas do kolejnego cyklu.
   const allPaid = Array.from(weeklySales.values()).every((data) => data.paid || data.amount === 0);
   if (allPaid) {
-    console.log("[rozliczenie] Wszyscy użytkownicy zapłacili. Czyszczę dane starych rozliczeń na nowy tydzień.");
-    weeklySales.clear();
+    console.log("[rozliczenie] Wszyscy użytkownicy zapłacili. Zachowuję statystyki do końca tygodnia.");
     isSundayResetTriggered = false;
-    await db.resetWeeklySales().catch(() => null);
   }
 
   scheduleSavePersistentState(true);
