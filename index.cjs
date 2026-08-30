@@ -9829,7 +9829,7 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
 
     const activeSalesCount = Array.from(weeklySales.values()).filter((data) => data.amount > 0).length;
     if (activeSalesCount === 0) {
-      const timerLine = `> \`⏳\` × **Do kolejnych rozliczeń:** <t:${getNextSundayTimestamp()}:R>`;
+      const timerLine = `> \`⏳\` × **Kolejne rozliczenia zaczynają się:** <t:${getNextSundayTimestamp()}:R>`;
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
@@ -9930,7 +9930,7 @@ async function sendRozliczeniaStatusReport(guild, forceNewMessage = false) {
       const isBefore20 = hour < 20;
       const timerLine = (isSunday && isBefore20 && hasUnpaidSales)
         ? `> \`⏳\` × **Rozliczenia są w toku! Czas na wpłatę:** <t:${getTodaySunday20Timestamp()}:R>`
-        : `> \`⏳\` × **Do kolejnych rozliczeń:** <t:${getNextSundayTimestamp()}:R>`;
+        : `> \`⏳\` × **Kolejne rozliczenia zaczynają się:** <t:${getNextSundayTimestamp()}:R>`;
 
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("# `📊` STATYSTYKI ROZLICZEŃ"));
       container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
