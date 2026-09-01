@@ -23125,7 +23125,7 @@ client.on(Events.MessageCreate, async (message) => {
       userCooldown.lastTime = now;
       mentionCooldowns.set(message.author.id, userCooldown);
       await message.reply({
-        content: "Cześć! Jestem tylko botem. Nie oznaczaj mnie, bo będę zły!"
+        content: "Cześć! Jeśli chcesz coś kupić, oznacz sprzedawcę zamiast mnie."
       }).catch(() => null);
     }
     return;
