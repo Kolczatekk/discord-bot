@@ -14842,7 +14842,7 @@ async function openRegulationPanelViewer(
 
   await interaction.reply({
     ...payload,
-    flags: [MessageFlags.Ephemeral],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
   });
 }
 
