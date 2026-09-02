@@ -2752,6 +2752,33 @@ function buildCodeDeliveryDmPayload({
   };
 }
 
+function buildDiscountRedemptionPayload({ code, discount, guildId = null }) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "```\n" +
+      "📉 New Shop × WYKORZYSTANO KOD RABATOWY\n" +
+      "```",
+    ),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `> \`🏷️\` × **Kod:** \`${code}\`\n` +
+      `> \`💸\` × **Otrzymany rabat:** \`-${discount}%\``,
+    ),
+  );
+
+  appendBrandFooterToContainer(container, guildId);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
 async function sendInviteRewardCodeDm(user, milestone, rewardCodeData) {
   const payload = buildCodeDeliveryDmPayload({
     code: rewardCodeData.code,
@@ -7140,21 +7167,15 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
   await db.updateActiveCode(enteredCode, { used: true }).catch(() => null);
   scheduleSavePersistentState();
 
-  const redeemEmbed = new EmbedBuilder()
-    .setColor(0xd4af37)
-    .setTitle("`📉` WYKORZYSTAŁEŚ KOD RABATOWY")
-    .setDescription(
-      "```\n" +
-      enteredCode +
-      "\n```\n" +
-      `> \`💸\` × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
-    )
-      .setFooter(getBrandFooterBuilderObject())
-    .setTimestamp();
+  const redeemPayload = buildDiscountRedemptionPayload({
+    code: enteredCode,
+    discount: codeData.discount,
+    guildId: interaction.guildId || null,
+  });
 
   // Wyslij embed publiczne w kanale ticketu zeby sprzedawca widzial
   if (interaction.channel) {
-    await interaction.channel.send({ embeds: [redeemEmbed] }).catch(() => null);
+    await interaction.channel.send(redeemPayload).catch(() => null);
   }
   await replyFn({ content: "> `✅` × **Pomyślnie zrealizowano kod rabatowy!**" });
 
@@ -21987,19 +22008,13 @@ async function handleModalSubmit(interaction) {
 
     scheduleSavePersistentState();
 
-    const redeemEmbed = new EmbedBuilder()
-      .setColor(0xd4af37)
-      .setTitle("\`📉\` WYKORZYSTAŁEŚ KOD RABATOWY")
-      .setDescription(
-        "```\n" +
-        enteredCode +
-        "\n```\n" +
-        `> \`💸\` × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
-      )
-        .setFooter(getBrandFooterBuilderObject())
-    .setTimestamp();
-
-    await interaction.reply({ embeds: [redeemEmbed] });
+    await interaction.reply(
+      buildDiscountRedemptionPayload({
+        code: enteredCode,
+        discount: codeData.discount,
+        guildId: interaction.guildId || null,
+      }),
+    );
     console.log(
       `Użytkownik ${interaction.user.username} odebrał kod rabatowy ${enteredCode} (-${codeData.discount}%)`,
     );
