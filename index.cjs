@@ -7147,8 +7147,9 @@ async function processDiscountCodeRedemption(interaction, inputCode) {
       "```\n" +
       enteredCode +
       "\n```\n" +
-      `> 💸 × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
+      `> \`💸\` × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
     )
+      .setFooter(getBrandFooterBuilderObject())
     .setTimestamp();
 
   // Wyslij embed publiczne w kanale ticketu zeby sprzedawca widzial
@@ -21995,7 +21996,8 @@ async function handleModalSubmit(interaction) {
         "\n```\n" +
         `> \`💸\` × **Otrzymałeś:** \`-${codeData.discount}%\`\n`,
       )
-      .setTimestamp();
+        .setFooter(getBrandFooterBuilderObject())
+    .setTimestamp();
 
     await interaction.reply({ embeds: [redeemEmbed] });
     console.log(
