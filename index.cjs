@@ -13659,26 +13659,30 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
     page.body || "-# Ta strona regulaminu jest pusta.",
     state.guildId,
   ).trim();
-  const descriptionParts = [];
+  const container = new ContainerBuilder().setAccentColor(
+    state.accentColor || COLOR_BLUE,
+  );
 
   if (pageTitle) {
-    descriptionParts.push(pageTitle);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(pageTitle),
+    );
   }
+
   if (pageBody) {
-    if (descriptionParts.length) {
-      descriptionParts.push("");
+    if (container.components.length) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     }
-    descriptionParts.push(pageBody);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(pageBody),
+    );
   }
 
-  const embed = new EmbedBuilder()
-    .setColor(state.accentColor || COLOR_BLUE)
-    .setDescription(descriptionParts.join("\n"))
-    .setFooter(getBrandFooterBuilderObject());
-
-  const components = [];
   if (pages.length > 1) {
-    components.push(
+    if (container.components.length) {
+      container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    }
+    container.addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(
@@ -13706,9 +13710,13 @@ function buildRegulationViewerPayload(state, panelMessageId, pageIndex = 0) {
     );
   }
 
+  // Stopka pozostaje częścią tego samego kontenera. Helper dodaje przed nią
+  // separator, dzięki czemu regulamin ma identyczny układ jak pozostałe panele.
+  appendBrandFooterToContainer(container, state.guildId);
+
   return {
-    embeds: [embed],
-    components,
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
   };
 }
 
