@@ -19466,7 +19466,13 @@ async function handleAdminZaproszeniaCommand(interaction) {
         }
       );
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({
+      embeds: [embed],
+      allowedMentions: {
+        users: Array.from(allUserIds).slice(0, 100),
+        repliedUser: false,
+      },
+    });
     console.log(`[/zaproszenia] Odpowiedź wysłana target=${targetId}`);
   } catch (err) {
     console.error("Zaproszenia logs error:", err);
