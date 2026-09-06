@@ -16921,17 +16921,13 @@ async function handlePanelKlientaSpent(interaction) {
       }
     }
 
-    const member = await guild.members.fetch(userId).catch(() => null);
-    const ownedRoles = [];
+    let currentTier = null;
     for (const tier of roleTiers) {
-      if (tier.min === 2000) {
-        if (spent >= 2000) {
-          ownedRoles.push(`**${tier.name}**`);
-        }
-      } else if (member && member.roles.cache.has(tier.roleId)) {
-        ownedRoles.push(`**${tier.name}**`);
+      if (spent >= tier.min) {
+        currentTier = tier;
       }
     }
+    const ownedRoles = currentTier ? [`**${currentTier.name}**`] : [];
 
     let line1 = `<a:arrowwhite:1491476759290449984> ×  Aktualnie __nie posiadasz__ żadnej __rangi__. `;
     if (ownedRoles.length > 0) {
@@ -18859,35 +18855,13 @@ async function syncUserSpentRoles(guild, userId) {
     { min: 2000, roleId: "1521924963190177924" }
   ];
 
-  // Znajdź najwyższy pasujący próg
-  let highestMatchingTier = null;
+  // Role pieniężne są wyłącznie wirtualne (zapisywane w bazie, bez nadawania rang na Discordzie)
+  // Usuwamy wszystkie role pieniężne jeśli użytkownik je posiada
   for (const tier of roleTiers) {
-    if (spent >= tier.min) {
-      highestMatchingTier = tier;
-    }
-  }
-
-  for (const tier of roleTiers) {
-    const hasRole = member.roles.cache.has(tier.roleId);
-    // Klient 2000+ jest rangą wirtualną (zapisywaną tylko w bazie bez nadawania roli na Discordzie)
-    if (tier.min === 2000) {
-      if (hasRole) {
-        await member.roles.remove(tier.roleId).catch((err) =>
-          console.error(`[Spent Roles] Nie udało się usunąć roli ${tier.roleId} dla ${userId}:`, err)
-        );
-      }
-    } else if (highestMatchingTier && tier.roleId === highestMatchingTier.roleId) {
-      if (!hasRole) {
-        await member.roles.add(tier.roleId).catch((err) =>
-          console.error(`[Spent Roles] Nie udało się dodać roli ${tier.roleId} dla ${userId}:`, err)
-        );
-      }
-    } else {
-      if (hasRole) {
-        await member.roles.remove(tier.roleId).catch((err) =>
-          console.error(`[Spent Roles] Nie udało się usunąć roli ${tier.roleId} dla ${userId}:`, err)
-        );
-      }
+    if (member.roles.cache.has(tier.roleId)) {
+      await member.roles.remove(tier.roleId).catch((err) =>
+        console.error(`[Spent Roles] Nie udało się usunąć roli ${tier.roleId} dla ${userId}:`, err)
+      );
     }
   }
 }
@@ -18921,17 +18895,13 @@ async function handleSprawdzBonusyButton(interaction) {
       }
     }
 
-    const member = await guild.members.fetch(userId).catch(() => null);
-    const ownedRoles = [];
+    let currentTier = null;
     for (const tier of roleTiers) {
-      if (tier.min === 2000) {
-        if (spent >= 2000) {
-          ownedRoles.push(`**${tier.name}**`);
-        }
-      } else if (member && member.roles.cache.has(tier.roleId)) {
-        ownedRoles.push(`**${tier.name}**`);
+      if (spent >= tier.min) {
+        currentTier = tier;
       }
     }
+    const ownedRoles = currentTier ? [`**${currentTier.name}**`] : [];
 
     let line1 = `<a:arrowwhite:1491476759290449984> ×  Aktualnie __nie posiadasz__ żadnej __rangi__. `;
     if (ownedRoles.length > 0) {
