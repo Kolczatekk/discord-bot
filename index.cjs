@@ -10124,12 +10124,14 @@ async function handleRozliczenieZaplacilCommand(interaction) {
     }
   }
 
-  // Po opłaceniu wszystkich rozliczeń zachowaj dane do końca tygodnia,
-  // aby raport nadal pokazywał statystyki i czas do kolejnego cyklu.
-  const allPaid = Array.from(weeklySales.values()).every((data) => data.paid || data.amount === 0);
+  // Gdy wszyscy użytkownicy opłacili rozliczenia, natychmiast resetuj statystyki na nowy tydzień
+  const hasSales = Array.from(weeklySales.values()).some((data) => data.amount > 0);
+  const allPaid = hasSales && Array.from(weeklySales.values()).every((data) => data.paid || data.amount === 0);
   if (allPaid) {
-    console.log("[rozliczenie] Wszyscy użytkownicy zapłacili. Zachowuję statystyki do końca tygodnia.");
+    console.log("[rozliczenie] Wszyscy użytkownicy zapłacili. Resetuję statystyki na nowy tydzień...");
+    weeklySales.clear();
     isSundayResetTriggered = false;
+    await db.resetWeeklySales().catch((e) => console.error("Błąd resetWeeklySales:", e));
   }
 
   scheduleSavePersistentState(true);
@@ -27030,7 +27032,22 @@ async function checkWeeklyReset() {
     setTimeout(sendRozliczeniaMessage, 1000);
   }
 
-  // Niedziela 23:59 - czyszczenie danych na nowy tydzień
+  // Niedziela - jeśli wszyscy zapłacili, zresetuj statystyki od razu
+  const hasSales = Array.from(weeklySales.values()).some((data) => data.amount > 0);
+  const allPaid = hasSales && Array.from(weeklySales.values()).every((data) => data.paid || data.amount === 0);
+  if (dayOfWeek === 0 && allPaid) {
+    console.log("[rozliczenia-timer] Niedziela - wszyscy użytkownicy zapłacili. Resetuję statystyki na nowy tydzień...");
+    weeklySales.clear();
+    isSundayResetTriggered = false;
+    await db.resetWeeklySales().catch((e) => console.error("Błąd resetWeeklySales:", e));
+    scheduleSavePersistentState(true);
+    setTimeout(sendRozliczeniaMessage, 1000);
+    for (const guild of client.guilds.cache.values()) {
+      await sendRozliczeniaStatusReport(guild, true).catch(() => null);
+    }
+  }
+
+  // Niedziela 23:59 - czyszczenie danych na nowy tydzień (fallback)
   if (dayOfWeek === 0 && hour === 23 && minute >= 55 && weeklySales.size > 0) {
     console.log("[rozliczenia-timer] Koniec tygodnia - reset danych rozliczeń na nowy tydzień...");
     weeklySales.clear();
