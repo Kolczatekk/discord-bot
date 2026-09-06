@@ -7252,7 +7252,6 @@ async function handleModalSubmit(interaction) {
       );
 
     await interaction.channel.send({
-      content: `<@${userId}>`,
       embeds: [embed],
     }).catch(() => null);
 
@@ -16925,7 +16924,11 @@ async function handlePanelKlientaSpent(interaction) {
     const member = await guild.members.fetch(userId).catch(() => null);
     const ownedRoles = [];
     for (const tier of roleTiers) {
-      if (member && member.roles.cache.has(tier.roleId)) {
+      if (tier.min === 2000) {
+        if (spent >= 2000) {
+          ownedRoles.push(`**${tier.name}**`);
+        }
+      } else if (member && member.roles.cache.has(tier.roleId)) {
         ownedRoles.push(`**${tier.name}**`);
       }
     }
@@ -18866,7 +18869,14 @@ async function syncUserSpentRoles(guild, userId) {
 
   for (const tier of roleTiers) {
     const hasRole = member.roles.cache.has(tier.roleId);
-    if (highestMatchingTier && tier.roleId === highestMatchingTier.roleId) {
+    // Klient 2000+ jest rangą wirtualną (zapisywaną tylko w bazie bez nadawania roli na Discordzie)
+    if (tier.min === 2000) {
+      if (hasRole) {
+        await member.roles.remove(tier.roleId).catch((err) =>
+          console.error(`[Spent Roles] Nie udało się usunąć roli ${tier.roleId} dla ${userId}:`, err)
+        );
+      }
+    } else if (highestMatchingTier && tier.roleId === highestMatchingTier.roleId) {
       if (!hasRole) {
         await member.roles.add(tier.roleId).catch((err) =>
           console.error(`[Spent Roles] Nie udało się dodać roli ${tier.roleId} dla ${userId}:`, err)
@@ -18914,7 +18924,11 @@ async function handleSprawdzBonusyButton(interaction) {
     const member = await guild.members.fetch(userId).catch(() => null);
     const ownedRoles = [];
     for (const tier of roleTiers) {
-      if (member && member.roles.cache.has(tier.roleId)) {
+      if (tier.min === 2000) {
+        if (spent >= 2000) {
+          ownedRoles.push(`**${tier.name}**`);
+        }
+      } else if (member && member.roles.cache.has(tier.roleId)) {
         ownedRoles.push(`**${tier.name}**`);
       }
     }
