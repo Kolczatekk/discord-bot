@@ -1088,43 +1088,45 @@ async function removeRecordButtonsFromOldDailyLegitMessages(channel, currentMess
   if (!channel?.isTextBased?.()) return;
   try {
     const fetched = await channel.messages.fetch({ limit: 50 });
+    console.log(`[daily-legit] Sprawdzanie ${fetched.size} wiadomości w kanale pod kątem starych przycisków Rekordy...`);
     for (const msg of fetched.values()) {
       if (currentMessageId && msg.id === currentMessageId) continue;
       if (msg.author.id !== client.user?.id) continue;
 
-      const rawJson = JSON.stringify(msg);
-      if (!rawJson.includes("DZIENNE LC")) continue;
-      if (!rawJson.includes("daily_legit_record") && !rawJson.includes("Rekordy")) continue;
+      const fullJsonStr = JSON.stringify(msg);
+      if (!fullJsonStr.includes("DZIENNE LC")) continue;
+      if (!fullJsonStr.includes("daily_legit_record") && !fullJsonStr.includes("Rekordy")) continue;
 
       console.log(`[daily-legit] Znaleziono starszą wiadomość ${msg.id} z przyciskiem Rekordy - usuwam przycisk...`);
 
-      // Rekurencyjne filtrowanie komponentów, aby usunąć ActionRow zawierający przycisk Rekordy
-      const filterComponents = (comps) => {
-        if (!Array.isArray(comps)) return [];
-        return comps
-          .map((c) => (typeof c.toJSON === "function" ? c.toJSON() : c))
-          .filter((c) => {
-            const str = JSON.stringify(c);
-            if (str.includes("daily_legit_record") || str.includes("Rekordy")) {
-              return false; // usuń ten komponent / ActionRow
-            }
-            return true;
-          })
-          .map((c) => {
-            if (Array.isArray(c.components)) {
-              return { ...c, components: filterComponents(c.components) };
-            }
-            return c;
-          });
-      };
+      // Wyciągnij datę, total i kwotę z wiadomości
+      const dateMatch = fullJsonStr.match(/Data:\*\*?\s*`([^`]+)`/) || fullJsonStr.match(/Data:[^`]*`([^`]+)`/);
+      const totalMatch = fullJsonStr.match(/Wystawione legit checki:\*\*?\s*`([^`]+)`/) || fullJsonStr.match(/Wystawione legit checki:[^`]*`([^`]+)`/);
+      const amountMatch = fullJsonStr.match(/Łączna wydana kwota:\*\*?\s*`([^`]+)\s*PLN`/) || fullJsonStr.match(/Łączna wydana kwota:[^`]*`([^`]+)\s*PLN`/);
 
-      const filtered = filterComponents(msg.components);
+      const msgDateKey = dateMatch ? dateMatch[1] : dailyLegitStats.dateKey;
+      const msgTotal = totalMatch ? parseInt(totalMatch[1], 10) || 0 : 0;
+      const msgTotalPln = amountMatch ? parseFloat(amountMatch[1]) || 0 : 0;
+
+      const cleanContainer = buildDailyLegitContainer({
+        dateKey: msgDateKey,
+        total: msgTotal,
+        totalPln: msgTotalPln,
+        guildId: channel.guildId,
+        showRecordsButton: false,
+      });
 
       await msg.edit({
-        components: filtered,
+        content: null,
+        embeds: [],
+        components: [cleanContainer],
+        attachments: [],
         flags: MessageFlags.IsComponentsV2,
-      }).catch((err) => console.error(`[daily-legit] Błąd edycji starszej wiadomości ${msg.id}:`, err));
-      console.log(`[daily-legit] Pomyślnie usunięto przycisk Rekordy ze starszej wiadomości ${msg.id}`);
+      }).then(() => {
+        console.log(`[daily-legit] Pomyślnie usunięto przycisk Rekordy ze starszej wiadomości ${msg.id}`);
+      }).catch((err) => {
+        console.error(`[daily-legit] Błąd edycji starszej wiadomości ${msg.id}:`, err);
+      });
     }
   } catch (err) {
     console.error("[daily-legit] Błąd w removeRecordButtonsFromOldDailyLegitMessages:", err);
