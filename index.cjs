@@ -1092,34 +1092,18 @@ async function removeRecordButtonsFromOldDailyLegitMessages(channel, currentMess
       if (currentMessageId && msg.id === currentMessageId) continue;
       if (msg.author.id !== client.user?.id) continue;
 
-      const hasRecordButton = msg.components?.some((comp) => {
-        if (typeof comp.toJSON === "function") {
-          const json = comp.toJSON();
-          const checkComp = (c) => {
-            if (c.custom_id === "daily_legit_record" || c.label?.includes("Rekordy")) return true;
-            if (Array.isArray(c.components)) return c.components.some(checkComp);
-            return false;
-          };
-          return checkComp(json);
-        }
-        return false;
-      });
+      const fullJsonStr = JSON.stringify(msg);
+      // Sprawdź czy to wiadomość dziennego LC
+      if (!fullJsonStr.includes("DZIENNE LC")) continue;
 
+      // Sprawdź czy wiadomość zawiera przycisk Rekordy
+      const hasRecordButton = fullJsonStr.includes("daily_legit_record") || fullJsonStr.includes("Rekordy");
       if (!hasRecordButton) continue;
 
-      // Sprawdź czy to wiadomość dziennego LC
-      const isDailyLc = msg.components?.some((comp) => {
-        const text = JSON.stringify(typeof comp.toJSON === "function" ? comp.toJSON() : comp);
-        return text.includes("DZIENNE LC");
-      });
-
-      if (!isDailyLc) continue;
-
       // Wyciągnij datę, total i kwotę z wiadomości
-      const rawText = JSON.stringify(msg.components.map((c) => (typeof c.toJSON === "function" ? c.toJSON() : c)));
-      const dateMatch = rawText.match(/Data:[^`]*`([^`]+)`/);
-      const totalMatch = rawText.match(/Wystawione legit checki:[^`]*`([^`]+)`/);
-      const amountMatch = rawText.match(/Łączna wydana kwota:[^`]*`([^`]+)\s*PLN`/);
+      const dateMatch = fullJsonStr.match(/Data:[^`]*`([^`]+)`/);
+      const totalMatch = fullJsonStr.match(/Wystawione legit checki:[^`]*`([^`]+)`/);
+      const amountMatch = fullJsonStr.match(/Łączna wydana kwota:[^`]*`([^`]+)\s*PLN`/);
 
       const msgDateKey = dateMatch ? dateMatch[1] : dailyLegitStats.dateKey;
       const msgTotal = totalMatch ? parseInt(totalMatch[1], 10) || 0 : 0;
@@ -1309,6 +1293,10 @@ function scheduleDailyLegitMidnightRollover() {
 }
 
 async function initializeDailyLegitChart() {
+  const channel = await client.channels.fetch(DAILY_LEGIT_CHANNEL_ID).catch(() => null);
+  if (channel?.isTextBased?.()) {
+    removeRecordButtonsFromOldDailyLegitMessages(channel, dailyLegitStats.messageId).catch(() => null);
+  }
   const changed = rollDailyLegitStatsIfNeeded();
   await queueDailyLegitChartPublish({
     forceNew: changed,
