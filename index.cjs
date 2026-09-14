@@ -1049,16 +1049,10 @@ function rollDailyLegitStatsIfNeeded(now = new Date()) {
   return true;
 }
 
-async function publishDailyLegitChart({ forceNew = false, forceChannelRename = false } = {}) {
-  rollDailyLegitStatsIfNeeded();
-  const channel = await client.channels.fetch(DAILY_LEGIT_CHANNEL_ID).catch(() => null);
-  if (!channel?.isTextBased()) {
-    throw new Error(`Nie znaleziono kanału tekstowego ${DAILY_LEGIT_CHANNEL_ID}`);
-  }
-
-  const displayDate = /^\d{4}-\d{2}-\d{2}$/.test(dailyLegitStats.dateKey)
-    ? `${dailyLegitStats.dateKey.slice(8, 10)}.${dailyLegitStats.dateKey.slice(5, 7)}.${dailyLegitStats.dateKey.slice(0, 4)}`
-    : dailyLegitStats.dateKey;
+function buildDailyLegitContainer({ dateKey, total, totalPln, guildId, showRecordsButton = true }) {
+  const displayDate = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
+    ? `${dateKey.slice(8, 10)}.${dateKey.slice(5, 7)}.${dateKey.slice(0, 4)}`
+    : dateKey;
   const container = new ContainerBuilder().setAccentColor(COLOR_BLUE);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -1071,20 +1065,102 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `> \`📅\` <a:arrowwhite:1491476759290449984> **Data:** \`${displayDate}\`\n` +
-      `> \`✅\` <a:arrowwhite:1491476759290449984> **Wystawione legit checki:** \`${dailyLegitStats.total}\`\n` +
-      `> \`💰\` <a:arrowwhite:1491476759290449984> **Łączna wydana kwota:** \`${dailyLegitStats.totalPln.toFixed(2)} PLN\``,
+      `> \`✅\` <a:arrowwhite:1491476759290449984> **Wystawione legit checki:** \`${total}\`\n` +
+      `> \`💰\` <a:arrowwhite:1491476759290449984> **Łączna wydana kwota:** \`${Number(totalPln || 0).toFixed(2)} PLN\``,
     ),
   );
-  container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("daily_legit_record")
-        .setLabel("🏆︲Rekordy")
-        .setStyle(ButtonStyle.Secondary),
-    ),
-  );
-  appendBrandFooterToContainer(container, channel.guildId);
+  if (showRecordsButton) {
+    container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("daily_legit_record")
+          .setLabel("🏆︲Rekordy")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+  }
+  appendBrandFooterToContainer(container, guildId);
+  return container;
+}
+
+async function removeRecordButtonsFromOldDailyLegitMessages(channel, currentMessageId) {
+  if (!channel?.isTextBased?.()) return;
+  try {
+    const fetched = await channel.messages.fetch({ limit: 50 });
+    for (const msg of fetched.values()) {
+      if (currentMessageId && msg.id === currentMessageId) continue;
+      if (msg.author.id !== client.user?.id) continue;
+
+      const hasRecordButton = msg.components?.some((comp) => {
+        if (typeof comp.toJSON === "function") {
+          const json = comp.toJSON();
+          const checkComp = (c) => {
+            if (c.custom_id === "daily_legit_record" || c.label?.includes("Rekordy")) return true;
+            if (Array.isArray(c.components)) return c.components.some(checkComp);
+            return false;
+          };
+          return checkComp(json);
+        }
+        return false;
+      });
+
+      if (!hasRecordButton) continue;
+
+      // Sprawdź czy to wiadomość dziennego LC
+      const isDailyLc = msg.components?.some((comp) => {
+        const text = JSON.stringify(typeof comp.toJSON === "function" ? comp.toJSON() : comp);
+        return text.includes("DZIENNE LC");
+      });
+
+      if (!isDailyLc) continue;
+
+      // Wyciągnij datę, total i kwotę z wiadomości
+      const rawText = JSON.stringify(msg.components.map((c) => (typeof c.toJSON === "function" ? c.toJSON() : c)));
+      const dateMatch = rawText.match(/Data:[^`]*`([^`]+)`/);
+      const totalMatch = rawText.match(/Wystawione legit checki:[^`]*`([^`]+)`/);
+      const amountMatch = rawText.match(/Łączna wydana kwota:[^`]*`([^`]+)\s*PLN`/);
+
+      const msgDateKey = dateMatch ? dateMatch[1] : dailyLegitStats.dateKey;
+      const msgTotal = totalMatch ? parseInt(totalMatch[1], 10) || 0 : 0;
+      const msgTotalPln = amountMatch ? parseFloat(amountMatch[1]) || 0 : 0;
+
+      const updatedContainer = buildDailyLegitContainer({
+        dateKey: msgDateKey,
+        total: msgTotal,
+        totalPln: msgTotalPln,
+        guildId: channel.guildId,
+        showRecordsButton: false,
+      });
+
+      await msg.edit({
+        content: null,
+        embeds: [],
+        components: [updatedContainer],
+        attachments: [],
+        flags: MessageFlags.IsComponentsV2,
+      }).catch((err) => console.warn(`[daily-legit] Nie udało się usunąć przycisku ze starszej wiadomości ${msg.id}:`, err?.message || err));
+      console.log(`[daily-legit] Pomyślnie usunięto przycisk Rekordy ze starszej wiadomości ${msg.id}`);
+    }
+  } catch (err) {
+    console.warn("[daily-legit] Błąd podczas usuwania przycisków ze starszych embedów:", err?.message || err);
+  }
+}
+
+async function publishDailyLegitChart({ forceNew = false, forceChannelRename = false } = {}) {
+  rollDailyLegitStatsIfNeeded();
+  const channel = await client.channels.fetch(DAILY_LEGIT_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) {
+    throw new Error(`Nie znaleziono kanału tekstowego ${DAILY_LEGIT_CHANNEL_ID}`);
+  }
+
+  const container = buildDailyLegitContainer({
+    dateKey: dailyLegitStats.dateKey,
+    total: dailyLegitStats.total,
+    totalPln: dailyLegitStats.totalPln,
+    guildId: channel.guildId,
+    showRecordsButton: true,
+  });
 
   let chartMessage = null;
   let oldChartMessage = null;
@@ -1109,6 +1185,27 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
   }
 
   if (!chartMessage) {
+    // Jeśli tworzymy nową wiadomość podsumowania, ze starej zdejmujemy przycisk Rekordy
+    if (dailyLegitStats.messageId) {
+      const prevMessage = await channel.messages.fetch(dailyLegitStats.messageId).catch(() => null);
+      if (prevMessage) {
+        const noButtonContainer = buildDailyLegitContainer({
+          dateKey: dailyLegitStats.dateKey,
+          total: dailyLegitStats.total,
+          totalPln: dailyLegitStats.totalPln,
+          guildId: channel.guildId,
+          showRecordsButton: false,
+        });
+        await prevMessage.edit({
+          content: null,
+          embeds: [],
+          components: [noButtonContainer],
+          attachments: [],
+          flags: MessageFlags.IsComponentsV2,
+        }).catch(() => null);
+      }
+    }
+
     chartMessage = await channel.send({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
@@ -1119,6 +1216,10 @@ async function publishDailyLegitChart({ forceNew = false, forceChannelRename = f
       await oldChartMessage.delete().catch(() => null);
     }
   }
+
+  // Wyczyść przycisk Rekordy ze wszystkich starszych embedów w kanale
+  await removeRecordButtonsFromOldDailyLegitMessages(channel, chartMessage.id);
+
   console.log(`[daily-legit] Podsumowanie zaktualizowane: ${dailyLegitStats.total} legit checków`);
   scheduleDailyLegitChannelRename({ force: forceChannelRename });
 }
