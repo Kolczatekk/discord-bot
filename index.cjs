@@ -1088,18 +1088,28 @@ async function removeRecordButtonsFromOldDailyLegitMessages(channel, currentMess
   if (!channel?.isTextBased?.()) return;
   try {
     const fetched = await channel.messages.fetch({ limit: 50 });
-    console.log(`[daily-legit] Sprawdzanie ${fetched.size} wiadomości w kanale pod kątem starych przycisków Rekordy...`);
-    for (const msg of fetched.values()) {
-      if (currentMessageId && msg.id === currentMessageId) continue;
-      if (msg.author.id !== client.user?.id) continue;
+    // Zbierz wszystkie wiadomości dzienne LC bota posortowane chronologicznie (od najstarszej do najnowszej)
+    const dailyMessages = Array.from(fetched.values())
+      .filter((msg) => {
+        if (msg.author.id !== client.user?.id) return false;
+        const text = JSON.stringify(msg);
+        return text.includes("DZIENNE LC");
+      })
+      .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
+    if (dailyMessages.length <= 1) return;
+
+    // Ostatnia (na samym dole) ma zachować przycisk
+    const latestDailyMsg = dailyMessages[dailyMessages.length - 1];
+
+    for (const msg of dailyMessages) {
+      if (msg.id === latestDailyMsg.id) continue; // Pomiń najnowszą wiadomość na dole!
 
       const fullJsonStr = JSON.stringify(msg);
-      if (!fullJsonStr.includes("DZIENNE LC")) continue;
       if (!fullJsonStr.includes("daily_legit_record") && !fullJsonStr.includes("Rekordy")) continue;
 
-      console.log(`[daily-legit] Znaleziono starszą wiadomość ${msg.id} z przyciskiem Rekordy - usuwam przycisk...`);
+      console.log(`[daily-legit] Starsza wiadomość ${msg.id} ma przycisk - usuwam...`);
 
-      // Wyciągnij datę, total i kwotę z wiadomości
       const dateMatch = fullJsonStr.match(/Data:\*\*?\s*`([^`]+)`/) || fullJsonStr.match(/Data:[^`]*`([^`]+)`/);
       const totalMatch = fullJsonStr.match(/Wystawione legit checki:\*\*?\s*`([^`]+)`/) || fullJsonStr.match(/Wystawione legit checki:[^`]*`([^`]+)`/);
       const amountMatch = fullJsonStr.match(/Łączna wydana kwota:\*\*?\s*`([^`]+)\s*PLN`/) || fullJsonStr.match(/Łączna wydana kwota:[^`]*`([^`]+)\s*PLN`/);
@@ -1123,7 +1133,7 @@ async function removeRecordButtonsFromOldDailyLegitMessages(channel, currentMess
         attachments: [],
         flags: MessageFlags.IsComponentsV2,
       }).then(() => {
-        console.log(`[daily-legit] Pomyślnie usunięto przycisk Rekordy ze starszej wiadomości ${msg.id}`);
+        console.log(`[daily-legit] Pomyślnie zdjęto przycisk Rekordy ze starszej wiadomości ${msg.id}`);
       }).catch((err) => {
         console.error(`[daily-legit] Błąd edycji starszej wiadomości ${msg.id}:`, err);
       });
