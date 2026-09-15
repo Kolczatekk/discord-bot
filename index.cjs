@@ -22914,27 +22914,74 @@ async function handleModalSubmit(interaction) {
   creatingTicketUsers.add(user.id);
 
   try {
-    // ENFORCE: One ticket per user
-    // Search ticketOwners for existing open ticket owned by this user
+    // ENFORCE: Ticket limit per user
+    // Allow up to 2 tickets ONLY if the user is creating a purchase ticket ("zakup")
+    // and their existing open ticket is a non-purchase ticket (nagroda, pomoc/inne, sprzedaz).
+    const isNewTicketPurchase = typeof ticketType === "string" && ticketType.startsWith("zakup");
+    const userOpenTickets = [];
+
     for (const [chanId, tData] of ticketOwners.entries()) {
       if (tData && tData.userId === user.id) {
-        // ensure channel still exists
         const existingChannel = await interaction.guild.channels
           .fetch(chanId)
           .catch(() => null);
         if (existingChannel) {
-          await interaction.reply({
-            content:
-              `> \`❌\` × **Masz już otwarty** ticket: <#${chanId}>\n` +
-              "> `ℹ️` × Zamknij go, zanim otworzysz nowy.",
-            flags: [MessageFlags.Ephemeral],
-          });
-          return;
+          userOpenTickets.push({ chanId, tData, channel: existingChannel });
         } else {
-          // stale entry — remove it
           ticketOwners.delete(chanId);
           scheduleSavePersistentState();
         }
+      }
+    }
+
+    if (userOpenTickets.length >= 2) {
+      const links = userOpenTickets.map((t) => `<#${t.chanId}>`).join(", ");
+      await interaction.reply({
+        content:
+          `> \`❌\` × **Osiągnąłeś maksymalny limit** (2 tickety): ${links}\n` +
+          "> `ℹ️` × Zamknij jeden z nich, zanim otworzysz nowy.",
+        flags: [MessageFlags.Ephemeral],
+      });
+      return;
+    }
+
+    if (userOpenTickets.length === 1) {
+      const existing = userOpenTickets[0];
+      const existingLabel = String(existing.tData?.ticketTypeLabel || "").toUpperCase();
+      const existingChanName = String(existing.channel?.name || "").toLowerCase();
+
+      const isExistingReward =
+        existingLabel.includes("NAGROD") ||
+        existingChanName.includes("nagrod") ||
+        rewardTicketClaims.has(existing.chanId);
+
+      const isExistingHelp =
+        existingLabel.includes("PYTANIE") ||
+        existingLabel.includes("POMOC") ||
+        existingChanName.startsWith("inne-");
+
+      const isExistingSell =
+        existingLabel.includes("SPRZEDA") ||
+        existingChanName.startsWith("sprzedaz-") ||
+        existingChanName.includes("sprzeda");
+
+      // Pozwalamy na stworzenie drugiego ticketu TYLKO wtedy, gdy nowy to zakup,
+      // a istniejący to nagroda, pomoc/inne lub sprzedaż
+      const canCreateSecondTicket =
+        isNewTicketPurchase && (isExistingReward || isExistingHelp || isExistingSell);
+
+      if (!canCreateSecondTicket) {
+        let reasonMsg = "> `ℹ️` × Zamknij go, zanim otworzysz nowy.";
+        if (!isNewTicketPurchase && (isExistingReward || isExistingHelp || isExistingSell)) {
+          reasonMsg = "> `ℹ️` × Mając ten ticket, możesz otworzyć jedynie ticket **zakupowy**.";
+        }
+        await interaction.reply({
+          content:
+            `> \`❌\` × **Masz już otwarty** ticket: <#${existing.chanId}>\n` +
+            reasonMsg,
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
       }
     }
 
