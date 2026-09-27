@@ -1920,6 +1920,7 @@ const FREE_KASA_TOTAL_WEIGHT = FREE_KASA_REWARD_POOL.reduce(
 
 // New maps for ticket close confirmation
 const pendingTicketClose = new Map(); // channelId -> { userId, ts }
+const ticketRepMessages = new Map(); // channelId or messageId -> repMessage string
 const closingTickets = new Set(); // channelId - currently being deleted, block re-close
 
 // ------------------ Invite tracking & protections ------------------
@@ -8347,6 +8348,50 @@ async function handleButtonInteraction(interaction) {
     const code = customId.replace("copy_dm_code_", "");
     await interaction.reply({
       content: `\`${code}\``,
+      flags: [MessageFlags.Ephemeral],
+    }).catch(() => null);
+    return;
+  }
+
+  if (customId === "ticket_copy_rep") {
+    let repText = ticketRepMessages.get(interaction.message?.id) || ticketRepMessages.get(interaction.channelId) || null;
+    if (!repText) {
+      const ticketData = pendingTicketClose.get(interaction.channelId);
+      if (ticketData?.repMessage) {
+        repText = ticketData.repMessage;
+      } else if (ticketData?.commandUsername && ticketData?.co) {
+        const verb = String(ticketData.typ || "zakup").toUpperCase();
+        repText = `+rep @${ticketData.commandUsername} ${verb} ${ticketData.co}${ticketData.serwer ? ` ${ticketData.serwer}` : ""}`;
+      }
+    }
+
+    if (!repText && interaction.channel) {
+      const recent = await interaction.channel.messages.fetch({ limit: 15 }).catch(() => null);
+      if (recent) {
+        const plainMsg = recent.find((m) => m.author.id === client.user.id && m.content && m.content.startsWith("+rep"));
+        if (plainMsg) {
+          repText = plainMsg.content.trim();
+        } else {
+          for (const msg of recent.values()) {
+            if (msg.author.id === client.user.id) {
+              const fullText = JSON.stringify(msg.components || []) + " " + JSON.stringify(msg.embeds || []);
+              const match = fullText.match(/\+rep\s+@[^\s`"\\]+\s+[^`"\\]+/);
+              if (match) {
+                repText = match[0].trim();
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (!repText) {
+      repText = `+rep @${client.user?.username || "sprzedawca"} ZAKUP 50 PLN`;
+    }
+
+    await interaction.reply({
+      content: `\`${repText}\``,
       flags: [MessageFlags.Ephemeral],
     }).catch(() => null);
     return;
@@ -17652,8 +17697,14 @@ async function handleTicketZakonczCommand(interaction) {
     legitRepChannelId,
     embedMessageId: sentEmbedMsg?.id || null,
     repTextMessageId: sentRepMsg?.id || null,
+    repMessage: repMessage,
     ts: Date.now()
   });
+
+  if (sentEmbedMsg?.id) {
+    ticketRepMessages.set(sentEmbedMsg.id, repMessage);
+  }
+  ticketRepMessages.set(channel.id, repMessage);
 
   // Przenieś ticket do kategorii zrealizowanej
   const ARCHIVED_CATEGORY_ID = "1469059216303198261";
@@ -17897,7 +17948,16 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
     postBtn.setEmoji("✅");
   }
 
-  container.addActionRowComponents(new ActionRowBuilder().addComponents(anonBtn, postBtn));
+  const copyBtn = new ButtonBuilder()
+    .setCustomId("ticket_copy_rep")
+    .setLabel("︲Skopiuj")
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji("📝");
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(anonBtn, postBtn),
+    new ActionRowBuilder().addComponents(copyBtn)
+  );
 
   appendBrandFooterToContainer(container, guildId);
 
@@ -18091,10 +18151,16 @@ async function handleTestLegitCheckWzorCommand(interaction) {
       legitRepChannelId,
       embedMessageId: sentEmbedMsg?.id || null,
       repTextMessageId: sentRepMsg?.id || null,
+      repMessage: repMessage,
       pingMessageId: pingMsg?.id || null,
       isTest: true,
       ts: Date.now()
     });
+
+    if (sentEmbedMsg?.id) {
+      ticketRepMessages.set(sentEmbedMsg.id, repMessage);
+    }
+    ticketRepMessages.set(interaction.channelId, repMessage);
 
     await interaction.editReply({
       content: "> `🧪` × Wysłano testowy panel oczekiwania na legit checka ze wzorem.",
