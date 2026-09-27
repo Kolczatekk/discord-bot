@@ -5805,6 +5805,11 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("panel-zaproszen")
+    .setDescription("Wyślij panel sprawdzania zaproszeń na wyznaczonym kanale")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("rozliczenieprowizja")
     .setDescription("Ustaw procent prowizji rozliczenia (dla wszystkich lub wybranej osoby)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -7010,6 +7015,24 @@ client.once(Events.ClientReady, async (c) => {
       "Błąd odczytywania licznika repów lub wyszukiwania wiadomości:",
       err,
     );
+  }
+
+  // Zapewnij panel zaproszeń na wyznaczonym kanale
+  try {
+    const zapChannel =
+      client.channels.cache.get(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID) ||
+      (await client.channels.fetch(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID).catch((e) => {
+        console.error(`[ready] Błąd pobierania kanału zaproszeń ${SPRAWDZ_ZAPROSZENIA_CHANNEL_ID}:`, e?.message || e);
+        return null;
+      }));
+    if (zapChannel) {
+      console.log(`[ready] Inicjalizuję panel zaproszeń na kanale #${zapChannel.name || zapChannel.id}`);
+      await ensureInvitePanel(zapChannel);
+    } else {
+      console.warn(`[ready] Nie znaleziono kanału zaproszeń o ID ${SPRAWDZ_ZAPROSZENIA_CHANNEL_ID}`);
+    }
+  } catch (err) {
+    console.error("[ready] Błąd inicjalizacji panelu zaproszeń:", err);
   }
 
   // Initialize invite cache for all guilds
@@ -9926,6 +9949,9 @@ async function handleSlashCommand(interaction) {
       break;
     case "test-rozliczenia-ping":
       await handleTestRozliczeniaPingCommand(interaction);
+      break;
+    case "panel-zaproszen":
+      await handlePanelZaproszenCommand(interaction);
       break;
     case "statusbota":
       await handleStatusBotaCommand(interaction);
@@ -16870,13 +16896,59 @@ async function ensureInvitePanel(channel) {
       const sent = await channel.send(payload);
       lastInviteInstruction.set(channel.id, sent.id);
       scheduleSavePersistentState();
+      console.log(`[invites] Wysłano nowy panel zaproszeń: ${sent.id} na kanał #${channel.name || channel.id}`);
     } else {
       lastInviteInstruction.set(channel.id, activePanel.id);
+      console.log(`[invites] Znaleziono aktywny panel zaproszeń: ${activePanel.id}`);
     }
   } catch (e) {
-    console.warn("Błąd w ensureInvitePanel:", e);
+    console.error("[invites] Błąd w ensureInvitePanel:", e?.message || e);
   } finally {
     isEnsuringInvitePanel = false;
+  }
+}
+
+async function handlePanelZaproszenCommand(interaction) {
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  try {
+    const zapCh =
+      interaction.guild.channels.cache.get(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID) ||
+      (await client.channels.fetch(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID).catch((e) => {
+        console.error("[panel-zaproszen] Błąd pobierania kanału:", e?.message || e);
+        return null;
+      }));
+
+    if (!zapCh) {
+      await interaction.editReply({
+        content: `> \`❌\` × Nie mogę znaleźć kanału <#${SPRAWDZ_ZAPROSZENIA_CHANNEL_ID}> (${SPRAWDZ_ZAPROSZENIA_CHANNEL_ID}). Upewnij się, że bot ma dostęp do tego kanału!`
+      });
+      return;
+    }
+
+    // Usuń stare panele jeśli istnieją na kanale
+    const messages = await zapCh.messages.fetch({ limit: 50 }).catch(() => null);
+    if (messages) {
+      for (const msg of messages.values()) {
+        const comp = JSON.stringify(msg.components || {});
+        if (msg.author.id === client.user.id && comp.includes("btn_sprawdz_zaproszenia")) {
+          await msg.delete().catch(() => null);
+        }
+      }
+    }
+
+    const payload = buildZaproszeniaInstructionPayload();
+    const sent = await zapCh.send(payload);
+    lastInviteInstruction.set(zapCh.id, sent.id);
+    scheduleSavePersistentState();
+
+    await interaction.editReply({
+      content: `> \`✅\` × Panel zaproszeń został pomyślnie wysłany na kanał <#${SPRAWDZ_ZAPROSZENIA_CHANNEL_ID}>!`
+    });
+  } catch (err) {
+    console.error("Błąd w handlePanelZaproszenCommand:", err);
+    await interaction.editReply({
+      content: `> \`❌\` × Błąd podczas wysyłania panelu: \`${err?.message || err}\`\n> Sprawdź, czy bot ma uprawnienia \`Wysyłanie wiadomości\` oraz \`Wyświetlanie kanału\` na kanale <#${SPRAWDZ_ZAPROSZENIA_CHANNEL_ID}>.`
+    });
   }
 }
 
