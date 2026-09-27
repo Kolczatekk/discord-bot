@@ -2552,6 +2552,9 @@ function buildPersistentStateData() {
       minestarSkypvpRate: MINESTAR_SKY_RATE,
     },
     sellerTicketCounts: Object.fromEntries(sellerTicketCounts),
+    autoLcEnabled: Boolean(autoLcEnabled),
+    autoLcNextFireAt: Number(autoLcNextFireAt || 0),
+    autoLcDailyQueue: Array.isArray(autoLcDailyQueue) ? autoLcDailyQueue : [],
   };
 
   return data;
@@ -4066,6 +4069,19 @@ async function loadPersistentState() {
 
       if (typeof botStateData.legitRepCount === "number") {
         legitRepCount = botStateData.legitRepCount;
+      }
+
+      if (typeof botStateData.autoLcEnabled === "boolean") {
+        autoLcEnabled = botStateData.autoLcEnabled;
+        console.log(`[state] Wczytano autoLcEnabled: ${autoLcEnabled}`);
+      }
+
+      if (typeof botStateData.autoLcNextFireAt === "number") {
+        autoLcNextFireAt = botStateData.autoLcNextFireAt;
+      }
+
+      if (Array.isArray(botStateData.autoLcDailyQueue)) {
+        autoLcDailyQueue = botStateData.autoLcDailyQueue.filter((ts) => typeof ts === "number");
       }
 
       if (botStateData.sellerTicketCounts && typeof botStateData.sellerTicketCounts === "object") {
@@ -18383,6 +18399,7 @@ const AUTO_LC_ROUND_AMOUNTS = [
   50, 50, 50, 50,
   5, 5, 100, 100,
 ];
+let autoLcEnabled = true;
 let autoLcTimer = null;
 let autoLcNextFireAt = 0;
 let autoLcDailyQueue = [];
@@ -18532,14 +18549,26 @@ async function postAutoLegitCheck() {
 }
 
 function scheduleRandomAutoLegitCheck() {
-  if (autoLcTimer) clearTimeout(autoLcTimer);
-  const nextTargetTs = getNextScheduledAutoLcTimestamp();
+  if (autoLcTimer) {
+    clearTimeout(autoLcTimer);
+    autoLcTimer = null;
+  }
+
+  if (!autoLcEnabled) {
+    console.log("[auto-lc] Timer auto LC jest wyłączony (autoLcEnabled = false), pomijam planowanie.");
+    return;
+  }
+
+  const now = Date.now();
+  let nextTargetTs = (autoLcNextFireAt > now + 1000) ? autoLcNextFireAt : getNextScheduledAutoLcTimestamp();
   if (!nextTargetTs) {
     console.error("[auto-lc] Nie udało się wygenerować kolejnego terminu LC.");
     return;
   }
   autoLcNextFireAt = nextTargetTs;
-  const delay = Math.max(1000, nextTargetTs - Date.now());
+  scheduleSavePersistentState();
+
+  const delay = Math.max(1000, nextTargetTs - now);
   const hours = (delay / 3600000).toFixed(1);
   console.log(`[auto-lc] Następny automatyczny legit check za ${hours} h (${new Date(autoLcNextFireAt).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" })}).`);
   autoLcTimer = setTimeout(async () => {
@@ -24711,22 +24740,27 @@ async function handleAutoLcTimerCommand(interaction) {
   const action = interaction.options.getString("akcja");
 
   if (action === "start") {
+    autoLcEnabled = true;
     scheduleRandomAutoLegitCheck();
+    scheduleSavePersistentState(true);
     const nextTime = autoLcNextFireAt > 0 ? new Date(autoLcNextFireAt) : null;
     const nextTimeStr = nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "wkrótce";
     await interaction.editReply({
-      content: `> \`✅\` × **Timer auto LC:** włączony.\n> **Następny legit check:** \`${nextTimeStr}\` *(losowo 3–5 LC dziennie w godz. 08:00–23:00, bez nocy 00:00–07:00)*`,
+      content: `> \`✅\` × **Timer auto LC:** włączony (zapisano w bazie – pozostanie włączony po restarcie bota).\n> **Następny legit check:** \`${nextTimeStr}\` *(losowo 3–5 LC dziennie w godz. 08:00–23:00, bez nocy 00:00–07:00)*`,
     });
     return;
   }
 
   if (action === "stop") {
+    autoLcEnabled = false;
     if (autoLcTimer) {
       clearTimeout(autoLcTimer);
       autoLcTimer = null;
     }
+    autoLcNextFireAt = 0;
+    scheduleSavePersistentState(true);
     await interaction.editReply({
-      content: "> `⏹️` × **Timer auto LC:** zatrzymany. Żaden automatyczny legit check nie zostanie wystawiony, dopóki nie włączysz go ponownie (`/autolc-timer start`).",
+      content: "> `⏹️` × **Timer auto LC:** zatrzymany (zapisano w bazie – pozostanie zatrzymany po restarcie bota). Żaden automatyczny legit check nie zostanie wystawiony, dopóki nie włączysz go ponownie (`/autolc-timer akcja:start`).",
     });
     return;
   }
@@ -24738,7 +24772,8 @@ async function handleAutoLcTimerCommand(interaction) {
     content:
       "```\n" +
       "[Auto LC - timer]\n" +
-      `Status: ${autoLcTimer ? "AKTYWNY" : "ZATRZYMANY"}\n` +
+      `Status: ${autoLcEnabled ? (autoLcTimer ? "AKTYWNY" : "WŁĄCZONY") : "ZATRZYMANY"}\n` +
+      `Zapis w bazie: ${autoLcEnabled ? "WŁĄCZONY" : "WYŁĄCZONY"}\n` +
       `Następny: ${nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "BRAK"}\n` +
       "```",
   });
@@ -24759,6 +24794,8 @@ async function handleAutoLcStatusCommand(interaction) {
       "```\n" +
       "[Auto LC - status]\n" +
       `Licznik legit checków: ${legitRepCount}\n` +
+      `Timer włączony w bazie: ${autoLcEnabled ? "TAK" : "NIE"}\n` +
+      `Timer aktywny w pamięci: ${autoLcTimer ? "TAK" : "NIE"}\n` +
       `W czarnej strefie (00:00-07:00): ${blackout}\n` +
       `Następny auto LC: ${nextTime ? nextTime.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" }) : "BRAK (timer nie uruchomiony)"}\n` +
       `Tryb: 3–5 legit checków dziennie (w godz. 08:00–23:00)\n` +
