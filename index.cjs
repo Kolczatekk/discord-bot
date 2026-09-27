@@ -17408,7 +17408,7 @@ function buildTicketCloseConfirmEmbed(actionLabel, expiresAt = Math.floor(Date.n
     .setColor(COLOR_BLUE)
     .setDescription(
       `> \`⚠️\` × ${actionLabel}\n` +
-      `> \`⏳\` × Potwierdź (<t:${expiresAt}:R>)`,
+      `> \`⏳\` × Czas na potwierdzenie kończy się: <t:${expiresAt}:R>`,
     );
 }
 
