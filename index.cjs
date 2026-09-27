@@ -25491,11 +25491,12 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     return;
   }
 
-  // cooldown 30s
+  // cooldown 5s
+  const SPRAWDZ_ZAPROSZENIA_COOLDOWN_MS = 5_000;
   const nowTs = Date.now();
   const lastTs = sprawdzZaproszeniaCooldowns.get(interaction.user.id) || 0;
-  if (nowTs - lastTs < 30_000) {
-    const remain = Math.ceil((30_000 - (nowTs - lastTs)) / 1000);
+  if (nowTs - lastTs < SPRAWDZ_ZAPROSZENIA_COOLDOWN_MS) {
+    const remain = Math.ceil((SPRAWDZ_ZAPROSZENIA_COOLDOWN_MS - (nowTs - lastTs)) / 1000);
     await interaction.reply({
       content: `> \`❌\` × Możesz sprawdzić swoje zaproszenia ponownie za \`${remain}s\` `,
       flags: [MessageFlags.Ephemeral]
