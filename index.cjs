@@ -1427,6 +1427,7 @@ async function handleDeletedOpinionMessage(message) {
 const FREE_KASA_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FREE_KASA_CHANNEL_ID = "1470103962245005454";
 const REWARDS_CHANNEL_ID = "1449159372293935104";
+const SPRAWDZ_ZAPROSZENIA_CHANNEL_ID = "1553811862317961307";
 const FREE_KASA_CODE_EXPIRES_MS = 24 * 60 * 60 * 1000;
 const FREE_KASA_REQUIRED_STATUS = ".gg/newshop";
 const FREE_KASA_CASH_CLAIM_THRESHOLD = 50_000;
@@ -6994,7 +6995,9 @@ client.once(Events.ClientReady, async (c) => {
 
       // Try to find previously sent invite instruction messages (zaproszenia)
       try {
-        const zapCh = g.channels.cache.get("1449159417445482566") || null;
+        const zapCh =
+          g.channels.cache.get(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID) ||
+          (await client.channels.fetch(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID).catch(() => null));
         if (zapCh) {
           await ensureInvitePanel(zapCh).catch(() => null);
         }
@@ -16834,7 +16837,7 @@ function buildZaproszeniaInstructionPayload() {
 let isEnsuringInvitePanel = false;
 
 async function ensureInvitePanel(channel) {
-  if (!channel || channel.id !== "1449159417445482566") return;
+  if (!channel || channel.id !== SPRAWDZ_ZAPROSZENIA_CHANNEL_ID) return;
   if (isEnsuringInvitePanel) return;
   isEnsuringInvitePanel = true;
   try {
@@ -16848,12 +16851,7 @@ async function ensureInvitePanel(channel) {
 
     messages.forEach(msg => {
       const componentsStr = JSON.stringify(msg.components || {});
-      const isPanel = msg.author.id === client.user.id && 
-        (
-          componentsStr.includes("btn_sprawdz_zaproszenia") ||
-          componentsStr.includes("zaproszenia") ||
-          (msg.content && msg.content.includes("zaproszenia"))
-        );
+      const isPanel = msg.author.id === client.user.id && componentsStr.includes("btn_sprawdz_zaproszenia");
       if (isPanel) {
         panelMessages.push(msg);
       }
@@ -23598,9 +23596,10 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (
     message.guild &&
-    message.channel?.id === "1449159417445482566" &&
+    message.channel?.id === SPRAWDZ_ZAPROSZENIA_CHANNEL_ID &&
     message.author.id !== client.user.id
   ) {
+    await message.delete().catch(() => null);
     await ensureInvitePanel(message.channel).catch(() => null);
   }
 
@@ -25412,10 +25411,9 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     return;
   }
 
-  const SPRAWDZ_ZAPROSZENIA_CHANNEL_ID = "1449159417445482566";
   if (interaction.channelId !== SPRAWDZ_ZAPROSZENIA_CHANNEL_ID) {
     await interaction.reply({
-      content: "> `❌` × Użyj tej **komendy** na kanale <#1449159417445482566>.",
+      content: `> \`❌\` × Użyj tej **komendy** na kanale <#${SPRAWDZ_ZAPROSZENIA_CHANNEL_ID}>.`,
       flags: [MessageFlags.Ephemeral]
     });
     return;
@@ -25434,21 +25432,14 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
   }
   sprawdzZaproszeniaCooldowns.set(interaction.user.id, nowTs);
 
-  const openedFromButton = interaction.isButton?.() === true;
-  if (openedFromButton) {
-    // Przycisk tylko potwierdzamy. Wynik pojawia się jako publiczna wiadomość,
-    // więc nie tworzymy osobnej efemerycznej odpowiedzi „myśli…”.
-    await interaction.deferUpdate();
-  } else {
-    await interaction.reply({
-      content: "> `✅` × Ładuję informacje o zaproszeniach na ten kanał.",
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({
       flags: [MessageFlags.Ephemeral],
     });
   }
 
   // ===== SPRAWDZ-ZAPROSZENIA – PEŁNY SCRIPT =====
 
-  const preferChannel = interaction.guild.channels.cache.get(SPRAWDZ_ZAPROSZENIA_CHANNEL_ID);
   const guildId = interaction.guild.id;
 
   // Inicjalizacja map
@@ -25509,50 +25500,23 @@ async function handleSprawdzZaproszeniaCommand(interaction) {
     );
 
   try {
-    const targetChannel = preferChannel ? preferChannel : interaction.channel;
+    const content =
+      pendingInviteRewardDelivery.deliveredCount > 0
+        ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały załadowane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
+        : pendingInviteRewardDelivery.blocked
+          ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
+          : null;
 
-    // Wysyłamy statystyki jako kompletnie NIEZALEŻNĄ, publiczną wiadomość (brak jakiejkolwiek linii odpowiedzi "Oryginalna wiadomość została usunięta"!)
-    await targetChannel.send({
-      content:
-        pendingInviteRewardDelivery.deliveredCount > 0
-          ? `> \`✅\` × Informacje o twoich **zaproszeniach** zostały załadowane.\n> \`📩\` × Kod za nagrodę został wysłany na PV: \`${pendingInviteRewardDelivery.deliveredLabels.join(", ")}\`.`
-          : pendingInviteRewardDelivery.blocked
-            ? "> `❌` × Nie mogłem wysłać kodu na PV. Włącz wiadomości prywatne i użyj komendy ponownie."
-            : null,
-      embeds: [embed]
+    await interaction.editReply({
+      content: content || undefined,
+      embeds: [embed],
     });
-
-    // Delete the old panel if we have its ID stored to prevent duplication
-    const lastPanelId = lastInviteInstruction.get(targetChannel.id);
-    if (lastPanelId) {
-      const lastMsg = await targetChannel.messages.fetch(lastPanelId).catch(() => null);
-      if (lastMsg) {
-        await lastMsg.delete().catch(() => null);
-      }
-    }
-
-    // Also delete the message in interaction if it exists
-    if (interaction.message) {
-      await interaction.message.delete().catch(() => null);
-    }
-
-    // Wysyłamy nowy panel zaproszeń, aby wskoczył na sam dół kanału
-    if (targetChannel && targetChannel.id) {
-      const payload = buildZaproszeniaInstructionPayload();
-      const sent = await targetChannel.send(payload);
-      lastInviteInstruction.set(targetChannel.id, sent.id);
-      scheduleSavePersistentState();
-    }
-
   } catch (err) {
-    console.error("Błąd przy publikacji sprawdz-zaproszenia:", err);
-    try {
-      await interaction.editReply({ embeds: [embed] });
-    } catch {
-      await interaction.editReply({
-        content: "> \`❌\` × Nie udało się opublikować informacji o **zaproszeniach**."
-      });
-    }
+    console.error("Błąd przy odpowiedzi sprawdz-zaproszenia:", err);
+  }
+
+  if (interaction.channel) {
+    ensureInvitePanel(interaction.channel).catch(() => null);
   }
 }
 
