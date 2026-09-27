@@ -9245,9 +9245,10 @@ async function handleButtonInteraction(interaction) {
       }, 2000);
     } else {
       // set pending note
+      const expiresAt = Math.floor(now / 1000) + 30;
       pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
       await interaction.reply({
-        embeds: [buildTicketCloseConfirmEmbed("Kliknij przycisk jeszcze raz")],
+        embeds: [buildTicketCloseConfirmEmbed("Kliknij przycisk jeszcze raz", expiresAt)],
         flags: [MessageFlags.Ephemeral],
       });
       // schedule expiry
@@ -17402,12 +17403,12 @@ async function handlePanelKlientaActiveCodes(interaction, pageIndex = 0) {
   }
 }
 
-function buildTicketCloseConfirmEmbed(actionLabel) {
+function buildTicketCloseConfirmEmbed(actionLabel, expiresAt = Math.floor(Date.now() / 1000) + 30) {
   return new EmbedBuilder()
     .setColor(COLOR_BLUE)
     .setDescription(
       `> \`⚠️\` × ${actionLabel}\n` +
-      "> `⏳` × Potwierdź w `30s`",
+      `> \`⏳\` × Potwierdź (<t:${expiresAt}:R>)`,
     );
 }
 
@@ -17474,9 +17475,10 @@ async function handleCloseTicketCommand(interaction) {
       }
     }, 2000);
   } else {
+    const expiresAt = Math.floor(now / 1000) + 30;
     pendingTicketClose.set(chId, { userId: interaction.user.id, ts: now });
     await interaction.reply({
-      embeds: [buildTicketCloseConfirmEmbed("Użyj `/zamknij` jeszcze raz")],
+      embeds: [buildTicketCloseConfirmEmbed("Użyj `/zamknij` jeszcze raz", expiresAt)],
       flags: [MessageFlags.Ephemeral],
     });
     setTimeout(() => pendingTicketClose.delete(chId), 30_000);
