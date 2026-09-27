@@ -17937,27 +17937,18 @@ function buildPendingLegitCheckPayload(ticketOwnerId, thankLine, legitRepChannel
   }
 
   const yesEmoji = findGuildEmojiByName(guildId, "YES") || findGuildEmojiByName(guildId, "yes") || findGuildEmojiByName(guildId, "TAK") || findGuildEmojiByName(guildId, "tak");
-  const postBtn = new ButtonBuilder()
-    .setLabel("︲Tutaj wystaw")
-    .setStyle(ButtonStyle.Link)
-    .setURL("https://discord.com/channels/1350446732365926491/1449840030947217529");
-
-  if (yesEmoji) {
-    postBtn.setEmoji({ id: yesEmoji.id, name: yesEmoji.name, animated: yesEmoji.animated });
-  } else {
-    postBtn.setEmoji("✅");
-  }
-
   const copyBtn = new ButtonBuilder()
     .setCustomId("ticket_copy_rep")
-    .setLabel("︲Skopiuj")
-    .setStyle(ButtonStyle.Secondary)
-    .setEmoji("📝");
+    .setLabel("︲Skopiuj wzór")
+    .setStyle(ButtonStyle.Secondary);
 
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(anonBtn, postBtn),
-    new ActionRowBuilder().addComponents(copyBtn)
-  );
+  if (yesEmoji) {
+    copyBtn.setEmoji({ id: yesEmoji.id, name: yesEmoji.name, animated: yesEmoji.animated });
+  } else {
+    copyBtn.setEmoji("✅");
+  }
+
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(anonBtn, copyBtn));
 
   appendBrandFooterToContainer(container, guildId);
 
