@@ -5769,6 +5769,40 @@ const commands = [
     )
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("test-legit-check-wzor")
+    .setDescription("Przetestuj wygląd panelu wygenerowanego po /ticket-zakoncz (wzór + przycisk)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addStringOption((o) =>
+      o.setName("typ")
+        .setDescription("Typ transakcji (zakup, sprzedaż, wręczył nagrodę)")
+        .setRequired(false)
+        .addChoices(
+          { name: "zakup", value: "zakup" },
+          { name: "sprzedaż", value: "sprzedaż" },
+          { name: "wręczył nagrodę", value: "wręczył nagrodę" },
+        )
+    )
+    .addIntegerOption((o) =>
+      o.setName("ile").setDescription("Kwota PLN (domyślnie 50)").setRequired(false)
+    )
+    .addStringOption((o) =>
+      o.setName("serwer").setDescription("Nazwa serwera (domyślnie ANARCHIA LIFESTEAL)").setRequired(false)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("test-legit-check-sukces")
+    .setDescription("Przetestuj podmienienie embeda na sukces w aktualnym tickecie")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("test-rozliczenia-ping")
+    .setDescription("Przetestuj wysłanie krótkiego pinga rozliczenia na kanał rozliczeń (usuwa się po 5s)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addUserOption((o) =>
+      o.setName("sprzedawca").setDescription("Sprzedawca do oznaczenia").setRequired(true)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("rozliczenieprowizja")
     .setDescription("Ustaw procent prowizji rozliczenia (dla wszystkich lub wybranej osoby)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
@@ -9835,6 +9869,15 @@ async function handleSlashCommand(interaction) {
     case "test-pv":
       await handleTestPvCommand(interaction);
       break;
+    case "test-legit-check-wzor":
+      await handleTestLegitCheckWzorCommand(interaction);
+      break;
+    case "test-legit-check-sukces":
+      await handleTestLegitCheckSukcesCommand(interaction);
+      break;
+    case "test-rozliczenia-ping":
+      await handleTestRozliczeniaPingCommand(interaction);
+      break;
     case "statusbota":
       await handleStatusBotaCommand(interaction);
       break;
@@ -10293,6 +10336,66 @@ async function handleRozliczenieProwizjaCommand(interaction) {
   }
 
   await sendRozliczeniaStatusReport(interaction.guild);
+}
+
+// Handler dla komendy /test-rozliczenia-ping
+async function handleTestRozliczeniaPingCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const targetSeller = interaction.options.getUser("sprzedawca");
+  if (!targetSeller) {
+    await interaction.reply({
+      content: "> `❌` × Wybierz sprzedawcę.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  if (targetSeller.id === "1305200545979437129") {
+    await interaction.reply({
+      content: "> `ℹ️` × Użytkownik <@1305200545979437129> to właściciel — jest wykluczony z powiadomień o rozliczeniach.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  try {
+    const rozliczeniaChannel = await client.channels.fetch("1449162620807675935").catch(() => null);
+    if (!rozliczeniaChannel || !rozliczeniaChannel.isTextBased()) {
+      await interaction.editReply({
+        content: "> `❌` × Nie udało się odnaleźć kanału rozliczeń (1449162620807675935).",
+      });
+      return;
+    }
+
+    const pingMsg = await rozliczeniaChannel.send({
+      content: `<@${targetSeller.id}>`,
+      allowedMentions: { users: [targetSeller.id] },
+    }).catch(() => null);
+
+    if (pingMsg && pingMsg.deletable) {
+      setTimeout(() => {
+        pingMsg.delete().catch(() => null);
+      }, 5000);
+    }
+
+    await interaction.editReply({
+      content: `> \`✅\` × **Wysłano testowy ping** dla <@${targetSeller.id}> na kanał <#1449162620807675935> (zostanie usunięty po 5s).`,
+    });
+  } catch (err) {
+    console.error("Błąd w handleTestRozliczeniaPingCommand:", err);
+    await interaction.editReply({
+      content: "> `❌` × Błąd podczas testowania pinga.",
+    });
+  }
 }
 
 // Handler dla komendy /rozliczeniezakoncz
@@ -17900,6 +18003,107 @@ async function replaceLegitCheckEmbedWithSuccess(channel, ticketData) {
     }
   } catch (err) {
     console.error("[LegitCheck] Błąd podmieniania embeda:", err);
+  }
+}
+
+async function handleTestLegitCheckSukcesCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  const channel = interaction.channel;
+  if (!channel) return;
+
+  const ticketData = pendingTicketClose.get(channel.id) || {
+    typ: "zakup",
+    co: "50 PLN",
+    serwer: "ANARCHIA LIFESTEAL"
+  };
+
+  await interaction.reply({
+    content: "> `🧪` × Testowe podmienienie embeda na sukces...",
+    flags: [MessageFlags.Ephemeral],
+  });
+
+  await replaceLegitCheckEmbedWithSuccess(channel, ticketData);
+}
+
+async function handleTestLegitCheckWzorCommand(interaction) {
+  if (!isAdminOrSeller(interaction.member)) {
+    await interaction.reply({
+      content: "> `‼️` × Brak wymaganych uprawnień.",
+      flags: [MessageFlags.Ephemeral],
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+  const legitRepChannelId = "1449840030947217529";
+  const typ = interaction.options.getString("typ") || "zakup";
+  const ile = interaction.options.getInteger("ile") || 50;
+  const serwer = (interaction.options.getString("serwer") || "ANARCHIA LIFESTEAL").trim();
+  const formattedCena = `${ile} PLN`;
+
+  let thankLine = "Dziękujemy za zakup w naszym sklepie";
+  const typLower = typ.toLowerCase();
+  if (typLower === "sprzedaż" || typLower === "sprzedaz") {
+    thankLine = "Dziękujemy za sprzedaż w naszym sklepie";
+  } else if (typLower === "wręczył nagrodę" || typLower === "wreczyl nagrode") {
+    thankLine = "Nagroda została nadana";
+  }
+
+  const verb = typ.toUpperCase();
+  const repMessage = `+rep @${interaction.user.username} ${verb} ${formattedCena}${serwer ? ` ${serwer}` : ""}`;
+
+  try {
+    const payload = buildPendingLegitCheckPayload(
+      interaction.user.id,
+      thankLine,
+      legitRepChannelId,
+      repMessage,
+      interaction.guild?.id || null
+    );
+
+    const pingMsg = await interaction.channel.send({
+      content: `<@${interaction.user.id}>`,
+      allowedMentions: { users: [interaction.user.id] },
+    }).catch(() => null);
+
+    const sentEmbedMsg = await interaction.channel.send(payload);
+
+    const sentRepMsg = await interaction.channel.send({
+      content: repMessage,
+    }).catch(() => null);
+
+    pendingTicketClose.set(interaction.channelId, {
+      userId: interaction.user.id,
+      commandUserId: interaction.user.id,
+      commandUsername: interaction.user.username,
+      typ: typ,
+      co: formattedCena,
+      serwer: serwer,
+      awaitingRep: true,
+      legitRepChannelId,
+      embedMessageId: sentEmbedMsg?.id || null,
+      repTextMessageId: sentRepMsg?.id || null,
+      pingMessageId: pingMsg?.id || null,
+      isTest: true,
+      ts: Date.now()
+    });
+
+    await interaction.editReply({
+      content: "> `🧪` × Wysłano testowy panel oczekiwania na legit checka ze wzorem.",
+    });
+  } catch (err) {
+    console.error("[handleTestLegitCheckWzorCommand] Błąd:", err);
+    await interaction.editReply({
+      content: `> \`❌\` × Błąd wysyłania panelu: **${err.message}**`,
+    });
   }
 }
 
