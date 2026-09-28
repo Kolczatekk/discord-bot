@@ -20943,16 +20943,17 @@ async function showSellerLimitModal(interaction) {
     .setTitle("Zostań sprzedawcą")
     .addLabelComponents(
       new LabelBuilder()
-        .setLabel("Jaki limit sprzedawcy chcesz kupić?")
+        .setLabel("Jaki limit sprzedawcy chcesz zakupić?")
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
             .setCustomId(`seller_limit_${timestamp}`)
-            .setPlaceholder("Wybierz pakiet i cenę")
+            .setPlaceholder("Wybierz limit")
             .setRequired(true)
             .setMinValues(1)
             .setMaxValues(1)
             .addOptions(SELLER_LIMIT_PACKAGES.map((pack) => ({
-              label: `${pack.label} — ${pack.price} zł`,
+              label: pack.label,
+              description: `Cena: ${pack.price}zł`,
               value: pack.value,
             }))),
         ),
