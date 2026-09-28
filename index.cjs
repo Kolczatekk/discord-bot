@@ -23319,7 +23319,8 @@ async function handleModalSubmit(interaction) {
         interaction.member?.displayName || user?.globalName || user?.username || "nick"
       )}`.slice(0, 100);
       if (selectedPackage) {
-        formInfo = `> <a:arrowwhite:1491476759290449984> × **Wybrany limit:** ${formatInlineCodeText(`${selectedPackage.label} — ${selectedPackage.price} zł`)}`;
+        formInfo = `> <a:arrowwhite:1491476759290449984> × **Wybrany limit:** ${formatInlineCodeText(selectedPackage.label)}\n` +
+          `> <a:arrowwhite:1491476759290449984> × **Koszt:** ${formatInlineCodeText(`${selectedPackage.price}zł`)}`;
       }
       break;
     }
