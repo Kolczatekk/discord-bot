@@ -20943,6 +20943,15 @@ async function showSellerLimitModal(interaction) {
     .setTitle("Zostań sprzedawcą")
     .addLabelComponents(
       new LabelBuilder()
+        .setLabel("W jakiej sprawie robisz ticketa?")
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId(`sprawa_${timestamp}`)
+            .setStyle(TextInputStyle.Paragraph)
+            .setMaxLength(256)
+            .setRequired(true),
+        ),
+      new LabelBuilder()
         .setLabel("Jaki limit sprzedawcy chcesz kupić?")
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
@@ -23007,28 +23016,6 @@ async function handleModalSubmit(interaction) {
         `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethodLabel}\``;
       break;
     }
-    case "modal_seller_limit": {
-      const selected = getModalStringSelectValueSafe(interaction, "seller_limit");
-      const pack = SELLER_LIMIT_PACKAGES.find((entry) => entry.value === selected);
-      if (!pack) {
-        await interaction.reply({
-          content: "> `❌` × Wybierz dostępny pakiet limitu sprzedawcy.",
-          flags: [MessageFlags.Ephemeral],
-        });
-        return;
-      }
-      categoryId = interaction.guild.channels.cache.has(PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID)
-        ? PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID : categories["zakup-20-50"];
-      ticketType = "zakup-limitu";
-      ticketTypeLabel = "ZAKUP LIMITU SPRZEDAWCY";
-      forceOwnerOnlyVisibility = true;
-      preferredChannelName = buildSpecialPurchaseTicketChannelName(interaction.member, user, "limit");
-      ticketTopic = `Zakup limitu sprzedawcy: ${pack.label} — ${pack.price} zł`;
-      formInfo = `> 🤝 × **Pakiet sprzedawcy:** ${pack.label}\n` +
-        `> 💳 × **Cena:** ${pack.price} zł\n` +
-        `> ℹ️ × Obsługa potwierdzi zakup i przekaże instrukcje płatności w tym tickecie.`;
-      break;
-    }
     case "modal_sprzedaz": {
       const co = getModalTextInputValueSafe(interaction, "co_sprzedac") || "";
       const serwerRaw =
@@ -23317,8 +23304,21 @@ async function handleModalSubmit(interaction) {
       }
       break;
     }
+    case "modal_seller_limit":
     case "modal_inne": {
       const sprawa = getModalTextInputValueSafe(interaction, "sprawa") || "";
+      let selectedPackage = null;
+      if (cid === "modal_seller_limit") {
+        const selected = getModalStringSelectValueSafe(interaction, "seller_limit");
+        selectedPackage = SELLER_LIMIT_PACKAGES.find((entry) => entry.value === selected);
+        if (!selectedPackage || !sprawa.trim()) {
+          await interaction.reply({
+            content: "> `❌` × Opisz sprawę i wybierz dostępny pakiet limitu sprzedawcy.",
+            flags: [MessageFlags.Ephemeral],
+          });
+          return;
+        }
+      }
 
       categoryId = categories["inne"];
       ticketType = "inne";
@@ -23327,6 +23327,9 @@ async function handleModalSubmit(interaction) {
       preferredChannelName = `inne-${sanitizeTicketChannelNamePart(
         interaction.member?.displayName || user?.globalName || user?.username || "nick"
       )}`.slice(0, 100);
+      if (selectedPackage) {
+        formInfo += `\n> <a:arrowwhite:1491476759290449984> × **Wybrany limit:** ${selectedPackage.label} — ${selectedPackage.price} zł`;
+      }
       break;
     }
     default:
