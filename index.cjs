@@ -23551,7 +23551,8 @@ async function handleModalSubmit(interaction) {
       .set(createOptions.permissionOverwrites)
       .catch(() => null);
 
-    const headerText = `\`\`\`text\n🛒 NEW SHOP × ${ticketTypeLabel}\n\`\`\``;
+    const headerLabel = ticketType === "inne" ? "INNE" : ticketTypeLabel;
+    const headerText = `\`\`\`text\n🛒 NEW SHOP × ${headerLabel}\n\`\`\``;
     const bodyText =
       `### ・ \`👤\` × **Informacje o kliencie:**\n` +
       `> <a:arrowwhite:1491476759290449984> × **Ping:** <@${user.id}>\n` +
