@@ -20943,15 +20943,6 @@ async function showSellerLimitModal(interaction) {
     .setTitle("Zostań sprzedawcą")
     .addLabelComponents(
       new LabelBuilder()
-        .setLabel("W jakiej sprawie robisz ticketa?")
-        .setTextInputComponent(
-          new TextInputBuilder()
-            .setCustomId(`sprawa_${timestamp}`)
-            .setStyle(TextInputStyle.Paragraph)
-            .setMaxLength(256)
-            .setRequired(true),
-        ),
-      new LabelBuilder()
         .setLabel("Jaki limit sprzedawcy chcesz kupić?")
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
@@ -23311,9 +23302,9 @@ async function handleModalSubmit(interaction) {
       if (cid === "modal_seller_limit") {
         const selected = getModalStringSelectValueSafe(interaction, "seller_limit");
         selectedPackage = SELLER_LIMIT_PACKAGES.find((entry) => entry.value === selected);
-        if (!selectedPackage || !sprawa.trim()) {
+        if (!selectedPackage) {
           await interaction.reply({
-            content: "> `❌` × Opisz sprawę i wybierz dostępny pakiet limitu sprzedawcy.",
+            content: "> `❌` × Wybierz dostępny pakiet limitu sprzedawcy.",
             flags: [MessageFlags.Ephemeral],
           });
           return;
@@ -23328,7 +23319,7 @@ async function handleModalSubmit(interaction) {
         interaction.member?.displayName || user?.globalName || user?.username || "nick"
       )}`.slice(0, 100);
       if (selectedPackage) {
-        formInfo += `\n> <a:arrowwhite:1491476759290449984> × **Wybrany limit:** ${selectedPackage.label} — ${selectedPackage.price} zł`;
+        formInfo = `> <a:arrowwhite:1491476759290449984> × **Wybrany limit:** ${formatInlineCodeText(`${selectedPackage.label} — ${selectedPackage.price} zł`)}`;
       }
       break;
     }
