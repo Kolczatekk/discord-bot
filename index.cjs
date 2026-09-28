@@ -23396,14 +23396,8 @@ async function handleModalSubmit(interaction) {
         isNewTicketPurchase && (isExistingReward || isExistingHelp || isExistingSell);
 
       if (!canCreateSecondTicket) {
-        let reasonMsg = "> `ℹ️` × Zamknij go, zanim otworzysz nowy.";
-        if (!isNewTicketPurchase && (isExistingReward || isExistingHelp || isExistingSell)) {
-          reasonMsg = "> `ℹ️` × Mając ten ticket, możesz otworzyć jedynie ticket **zakupowy**.";
-        }
         await interaction.reply({
-          content:
-            `> \`❌\` × **Masz już otwarty** ticket: <#${existing.chanId}>\n` +
-            reasonMsg,
+          content: `> \`❌\` × **Masz już otwarty** ticket: <#${existing.chanId}>`,
           flags: [MessageFlags.Ephemeral],
         });
         return;
