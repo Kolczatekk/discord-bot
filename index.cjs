@@ -8941,12 +8941,15 @@ async function handleButtonInteraction(interaction) {
   }
 
   const embedTestBuyOpenMatch = customId.match(
-    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|sprzedaz|odbior|inne|panel|regulamin|nagrania|kalkulator|sprawdz_bonusy))?$/,
+    /^embedtest_buy_open(?:_(zakup|zakup_autorynku|zakup_moda|zostansprzedawca|sprzedaz|odbior|inne|panel|regulamin|nagrania|kalkulator|sprawdz_bonusy))?$/,
   );
   if (embedTestBuyOpenMatch) {
     const action = embedTestBuyOpenMatch[1] || "zakup";
 
     switch (action) {
+      case "zostansprzedawca":
+        await showSellerLimitModal(interaction);
+        break;
       case "zakup":
         await showZakupModal(interaction, detectedServer);
         break;
@@ -13170,6 +13173,12 @@ const EMBED_TEST_PRIMARY_BUTTON_ACTION_OPTIONS = [
     description: "Pokazuje wydaną kwotę i aktualny bonus gracza",
     emoji: "💵",
   },
+  {
+    value: "zostansprzedawca",
+    label: "Zostań sprzedawcą",
+    description: "Otwiera wybór limitu sprzedawcy i ceny pakietu",
+    emoji: "🤝",
+  },
 ];
 
 const EMBED_TEST_SPECIAL_EMOJI_MARKUP = {
@@ -13221,6 +13230,10 @@ function parseEmbedTestPrimaryButtonActionInput(input, fallback = "zakup") {
     (option) => option.value === normalized,
   );
   if (directMatch) return directMatch;
+
+  if (["zostan sprzedawca", "zostan_sprzedawca"].includes(normalized.replace(/ł/g, "l"))) {
+    return getEmbedTestPrimaryButtonActionDef("zostansprzedawca");
+  }
 
   if (
     normalized === "zakup itemow" ||
@@ -14761,7 +14774,7 @@ function buildEmbedTestButtonsModal(state) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(400)
-    .setPlaceholder("kalkulator / zakup / https://...");
+    .setPlaceholder("zostansprzedawca / kalkulator / zakup / https://...");
 
   const buttonThreeLabelInput = new TextInputBuilder()
     .setCustomId("button_three_label")
@@ -14777,7 +14790,7 @@ function buildEmbedTestButtonsModal(state) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false)
     .setMaxLength(400)
-    .setPlaceholder("kalkulator / zakup / https://...");
+    .setPlaceholder("zostansprzedawca / kalkulator / zakup / https://...");
 
   if (isRegulation) {
     modal.setTitle("Edytuj przyciski panelu");
@@ -20914,6 +20927,39 @@ async function ticketUnclaimCommon(interaction, channelId, expectedClaimer = nul
   }
 }
 
+const SELLER_LIMIT_PACKAGES = Object.freeze([
+  { value: "limit_20", label: "Limit 20", price: 60 },
+  { value: "limit_50", label: "Limit 50", price: 150 },
+  { value: "limit_100", label: "Limit 100", price: 250 },
+  { value: "limit_200", label: "Limit 200", price: 400 },
+  { value: "limit_400", label: "Limit 400", price: 600 },
+  { value: "no_limit", label: "Bez limitu (NO LIMIT)", price: 800 },
+]);
+
+async function showSellerLimitModal(interaction) {
+  const timestamp = Date.now();
+  const modal = new ModalBuilder()
+    .setCustomId(`modal_seller_limit_${timestamp}`)
+    .setTitle("Zostań sprzedawcą")
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Jaki limit sprzedawcy chcesz kupić?")
+        .setStringSelectMenuComponent(
+          new StringSelectMenuBuilder()
+            .setCustomId(`seller_limit_${timestamp}`)
+            .setPlaceholder("Wybierz pakiet i cenę")
+            .setRequired(true)
+            .setMinValues(1)
+            .setMaxValues(1)
+            .addOptions(SELLER_LIMIT_PACKAGES.map((pack) => ({
+              label: `${pack.label} — ${pack.price} zł`,
+              value: pack.value,
+            }))),
+        ),
+    );
+  await interaction.showModal(modal);
+}
+
 async function showSprzedazModal(interaction) {
   const timestamp = Date.now();
   const modal = new ModalBuilder()
@@ -21252,6 +21298,7 @@ function getBaseCustomId(customId) {
     "modal_mody_zakup",
     "modal_autorynek_zakup",
     "modal_sprzedaz",
+    "modal_seller_limit",
     "modal_odbior",
     "modal_inne"
   ];
@@ -22958,6 +23005,28 @@ async function handleModalSubmit(interaction) {
       formInfo =
         `> <a:arrowwhite:1491476759290449984> × **Cena:** \`${priceLabel}\`\n` +
         `> <a:arrowwhite:1491476759290449984> × **Forma płatności:** \`${paymentMethodLabel}\``;
+      break;
+    }
+    case "modal_seller_limit": {
+      const selected = getModalStringSelectValueSafe(interaction, "seller_limit");
+      const pack = SELLER_LIMIT_PACKAGES.find((entry) => entry.value === selected);
+      if (!pack) {
+        await interaction.reply({
+          content: "> `❌` × Wybierz dostępny pakiet limitu sprzedawcy.",
+          flags: [MessageFlags.Ephemeral],
+        });
+        return;
+      }
+      categoryId = interaction.guild.channels.cache.has(PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID)
+        ? PRIVATE_SPECIAL_PURCHASE_CATEGORY_ID : categories["zakup-20-50"];
+      ticketType = "zakup-limitu";
+      ticketTypeLabel = "ZAKUP LIMITU SPRZEDAWCY";
+      forceOwnerOnlyVisibility = true;
+      preferredChannelName = buildSpecialPurchaseTicketChannelName(interaction.member, user, "limit");
+      ticketTopic = `Zakup limitu sprzedawcy: ${pack.label} — ${pack.price} zł`;
+      formInfo = `> 🤝 × **Pakiet sprzedawcy:** ${pack.label}\n` +
+        `> 💳 × **Cena:** ${pack.price} zł\n` +
+        `> ℹ️ × Obsługa potwierdzi zakup i przekaże instrukcje płatności w tym tickecie.`;
       break;
     }
     case "modal_sprzedaz": {
