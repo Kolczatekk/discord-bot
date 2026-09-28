@@ -23590,8 +23590,14 @@ async function handleModalSubmit(interaction) {
     });
 
     {
-      const _pingRoles = getPingRolesForTicketType(ticketType);
-      if (_pingRoles.length > 0) {
+      const sellerPurchaseNotifyUserId = cid === "modal_seller_limit" ? "1305200545979437129" : null;
+      const _pingRoles = sellerPurchaseNotifyUserId ? [] : getPingRolesForTicketType(ticketType);
+      if (sellerPurchaseNotifyUserId) {
+        await channel.send({
+          content: `<@${sellerPurchaseNotifyUserId}>`,
+          allowedMentions: { parse: [], users: [sellerPurchaseNotifyUserId] },
+        }).catch(() => null);
+      } else if (_pingRoles.length > 0) {
         await channel.send({
           content: _pingRoles.map(id => `<@&${id}>`).join(" "),
           allowedMentions: { roles: _pingRoles },
