@@ -20933,7 +20933,7 @@ const SELLER_LIMIT_PACKAGES = Object.freeze([
   { value: "limit_100", label: "Limit 100", price: 250 },
   { value: "limit_200", label: "Limit 200", price: 400 },
   { value: "limit_400", label: "Limit 400", price: 600 },
-  { value: "no_limit", label: "Bez limitu (NO LIMIT)", price: 800 },
+  { value: "no_limit", label: "NO LIMIT", price: 800 },
 ]);
 
 async function showSellerLimitModal(interaction) {
