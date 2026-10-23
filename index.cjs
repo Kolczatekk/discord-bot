@@ -1323,7 +1323,6 @@ const OPINION_COOLDOWN_MS = 48 * 60 * 60 * 1000; // 48 hours per user
 const OPINION_BTN_STAR = "<:star:1505298878096871546>";
 const OPINION_STAR = "⭐";
 const OPINION_NO_STAR = "☆";
-const OPINION_DEFAULT_TEXT = "Transakcja przebiegła sprawnie, wszystko zgodne i bez żadnych problemów. Polecam.";
 const OPINION_RATING_OPTIONS = Array.from({ length: 5 }, (_, index) => {
   const value = index + 1;
   return {
@@ -16809,8 +16808,7 @@ function buildOpinionModal() {
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(true)
     .setMaxLength(900)
-    .setValue(OPINION_DEFAULT_TEXT)
-    .setPlaceholder(OPINION_DEFAULT_TEXT);
+    .setPlaceholder("Napisz swoją opinię.");
 
   return new ModalBuilder()
     .setCustomId("modal_wystaw_opinie")
