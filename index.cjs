@@ -1,3 +1,18 @@
+// NEW SHOP now runs from kolczatektoja-sudo/bocik. Retire only this bot identity.
+const legacyBotId = Buffer.from((process.env.BOT_TOKEN || "").split(".")[0], "base64").toString("utf8");
+if (process.env.RENDER === "true" && legacyBotId === "1449397101032112139") {
+  require("node:http").createServer((request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({
+      status: "disabled_duplicate", discord_connected: false,
+      commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "local",
+      replacement: "bocik-6aon.onrender.com",
+    }));
+  }).listen(Number(process.env.PORT || 3000), "0.0.0.0");
+  console.log("[RETIRED] Legacy NEW SHOP connection disabled; bocik is the active service.");
+  return;
+}
+
 const {
   Client,
   GatewayIntentBits,
